@@ -22,6 +22,7 @@ public final class ProfileSnapshot {
 	private final String networthText;
 	private final List<SkillEntry> skills;
 	private final List<SlayerEntry> slayers;
+	private final SkillEntry social;
 
 	public ProfileSnapshot(
 		String playerName,
@@ -32,7 +33,8 @@ public final class ProfileSnapshot {
 		String weightText,
 		String networthText,
 		List<SkillEntry> skills,
-		List<SlayerEntry> slayers
+		List<SlayerEntry> slayers,
+		SkillEntry social
 	) {
 		this.playerName = playerName;
 		this.playerUuid = playerUuid;
@@ -43,6 +45,7 @@ public final class ProfileSnapshot {
 		this.networthText = networthText;
 		this.skills = List.copyOf(skills);
 		this.slayers = List.copyOf(slayers);
+		this.social = social == null ? entry("social", "Social") : social;
 	}
 
 	public String playerName() {
@@ -85,10 +88,14 @@ public final class ProfileSnapshot {
 		return this.slayers;
 	}
 
+	public SkillEntry social() {
+		return this.social;
+	}
+
 	public ProfileSnapshot withWeightText(String weightText) {
 		return new ProfileSnapshot(
 			this.playerName, this.playerUuid, this.profileName, this.skyBlockLevel, this.skyBlockXpIntoLevel,
-			weightText, this.networthText, this.skills, this.slayers
+			weightText, this.networthText, this.skills, this.slayers, this.social
 		);
 	}
 
@@ -106,7 +113,7 @@ public final class ProfileSnapshot {
 			slayer("spider", "Tarantula"), slayer("blaze", "Blaze"),
 			slayer("wolf", "Sven"), slayer("vampire", "Vampire")
 		);
-		return new ProfileSnapshot(player, null, "…", 0, 0, "…", "—", skills, slayers);
+		return new ProfileSnapshot(player, null, "…", 0, 0, "…", "—", skills, slayers, entry("social", "Social"));
 	}
 
 	private static SkillEntry entry(String id, String name) {

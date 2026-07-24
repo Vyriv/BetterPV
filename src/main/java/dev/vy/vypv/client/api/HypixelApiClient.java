@@ -113,6 +113,18 @@ public final class HypixelApiClient {
 		);
 	}
 
+	/** SkyBlock election / current mayor. Resources endpoint; no API key required. */
+	public static CompletableFuture<Optional<JsonObject>> skyblockElection() {
+		return CompletableFuture.supplyAsync(() -> {
+			waitForSlot();
+			Optional<JsonObject> viaWorker = getJson(WORKER_BASE + "/hypixel/resources/skyblock/election", false);
+			if (viaWorker.isPresent()) {
+				return viaWorker;
+			}
+			return getJson(DIRECT_HYPIXEL.resolve("resources/skyblock/election").toString(), false);
+		}, EXECUTOR);
+	}
+
 	private static Optional<JsonObject> fetchPreferWorker(String workerUrl, String directPath, String directQuery) {
 		waitForSlot();
 		Optional<JsonObject> viaWorker = getJson(workerUrl, false);

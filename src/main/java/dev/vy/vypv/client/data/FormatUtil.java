@@ -34,6 +34,25 @@ public final class FormatUtil {
 		return shortCompact(value, true);
 	}
 
+	/** Format a dungeon time stored in milliseconds. */
+	public static String prettyTime(long ms) {
+		if (ms <= 0L) {
+			return "N/A";
+		}
+		long totalSec = ms / 1000L;
+		long h = totalSec / 3600L;
+		long m = (totalSec % 3600L) / 60L;
+		long s = totalSec % 60L;
+		if (h > 0L) {
+			return h + ":" + pad2(m) + ":" + pad2(s);
+		}
+		return m + ":" + pad2(s);
+	}
+
+	private static String pad2(long value) {
+		return value < 10L ? "0" + value : Long.toString(value);
+	}
+
 	private static String shortCompact(double value, boolean upperSuffix) {
 		double abs = Math.abs(value);
 		if (abs >= 1_000_000_000_000L) {

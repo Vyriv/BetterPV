@@ -16,16 +16,21 @@ import java.util.Optional;
 public final class RepoData {
 	private static JsonObject weight;
 	private static JsonObject leveling;
+	private static JsonObject dungeonsXp;
 
 	private RepoData() {
 	}
 
 	public static void ensureLoaded() {
 		if (weight != null && leveling != null) {
+			if (dungeonsXp == null) {
+				dungeonsXp = loadJson("data/dungeons_xp.json");
+			}
 			return;
 		}
 		weight = loadJson("data/weight.json");
 		leveling = loadJson("data/leveling.json");
+		dungeonsXp = loadJson("data/dungeons_xp.json");
 	}
 
 	public static JsonObject weight() {
@@ -36,6 +41,11 @@ public final class RepoData {
 	public static JsonObject leveling() {
 		ensureLoaded();
 		return leveling;
+	}
+
+	public static JsonObject dungeonsXp() {
+		ensureLoaded();
+		return dungeonsXp;
 	}
 
 	public static JsonArray levelingXp() {

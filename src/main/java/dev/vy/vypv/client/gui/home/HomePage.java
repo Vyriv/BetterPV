@@ -149,8 +149,9 @@ public final class HomePage {
 	private Layout measure(Font font, int w) {
 		Layout layout = new Layout();
 		layout.gap = 6;
-		layout.leftW = Math.max(100, w * 26 / 100);
-		layout.levelW = Math.max(88, (w - layout.leftW - layout.gap * 2) * 28 / 100);
+		// Slim SB-level column: short XP bar, width only needs the level label.
+		layout.levelW = 84;
+		layout.leftW = Math.max(100, (w - layout.levelW - layout.gap * 2) * 30 / 100);
 		layout.barsW = w - layout.leftW - layout.levelW - layout.gap * 2;
 		layout.line = font.lineHeight + 2;
 		layout.rowH = font.lineHeight + BAR_LABEL_GAP + BAR_H + BAR_AFTER_GAP;
@@ -161,11 +162,14 @@ public final class HomePage {
 		layout.profileLineH = font.lineHeight;
 		layout.nameLineH = font.lineHeight;
 		layout.nameGap = 2;
-		layout.boxToNameGap = 6;
+		layout.boxToSocialGap = 6;
+		layout.socialToProfileGap = 6;
 		layout.profileY = layout.lastSlayerNameY;
-		layout.nameY = layout.profileY - layout.nameLineH - layout.nameGap;
-		layout.boxTop = layout.statsH;
-		layout.boxBottom = layout.nameY - layout.boxToNameGap;
+		layout.socialBarY = layout.profileY - layout.socialToProfileGap - BAR_H;
+		layout.socialLabelY = layout.socialBarY - BAR_LABEL_GAP - layout.nameLineH;
+		layout.boxBottom = layout.socialLabelY - layout.boxToSocialGap;
+		layout.nameY = layout.statsH;
+		layout.boxTop = layout.nameY + layout.nameLineH + layout.nameGap;
 		layout.boxH = Math.max(48, layout.boxBottom - layout.boxTop);
 		layout.leftH = layout.profileY + layout.profileLineH + PAD;
 		layout.contentH = Math.max(layout.leftH, layout.barsH);
@@ -228,6 +232,9 @@ public final class HomePage {
 		int boxX = cx - boxW / 2;
 		int boxTop = y + layout.boxTop;
 		int boxH = layout.boxH;
+
+		PvDraw.textCentered(g, font, styledPlayerName(), cx, y + layout.nameY);
+
 		PvDraw.fill(g, boxX, boxTop, boxW, boxH, 0xFF15151E);
 		g.outline(boxX, boxTop, boxW, boxH, PvDraw.COLOR_BORDER);
 		if (this.snapshot.playerUuid() != null) {
@@ -255,7 +262,18 @@ public final class HomePage {
 			);
 		}
 
-		PvDraw.textCentered(g, font, styledPlayerName(), cx, y + layout.nameY);
+		ProfileSnapshot.SkillEntry social = this.snapshot.social();
+		int socialLabelY = y + layout.socialLabelY;
+		int socialBarY = y + layout.socialBarY;
+		int socialBarW = Math.min(boxW, Math.max(48, boxW - 8));
+		int socialBarX = cx - socialBarW / 2;
+		PvDraw.textCentered(g, font, social.name(), cx, socialLabelY, PvDraw.COLOR_TEXT);
+		PvDraw.progressBar(
+			g, socialBarX, socialBarY, socialBarW, BAR_H,
+			social.progress(), PvDraw.COLOR_BAR_FILL, social.maxed()
+		);
+		this.zones.add(new HoverZone(socialBarX, socialLabelY, socialBarW, socialBarY + BAR_H - socialLabelY + 2, social.xpHover()));
+
 		PvDraw.textCentered(
 			g, font,
 			Component.translatable("vypv.home.profile", this.snapshot.profileName()).getString(),
@@ -285,9 +303,10 @@ public final class HomePage {
 		int xp = this.snapshot.skyBlockXpIntoLevel();
 		String levelText = Component.translatable("vypv.home.sb_level", level).getString();
 		int levelColor = SkyBlockLevelColors.colorFor(level);
-		int barW = Math.min(w - 24, 72);
+		int barW = Math.min(w - 16, 48);
 		int cx = x + w / 2;
-		int blockH = font.lineHeight + 4 + ICON_SIZE + 4 + BAR_H;
+
+		int blockH = font.lineHeight + 4 + ICON_SIZE + 4 + font.lineHeight + 2 + BAR_H;
 		int ty = y + Math.max(PAD, (h - blockH) / 2);
 
 		PvDraw.textCentered(g, font, levelText, cx, ty, levelColor);
@@ -302,11 +321,19 @@ public final class HomePage {
 			SKYBLOCK_XP_TEX_SIZE, SKYBLOCK_XP_TEX_SIZE
 		);
 		ty += ICON_SIZE + 4;
+
+		Component xpLine = Component.empty()
+			.append(PvDraw.styled(String.valueOf(xp), PvDraw.COLOR_WHITE, false))
+			.append(PvDraw.styled("/", PvDraw.COLOR_MUTED, false))
+			.append(PvDraw.styled("100", levelColor, false));
+		PvDraw.textCentered(g, font, xpLine, cx, ty);
+		ty += font.lineHeight + 2;
+
 		int barX = cx - barW / 2;
 		PvDraw.progressBar(g, barX, ty, barW, BAR_H, this.snapshot.skyBlockProgress(), levelColor);
 		double pct = this.snapshot.skyBlockProgress() * 100.0;
 		String xpHover = xp + "/100 (" + Math.round(pct) + "%)";
-		this.zones.add(new HoverZone(barX, ty - 2, barW, BAR_H + 4, xpHover));
+		this.zones.add(new HoverZone(barX, ty - font.lineHeight - 2, barW, font.lineHeight + 2 + BAR_H + 2, xpHover));
 	}
 
 	private void drawBarsColumn(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, Layout layout) {
@@ -375,9 +402,12 @@ public final class HomePage {
 		int profileLineH;
 		int nameLineH;
 		int nameGap;
-		int boxToNameGap;
+		int boxToSocialGap;
+		int socialToProfileGap;
 		int profileY;
 		int nameY;
+		int socialLabelY;
+		int socialBarY;
 		int boxTop;
 		int boxBottom;
 		int boxH;

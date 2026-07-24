@@ -10,10 +10,12 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.resources.DefaultPlayerSkin;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.PlayerSkin;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.ResolvableProfile;
 
 /** 3D player mannequin for the Home PV panel (NEU / VyAddons approach). */
 public final class PlayerModelRenderer {
@@ -100,7 +102,16 @@ public final class PlayerModelRenderer {
 
 		private GuiPlayer(ClientLevel level, UUID uuid, String name) {
 			super(level, Minecraft.getInstance().playerSkinRenderCache());
-			GameProfile profile = new GameProfile(uuid, name == null || name.isBlank() ? "Player" : name);
+			String safeName = name == null || name.isBlank() ? "Player" : name;
+			GameProfile profile = new GameProfile(uuid, safeName);
+			try {
+				setComponent(DataComponents.PROFILE, ResolvableProfile.createUnresolved(uuid));
+			} catch (Throwable ignored) {
+				try {
+					setComponent(DataComponents.PROFILE, ResolvableProfile.createResolved(profile));
+				} catch (Throwable ignored2) {
+				}
+			}
 			this.skinLookup = Minecraft.getInstance().getSkinManager().createLookup(profile, true);
 			this.skin = DefaultPlayerSkin.get(uuid);
 			Minecraft.getInstance().getSkinManager().get(profile).thenAccept(optional -> {

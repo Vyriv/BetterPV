@@ -8,6 +8,7 @@
 		"Vy"
 	],
 	"license": "All Rights Reserved",
+	"icon": "assets/vypv/icon.png",
 	"environment": "client",
 	"entrypoints": {
 		"main": [

@@ -1,0 +1,18 @@
+{
+	"required": true,
+	"package": "dev.vy.vypv.mixin",
+	"compatibilityLevel": "JAVA_21",
+	"client": [
+		"EntityCosmeticsMixin",
+		"EntityRendererCosmeticsMixin",
+		"FontCosmeticsMixin",
+		"PlayerInfoCosmeticsMixin",
+		"PlayerTabOverlayCosmeticsMixin",
+		"SkyHanniAdvancedPlayerListCosmeticsMixin",
+		"SkyHanniScoreboardElementPartyCosmeticsMixin",
+		"SkyHanniScoreboardEventDungeonsCosmeticsMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}

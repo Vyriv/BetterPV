@@ -1,0 +1,29 @@
+{
+	"schemaVersion": 1,
+	"id": "vypv",
+	"version": "${version}",
+	"name": "VyPV",
+	"description": "Standalone SkyBlock Profile Viewer",
+	"authors": [
+		"Vy"
+	],
+	"license": "All Rights Reserved",
+	"environment": "client",
+	"entrypoints": {
+		"main": [
+			"dev.vy.vypv.VyPV"
+		],
+		"client": [
+			"dev.vy.vypv.client.VyPVClient"
+		]
+	},
+	"mixins": [
+		"vypv.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.19.3",
+		"minecraft": "~26.1.2",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}

@@ -1,0 +1,14 @@
+.gradle/
+build/
+run/
+out/
+*.iml
+.idea/
+*.log
+.DS_Store
+*.class
+.classpath
+.project
+.settings/
+bin/
+**/config/vypv.json

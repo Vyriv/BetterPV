@@ -1,0 +1,12 @@
+{
+	"modmenu.nameTranslation.vypv": "VyPV",
+	"vypv.command.pv": "Opens the Profile Viewer",
+	"vypv.screen.title": "VyPV",
+	"vypv.home.weight_label": "Weight: ",
+	"vypv.home.networth_label": "Networth: ",
+	"vypv.home.sb_level": "SB Level: %s",
+	"vypv.home.player": "Player",
+	"vypv.home.profile": "Profile: %s",
+	"vypv.home.skills": "SKILLS",
+	"vypv.home.slayers": "SLAYERS"
+}

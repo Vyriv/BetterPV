@@ -1,1 +1,4 @@
+# Gitignored locally as betterpv.local.properties — never commit real values.
+
+# Shared secret clients send as X-VyPV-Key (must match Cloudflare VYPV_HYPIXEL_SECRET).
 betterpv.hypixel.worker.secret=REPLACE_ME

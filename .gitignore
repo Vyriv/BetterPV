@@ -11,10 +11,10 @@ out/
 .project
 .settings/
 bin/
-**/config/vypv.json
+**/config/betterpv.json
 
-# Local build secrets (baked into jar at compile time — never commit)
-vypv.local.properties
+# Local build secrets (baked into jar at compile time - never commit)
+betterpv.local.properties
 
 # Stray decompile / dump output
 /net/

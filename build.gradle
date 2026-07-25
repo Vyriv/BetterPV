@@ -47,17 +47,17 @@ afterEvaluate {
 	}
 }
 
-/** Worker Hypixel auth secret: env {@code VYPV_HYPIXEL_SECRET} or gitignored {@code vypv.local.properties}. */
+/** Worker Hypixel auth secret: env {@code VYPV_HYPIXEL_SECRET} or gitignored {@code betterpv.local.properties}. */
 def resolveWorkerHypixelSecret = {
 	def fromEnv = System.getenv("VYPV_HYPIXEL_SECRET")
 	if (fromEnv != null && !fromEnv.isBlank()) {
 		return fromEnv.trim()
 	}
-	def local = file("vypv.local.properties")
+	def local = file("betterpv.local.properties")
 	if (local.exists()) {
 		def props = new Properties()
 		local.withInputStream { props.load(it) }
-		def value = props.getProperty("vypv.hypixel.worker.secret", "")
+		def value = props.getProperty("betterpv.hypixel.worker.secret", "")
 		if (value != null && !value.isBlank() && value != "REPLACE_ME") {
 			return value.trim()
 		}
@@ -66,13 +66,13 @@ def resolveWorkerHypixelSecret = {
 }
 
 def workerHypixelSecret = resolveWorkerHypixelSecret()
-def generatedSecretsDir = layout.buildDirectory.dir("generated/sources/vypvSecrets")
+def generatedSecretsDir = layout.buildDirectory.dir("generated/sources/betterpvSecrets")
 
 tasks.register("generateWorkerSecrets") {
 	inputs.property("workerHypixelSecret", workerHypixelSecret)
 	outputs.dir(generatedSecretsDir)
 	doLast {
-		def pkgDir = new File(generatedSecretsDir.get().asFile, "dev/vy/vypv/client/api")
+		def pkgDir = new File(generatedSecretsDir.get().asFile, "dev/vy/betterpv/client/api")
 		pkgDir.mkdirs()
 		def escaped = workerHypixelSecret
 			.replace("\\", "\\\\")
@@ -80,9 +80,9 @@ tasks.register("generateWorkerSecrets") {
 			.replace("\r", "")
 			.replace("\n", "")
 		new File(pkgDir, "WorkerSecrets.java").text = """\
-package dev.vy.vypv.client.api;
+package dev.vy.betterpv.client.api;
 
-/** Generated at build time from vypv.local.properties / VYPV_HYPIXEL_SECRET. Do not edit. */
+/** Generated at build time from betterpv.local.properties / VYPV_HYPIXEL_SECRET. Do not edit. */
 public final class WorkerSecrets {
 	private WorkerSecrets() {
 	}
@@ -91,7 +91,7 @@ public final class WorkerSecrets {
 }
 """
 		if (workerHypixelSecret.isBlank()) {
-			logger.warn("VyPV: no hypixel worker secret - set VYPV_HYPIXEL_SECRET or vypv.local.properties (see vypv.local.properties.example)")
+			logger.warn("BetterPV: no hypixel worker secret - set VYPV_HYPIXEL_SECRET or betterpv.local.properties (see betterpv.local.properties.example)")
 		}
 	}
 }

@@ -1,4 +1,4 @@
-VyPV
+BetterPV
 SkyBlock Profile Viewer for Fabric
 
 A client-side Hypixel SkyBlock profile viewer for Minecraft 26.1.2.

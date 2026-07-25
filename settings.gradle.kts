@@ -6,4 +6,4 @@ pluginManagement {
 	}
 }
 
-rootProject.name = "VyPV"
+rootProject.name = "BetterPV"

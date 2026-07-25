@@ -1,25 +1,25 @@
 {
 	"schemaVersion": 1,
-	"id": "vypv",
+	"id": "betterpv",
 	"version": "${version}",
-	"name": "VyPV",
+	"name": "BetterPV",
 	"description": "Standalone SkyBlock Profile Viewer",
 	"authors": [
 		"Vy"
 	],
 	"license": "All Rights Reserved",
-	"icon": "assets/vypv/icon.png",
+	"icon": "assets/betterpv/icon.png",
 	"environment": "client",
 	"entrypoints": {
 		"main": [
-			"dev.vy.vypv.VyPV"
+			"dev.vy.betterpv.BetterPV"
 		],
 		"client": [
-			"dev.vy.vypv.client.VyPVClient"
+			"dev.vy.betterpv.client.BetterPVClient"
 		]
 	},
 	"mixins": [
-		"vypv.mixins.json"
+		"betterpv.mixins.json"
 	],
 	"depends": {
 		"fabricloader": ">=0.19.3",

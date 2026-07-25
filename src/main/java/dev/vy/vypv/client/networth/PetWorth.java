@@ -11,6 +11,37 @@ public final class PetWorth {
 	private PetWorth() {
 	}
 
+	/** Display level (1-100/200) for UI labels. */
+	public static int level(JsonObject pet) {
+		return levelInfo(pet).level();
+	}
+
+	/** Level + XP progress for UI bars. */
+	public static LevelInfo levelInfo(JsonObject pet) {
+		if (pet == null || !pet.has("type") || !pet.has("tier") || !pet.has("exp")) {
+			return new LevelInfo(1, 100, 0, 0, 0, 0f);
+		}
+		String type = pet.get("type").getAsString();
+		String tier = pet.get("tier").getAsString();
+		double exp = pet.get("exp").getAsDouble();
+		String heldItem = pet.has("heldItem") && !pet.get("heldItem").isJsonNull() ? pet.get("heldItem").getAsString() : null;
+		List<String> tiers = NetworthData.tiers();
+		int tierIndex = Math.max(0, tiers.indexOf(tier));
+		boolean tierBoost = "PET_ITEM_TIER_BOOST".equals(heldItem);
+		int boostedIndex = Math.min(tiers.size() - 1, tierIndex + (tierBoost ? 1 : 0));
+		return getPetLevel(type, tiers.get(boostedIndex), exp);
+	}
+
+	public record LevelInfo(
+		int level,
+		int maxLevel,
+		double exp,
+		double xpMax,
+		double xpIntoLevel,
+		float progressToNext
+	) {
+	}
+
 	public static double value(JsonObject pet) {
 		if (pet == null || !pet.has("type") || !pet.has("tier") || !pet.has("exp")) {
 			return 0;
@@ -32,7 +63,7 @@ public final class PetWorth {
 		String basePetId = tier + "_" + type;
 		String petId = basePetId + (skin != null && !skin.isBlank() ? "_SKINNED_" + skin : "");
 
-		PetLevel level = getPetLevel(type, boostedTier, exp);
+		LevelInfo level = getPetLevel(type, boostedTier, exp);
 		double lvl1 = maxPrice("LVL_1_" + basePetId, skin == null ? 0 : ItemPricer.price("LVL_1_" + petId));
 		double lvl100 = maxPrice("LVL_100_" + basePetId, skin == null ? 0 : ItemPricer.price("LVL_100_" + petId));
 		double lvl200 = maxPrice("LVL_200_" + basePetId, skin == null ? 0 : ItemPricer.price("LVL_200_" + petId));
@@ -41,7 +72,7 @@ public final class PetWorth {
 		if (level.level() < 100 && level.xpMax() > 0) {
 			double formula = (lvl100 - lvl1) / level.xpMax();
 			if (formula != 0) {
-				basePrice = formula * level.xp() + lvl1;
+				basePrice = formula * level.exp() + lvl1;
 			}
 		}
 		if (level.level() > 100 && level.level() < 200) {
@@ -78,7 +109,7 @@ public final class PetWorth {
 		return Math.max(ItemPricer.price(baseKey), skinned);
 	}
 
-	private static PetLevel getPetLevel(String type, String tierName, double exp) {
+	private static LevelInfo getPetLevel(String type, String tierName, double exp) {
 		Map<String, Integer> special = NetworthData.specialLevels();
 		int maxPetLevel = special.getOrDefault(type, 100);
 		Map<String, Integer> offsets = NetworthData.rarityOffset();
@@ -90,21 +121,28 @@ public final class PetWorth {
 
 		int level = 1;
 		double totalExp = 0;
+		double xpIntoLevel = exp;
+		int nextCost = petLevels.isEmpty() ? 0 : petLevels.get(0);
 		for (int i = 0; i < maxPetLevel && i < petLevels.size(); i++) {
-			totalExp += petLevels.get(i);
-			if (totalExp > exp) {
-				totalExp -= petLevels.get(i);
+			int cost = petLevels.get(i);
+			if (totalExp + cost > exp) {
+				xpIntoLevel = exp - totalExp;
+				nextCost = cost;
 				break;
 			}
+			totalExp += cost;
 			level++;
+			xpIntoLevel = 0;
+			nextCost = i + 1 < petLevels.size() ? petLevels.get(i + 1) : 0;
 		}
 		double xpMax = 0;
 		for (int v : petLevels) {
 			xpMax += v;
 		}
-		return new PetLevel(Math.min(level, maxPetLevel), xpMax, exp);
-	}
-
-	private record PetLevel(int level, double xpMax, double xp) {
+		int capped = Math.min(level, maxPetLevel);
+		float progress = capped >= maxPetLevel || nextCost <= 0
+			? 1f
+			: (float) Math.max(0, Math.min(1, xpIntoLevel / nextCost));
+		return new LevelInfo(capped, maxPetLevel, exp, xpMax, xpIntoLevel, progress);
 	}
 }

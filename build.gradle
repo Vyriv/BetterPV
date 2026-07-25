@@ -30,7 +30,7 @@ dependencies {
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 
-	// Spark profiler for the Loom run folder — https://spark.lucko.me/
+	// Spark profiler for the Loom run folder - https://spark.lucko.me/
 	sparkRuntime "maven.modrinth:spark:${project.spark_version}"
 }
 
@@ -45,6 +45,67 @@ afterEvaluate {
 	tasks.matching { it.name == "runClient" || it.name == "runServer" }.configureEach {
 		dependsOn("prepareSpark")
 	}
+}
+
+/** Worker Hypixel auth secret: env {@code VYPV_HYPIXEL_SECRET} or gitignored {@code vypv.local.properties}. */
+def resolveWorkerHypixelSecret = {
+	def fromEnv = System.getenv("VYPV_HYPIXEL_SECRET")
+	if (fromEnv != null && !fromEnv.isBlank()) {
+		return fromEnv.trim()
+	}
+	def local = file("vypv.local.properties")
+	if (local.exists()) {
+		def props = new Properties()
+		local.withInputStream { props.load(it) }
+		def value = props.getProperty("vypv.hypixel.worker.secret", "")
+		if (value != null && !value.isBlank() && value != "REPLACE_ME") {
+			return value.trim()
+		}
+	}
+	return ""
+}
+
+def workerHypixelSecret = resolveWorkerHypixelSecret()
+def generatedSecretsDir = layout.buildDirectory.dir("generated/sources/vypvSecrets")
+
+tasks.register("generateWorkerSecrets") {
+	inputs.property("workerHypixelSecret", workerHypixelSecret)
+	outputs.dir(generatedSecretsDir)
+	doLast {
+		def pkgDir = new File(generatedSecretsDir.get().asFile, "dev/vy/vypv/client/api")
+		pkgDir.mkdirs()
+		def escaped = workerHypixelSecret
+			.replace("\\", "\\\\")
+			.replace("\"", "\\\"")
+			.replace("\r", "")
+			.replace("\n", "")
+		new File(pkgDir, "WorkerSecrets.java").text = """\
+package dev.vy.vypv.client.api;
+
+/** Generated at build time from vypv.local.properties / VYPV_HYPIXEL_SECRET. Do not edit. */
+public final class WorkerSecrets {
+	private WorkerSecrets() {
+	}
+
+	public static final String HYPIXEL_WORKER_SECRET = "${escaped}";
+}
+"""
+		if (workerHypixelSecret.isBlank()) {
+			logger.warn("VyPV: no hypixel worker secret - set VYPV_HYPIXEL_SECRET or vypv.local.properties (see vypv.local.properties.example)")
+		}
+	}
+}
+
+sourceSets {
+	main {
+		java {
+			srcDir(generatedSecretsDir)
+		}
+	}
+}
+
+tasks.named("compileJava").configure {
+	dependsOn("generateWorkerSecrets")
 }
 
 processResources {
@@ -68,6 +129,10 @@ java {
 
 	sourceCompatibility = JavaVersion.VERSION_25
 	targetCompatibility = JavaVersion.VERSION_25
+}
+
+tasks.named("sourcesJar", Jar).configure {
+	exclude("**/WorkerSecrets.java")
 }
 
 publishing {

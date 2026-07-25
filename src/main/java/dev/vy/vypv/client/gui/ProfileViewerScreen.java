@@ -4,11 +4,17 @@ import dev.vy.vypv.client.api.ProfileFetcher;
 import dev.vy.vypv.client.data.ProfileSnapshot;
 import dev.vy.vypv.client.gui.dungeons.DungeonPage;
 import dev.vy.vypv.client.gui.home.HomePage;
+import dev.vy.vypv.client.gui.inventories.InventoryPage;
 import dev.vy.vypv.client.gui.nav.IconButtonBar;
 import dev.vy.vypv.client.gui.nav.InventoryPane;
 import dev.vy.vypv.client.gui.nav.MuseumSort;
 import dev.vy.vypv.client.gui.nav.PvSubTab;
 import dev.vy.vypv.client.gui.nav.PvTab;
+import dev.vy.vypv.client.gui.pets.PetsPage;
+import dev.vy.vypv.client.networth.NetworthBreakdown;
+import dev.vy.vypv.client.weight.WeightBreakdown;
+import dev.vy.vypv.client.weight.WeightSystem;
+import dev.vy.vypv.VyPV;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
@@ -20,7 +26,9 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 
 public final class ProfileViewerScreen extends Screen {
@@ -31,13 +39,14 @@ public final class ProfileViewerScreen extends Screen {
 	private final String requestedName;
 	private final HomePage homePage;
 	private final DungeonPage dungeonPage = new DungeonPage();
+	private final InventoryPage inventoryPage = new InventoryPage();
+	private final PetsPage petsPage = new PetsPage();
 	private final IconButtonBar topBar = new IconButtonBar();
 	private final IconButtonBar sideBar = new IconButtonBar();
 	private final IconButtonBar inventoryBar = new IconButtonBar();
 	private final Map<PvTab, PvSubTab> subSelection = new EnumMap<>(PvTab.class);
 
 	private PvTab tab = PvTab.HOME;
-	private InventoryPane inventoryPane = InventoryPane.INVENTORY;
 	private MuseumSort museumSort = MuseumSort.COMBAT;
 	private boolean fetchStarted;
 	private EditBox inventorySearch;
@@ -68,10 +77,14 @@ public final class ProfileViewerScreen extends Screen {
 		);
 		this.inventorySearch.setMaxLength(64);
 		this.inventorySearch.setBordered(false);
-		this.inventorySearch.setTextColor(PvDraw.COLOR_TEXT & 0xFFFFFF);
-		this.inventorySearch.setHint(Component.translatable("vypv.inv.search_hint"));
+		// EditBox colours are ARGB - stripping alpha makes typed text invisible.
+		this.inventorySearch.setTextColor(PvDraw.COLOR_TEXT);
+		this.inventorySearch.setTextColorUneditable(PvDraw.COLOR_MUTED);
 		this.inventorySearch.setValue(this.inventorySearchQuery);
-		this.inventorySearch.setResponder(value -> this.inventorySearchQuery = value);
+		this.inventorySearch.setResponder(value -> {
+			this.inventorySearchQuery = value;
+			this.inventoryPage.setSearchQuery(value);
+		});
 		this.inventorySearch.setVisible(false);
 		this.addWidget(this.inventorySearch);
 
@@ -79,13 +92,25 @@ public final class ProfileViewerScreen extends Screen {
 			return;
 		}
 		this.fetchStarted = true;
-		ProfileFetcher.fetch(this.requestedName).thenAccept(loaded -> {
+		ProfileFetcher.fetch(this.requestedName).whenComplete((loaded, error) -> {
 			Minecraft client = Minecraft.getInstance();
 			if (client == null) {
 				return;
 			}
 			client.execute(() -> {
 				if (client.screen != this) {
+					return;
+				}
+				if (error != null || loaded == null) {
+					VyPV.LOGGER.warn("Profile fetch failed for {}", this.requestedName, error);
+					this.homePage.applyLoaded(
+						ProfileSnapshot.loading(this.requestedName),
+						WeightBreakdown.empty(WeightSystem.SENITHER),
+						WeightBreakdown.empty(WeightSystem.LILY),
+						NetworthBreakdown.empty("Fetch failed"),
+						new ItemStack[] { ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY },
+						error == null ? "Fetch failed" : (error.getMessage() == null ? error.toString() : error.getMessage())
+					);
 					return;
 				}
 				this.homePage.applyLoaded(
@@ -97,6 +122,8 @@ public final class ProfileViewerScreen extends Screen {
 					loaded.error()
 				);
 				this.dungeonPage.apply(loaded.dungeons());
+				this.inventoryPage.apply(loaded.inventories());
+				this.petsPage.apply(loaded.pets());
 			});
 		});
 	}
@@ -194,6 +221,13 @@ public final class ProfileViewerScreen extends Screen {
 			return;
 		}
 
+		if (this.tab == PvTab.PETS) {
+			hideInventorySearch();
+			this.dungeonPage.blurField();
+			this.petsPage.render(g, this.font, x, y, w, h, mouseX, mouseY, this.width, this.height);
+			return;
+		}
+
 		hideInventorySearch();
 		this.dungeonPage.blurField();
 		PvDraw.innerPanel(g, x, y, w, h);
@@ -209,75 +243,112 @@ public final class ProfileViewerScreen extends Screen {
 	}
 
 	private void renderInventorySplit(GuiGraphicsExtractor g, int x, int y, int w, int h, int mouseX, int mouseY, float delta) {
-		int searchY = y;
-		int searchX = x;
-		int searchW = w;
-		layoutInventorySearch(searchX, searchY, searchW);
-
-		PvDraw.fill(g, searchX, searchY, searchW, SEARCH_H, 0xFF101018);
-		g.outline(searchX, searchY, searchW, SEARCH_H, PvDraw.COLOR_BORDER);
-		this.inventorySearch.setVisible(true);
-		this.inventorySearch.extractWidgetRenderState(g, mouseX, mouseY, delta);
+		// Top strip is decorative only - empty header panel, not a search field.
+		PvDraw.fill(g, x, y, w, SEARCH_H, 0xFF101018);
+		g.outline(x, y, w, SEARCH_H, PvDraw.COLOR_BORDER);
 
 		int bodyY = y + SEARCH_H + SEARCH_GAP;
 		int bodyH = h - SEARCH_H - SEARCH_GAP;
 
 		InventoryPane[] panes = InventoryPane.values();
-		int cols = 3;
-		int btn = IconButtonBar.TAB;
-		int btnGap = 10;
-		int pad = 8;
-		int rows = (panes.length + cols - 1) / cols;
-		int gridW = cols * btn + (cols - 1) * btnGap;
+		// Row widths top→bottom: 5, 5, 3 (13 panes).
+		int[] rowWidths = {5, 5, 3};
+		int btn = 22;
+		int btnGap = 14;
+		int pad = 10;
+		int rows = rowWidths.length;
+		int maxCols = 0;
+		for (int width : rowWidths) {
+			maxCols = Math.max(maxCols, width);
+		}
+		int gridW = maxCols * btn + (maxCols - 1) * btnGap;
+		int gridH = rows * btn + (rows - 1) * btnGap;
 
-		int gap = 6;
+		int gap = 8;
 		int rightW = gridW + pad * 2;
 		int leftW = w - rightW - gap;
-		if (leftW < (int) (w * 0.55)) {
-			leftW = Math.max(120, (int) (w * 0.60));
+		if (leftW < 150) {
+			leftW = Math.max(130, (int) (w * 0.52));
 			rightW = w - leftW - gap;
 		}
 		int rightX = x + leftW + gap;
 
 		PvDraw.innerPanel(g, x, bodyY, leftW, bodyH);
-		PvDraw.textCentered(
-			g,
-			this.font,
-			this.inventoryPane.label().getString(),
-			x + leftW / 2,
-			bodyY + 8,
-			PvDraw.COLOR_MUTED
-		);
-		PvDraw.textCentered(
-			g,
-			this.font,
-			"(preview)",
-			x + leftW / 2,
-			bodyY + 8 + this.font.lineHeight + 4,
-			PvDraw.COLOR_BORDER
-		);
+		this.inventoryPage.setSearchQuery(this.inventorySearchQuery);
+		this.inventoryPage.render(g, this.font, x, bodyY, leftW, bodyH, mouseX, mouseY, this.width, this.height);
 
 		PvDraw.innerPanel(g, rightX, bodyY, rightW, bodyH);
 
 		int startX = rightX + (rightW - gridW) / 2;
+		// Buttons pinned near the top of the right panel.
 		int startY = bodyY + pad;
 
-		for (int i = 0; i < panes.length; i++) {
-			InventoryPane pane = panes[i];
-			int col = i % cols;
-			int row = i / cols;
-			int bx = startX + col * (btn + btnGap);
-			int by = startY + row * (btn + btnGap);
-			boolean selected = pane == this.inventoryPane;
-			boolean hovered = mouseX >= bx && mouseX < bx + btn && mouseY >= by && mouseY < by + btn;
-			int bg = selected ? 0xFF2A3A55 : hovered ? 0xFF222230 : 0xFF16161E;
-			int border = selected ? PvDraw.COLOR_ACCENT : PvDraw.COLOR_BORDER;
-			PvDraw.fill(g, bx, by, btn, btn, bg);
-			g.outline(bx, by, btn, btn, border);
-			g.item(pane.icon(), bx + (btn - 16) / 2, by + (btn - 16) / 2);
-			this.inventoryBar.addHit(bx, by, btn, btn, () -> this.inventoryPane = pane);
-			this.inventoryBar.maybeTooltip(g, this.font, pane.label(), hovered, bx + btn, by + btn);
+		int index = 0;
+		for (int row = 0; row < rows && index < panes.length; row++) {
+			int width = rowWidths[row];
+			int rowW = width * btn + (width - 1) * btnGap;
+			int rowStartX = rightX + (rightW - rowW) / 2;
+			for (int col = 0; col < width && index < panes.length; col++) {
+				InventoryPane pane = panes[index++];
+				int bx = rowStartX + col * (btn + btnGap);
+				int by = startY + row * (btn + btnGap);
+				boolean selected = pane == this.inventoryPage.pane();
+				boolean hovered = mouseX >= bx && mouseX < bx + btn && mouseY >= by && mouseY < by + btn;
+				boolean searchHit = this.inventoryPage.searchHighlightsPane(pane);
+				int bg = selected ? 0xFF2A3A55 : hovered ? 0xFF222230 : 0xFF16161E;
+				int border = searchHit ? 0xFF55FF55 : selected ? PvDraw.COLOR_ACCENT : PvDraw.COLOR_BORDER;
+				PvDraw.fill(g, bx, by, btn, btn, bg);
+				g.outline(bx, by, btn, btn, border);
+				Identifier textureIcon = pane.textureIcon();
+				if (textureIcon != null) {
+					int ix = bx + (btn - 16) / 2;
+					int iy = by + (btn - 16) / 2;
+					g.blit(
+						RenderPipelines.GUI_TEXTURED,
+						textureIcon,
+						ix, iy,
+						0, 0,
+						16, 16,
+						16, 16,
+						16, 16
+					);
+				} else {
+					g.item(pane.icon(), bx + (btn - 16) / 2, by + (btn - 16) / 2);
+				}
+				this.inventoryBar.addHit(bx, by, btn, btn, () -> this.inventoryPage.setPane(pane));
+				this.inventoryBar.maybeTooltip(g, this.font, pane.label(), hovered, bx - 4, by + btn / 2);
+			}
 		}
+
+		// Real search field near the bottom of the right panel.
+		int searchBoxY = bodyY + bodyH - pad - SEARCH_H;
+		int searchBoxX = rightX + pad;
+		int searchBoxW = rightW - pad * 2;
+		PvDraw.fill(g, searchBoxX, searchBoxY, searchBoxW, SEARCH_H, 0xFF101018);
+		g.outline(
+			searchBoxX,
+			searchBoxY,
+			searchBoxW,
+			SEARCH_H,
+			this.inventorySearch != null && this.inventorySearch.isFocused() ? PvDraw.COLOR_ACCENT : PvDraw.COLOR_BORDER
+		);
+		layoutInventorySearch(searchBoxX, searchBoxY, searchBoxW);
+		this.inventorySearch.extractWidgetRenderState(g, mouseX, mouseY, delta);
+		// EditBox only draws its hint when unfocused; keep placeholder visible while empty.
+		if (this.inventorySearch.getValue().isEmpty()) {
+			String hint = Component.translatable("vypv.inv.search_hint").getString();
+			PvDraw.text(
+				g,
+				this.font,
+				hint,
+				this.inventorySearch.getX(),
+				this.inventorySearch.getY(),
+				PvDraw.COLOR_MUTED
+			);
+		}
+
+		// Item tips last so they paint above the button panel.
+		this.inventoryPage.renderTooltip(g, this.font, mouseX, mouseY, this.width, this.height);
 	}
 
 	private void layoutInventorySearch(int x, int y, int w) {
@@ -285,9 +356,13 @@ public final class ProfileViewerScreen extends Screen {
 			return;
 		}
 		int inset = 4;
-		this.inventorySearch.setX(x + inset);
-		this.inventorySearch.setY(y + (SEARCH_H - this.inventorySearch.getHeight()) / 2);
+		// Unbordered EditBox draws text at getY() (not vertically centred) - match the box.
+		int textH = Math.max(8, this.font.lineHeight);
+		int textY = y + Math.max(0, (SEARCH_H - textH) / 2);
 		this.inventorySearch.setWidth(Math.max(20, w - inset * 2));
+		this.inventorySearch.setHeight(textH);
+		this.inventorySearch.setX(x + inset);
+		this.inventorySearch.setY(textY);
 		this.inventorySearch.setVisible(true);
 	}
 
@@ -309,6 +384,12 @@ public final class ProfileViewerScreen extends Screen {
 		if (this.tab == PvTab.DUNGEONS && this.dungeonPage.mouseClicked(mx, my)) {
 			return true;
 		}
+		if (this.tab == PvTab.PETS && this.petsPage.mouseClicked(mx, my)) {
+			return true;
+		}
+		if (this.tab.isInventorySplit() && this.inventoryPage.mouseClicked(mx, my)) {
+			return true;
+		}
 		if (this.topBar.click(mx, my) || this.sideBar.click(mx, my) || this.inventoryBar.click(mx, my)) {
 			return true;
 		}
@@ -321,6 +402,12 @@ public final class ProfileViewerScreen extends Screen {
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
 		if (this.tab == PvTab.DUNGEONS && this.dungeonPage.mouseScrolled(scrollY)) {
+			return true;
+		}
+		if (this.tab == PvTab.PETS && this.petsPage.mouseScrolled(scrollY)) {
+			return true;
+		}
+		if (this.tab.isInventorySplit() && this.inventoryPage.mouseScrolled(scrollY)) {
 			return true;
 		}
 		return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);

@@ -55,13 +55,14 @@ public final class PlayerModelRenderer {
 		equipIfChanged(entity, EquipmentSlot.FEET, 3, boots);
 		graphics.enableScissor(x0, y0, x1, y1);
 		try {
+			int scale = Math.max(16, Math.round(Math.min(x1 - x0, y1 - y0) / 2f * 0.8f));
 			InventoryScreen.extractEntityInInventoryFollowsMouse(
 				graphics,
 				x0,
 				y0,
 				x1,
 				y1,
-				Math.max(20, Math.min(x1 - x0, y1 - y0) / 2),
+				scale,
 				0.0625F,
 				mouseX,
 				mouseY,

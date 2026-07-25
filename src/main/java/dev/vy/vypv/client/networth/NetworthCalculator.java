@@ -13,12 +13,26 @@ public final class NetworthCalculator {
 	}
 
 	public static NetworthBreakdown calculate(JsonObject member, JsonObject profileRoot, JsonObject museumMember) {
+		if (member == null) {
+			return NetworthBreakdown.empty("No profile member");
+		}
+		return calculate(member, profileRoot, museumMember, InventoryDecoder.parseCategories(member, museumMember));
+	}
+
+	public static NetworthBreakdown calculate(
+		JsonObject member,
+		JsonObject profileRoot,
+		JsonObject museumMember,
+		Map<String, List<InventoryDecoder.Stack>> categories
+	) {
 		NetworthData.ensureLoaded();
 		if (member == null) {
 			return NetworthBreakdown.empty("No profile member");
 		}
+		if (categories == null) {
+			categories = InventoryDecoder.parseCategories(member, museumMember);
+		}
 
-		Map<String, List<InventoryDecoder.Stack>> categories = InventoryDecoder.parseCategories(member, museumMember);
 		List<NetworthBreakdown.Line> lines = new ArrayList<>();
 		double total = 0;
 

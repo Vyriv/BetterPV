@@ -17,7 +17,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 /**
- * SkyHelper {@code pricesV2.json} — needed for leveled pet keys and missing Athen IDs.
+ * SkyHelper {@code pricesV2.json} - needed for leveled pet keys and missing Athen IDs.
  */
 public final class SkyHelperPriceCache {
 	private static final URI PRICES_URI = URI.create(

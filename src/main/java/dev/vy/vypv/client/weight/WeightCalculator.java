@@ -140,7 +140,7 @@ public final class WeightCalculator {
 		return new WeightBreakdown(WeightSystem.LILY, base, overflow, WeightStages.lilyRank(base + overflow), categories);
 	}
 
-	/** Lily skill levels ignore Jacob/farming caps — always leveling_xp to 60. */
+	/** Lily skill levels ignore Jacob/farming caps - always leveling_xp to 60. */
 	private static Map<String, Leveling.Progress> lilySkillLevels(JsonObject member) {
 		Map<String, Leveling.Progress> out = new LinkedHashMap<>();
 		JsonArray table = RepoData.levelingXp();

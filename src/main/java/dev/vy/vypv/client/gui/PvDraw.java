@@ -152,7 +152,7 @@ public final class PvDraw {
 			fill(g, x, y, w, h, from);
 			return;
 		}
-		// Segmented fill instead of 1px columns — much cheaper with many maxed bars.
+		// Segmented fill instead of 1px columns - much cheaper with many maxed bars.
 		int segments = Math.min(w - 2, 12);
 		int inner = w - 2;
 		for (int s = 0; s < segments; s++) {

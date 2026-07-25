@@ -24,9 +24,9 @@ public final class NameStyler {
 	private static final int LARGE_LOBBY_ANIMATION_THRESHOLD = 40;
 	private static final float THROTTLED_ANIMATION_FPS = 15.0F;
 	private static final Pattern TRAILING_BRACKET_PREFIX = Pattern.compile("(\\[[^\\]]+])(\\s*)$");
-	/** SkyBlock tab/chat level tags like [435] or [1,234] — never treat these as Hypixel ranks. */
+	/** SkyBlock tab/chat level tags like [435] or [1,234] - never treat these as Hypixel ranks. */
 	private static final Pattern SKYBLOCK_LEVEL_INNER = Pattern.compile("^\\d[\\d,]*$");
-	/** Dungeon class tags like [M]/[T]/[H]/[B]/[A] — keep next to the name. */
+	/** Dungeon class tags like [M]/[T]/[H]/[B]/[A] - keep next to the name. */
 	private static final Pattern DUNGEON_CLASS_INNER = Pattern.compile("^[MTHBA]$", Pattern.CASE_INSENSITIVE);
 
 	private static final NameStylerLruCache<ColorizedCacheKey, Component> COLORIZED_TEXT_CACHE = new NameStylerLruCache<>(TEXT_CACHE_LIMIT);
@@ -552,7 +552,7 @@ public final class NameStyler {
 				rankPrefix.copyName());
 		}
 
-		// No Hypixel rank tag — leave level/class tags alone; do not insert a custom prefix.
+		// No Hypixel rank tag - leave level/class tags alone; do not insert a custom prefix.
 		return null;
 	}
 
@@ -801,7 +801,7 @@ public final class NameStyler {
 		int delimiter = plain.indexOf(": ");
 		if (delimiter == -1) return Integer.MAX_VALUE;
 		// Party/guild roster lines use labels like "Party Moderators: [MVP+] Name".
-		// That colon is not a chat-message delimiter — style the whole line so ranks replace.
+		// That colon is not a chat-message delimiter - style the whole line so ranks replace.
 		if (isRosterOrListLabel(plain.substring(0, delimiter))) return Integer.MAX_VALUE;
 		return delimiter;
 	}

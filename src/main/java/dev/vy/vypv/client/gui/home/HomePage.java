@@ -345,8 +345,16 @@ public final class HomePage {
 
 		int ty = y + PAD;
 		drawSkillGrid(g, font, leftX, rightX, ty, colW, layout.rowH);
-		ty += SKILL_ROWS * layout.rowH + SECTION_GAP;
-		drawSlayerGrid(g, font, leftX, rightX, ty, colW, layout.rowH);
+		// Visual midpoint between last skill bars and first slayer labels (not mid-SECTION_GAP alone).
+		int skillsBarsBottom = ty + (SKILL_ROWS - 1) * layout.rowH + font.lineHeight + BAR_LABEL_GAP + BAR_H;
+		int slayersTop = ty + SKILL_ROWS * layout.rowH + SECTION_GAP;
+		int lineInset = PAD + 6;
+		int lineY = (skillsBarsBottom + slayersTop) / 2;
+		int lineW = Math.max(0, w - lineInset * 2);
+		if (lineW > 0) {
+			PvDraw.fill(g, x + lineInset, lineY, lineW, 1, PvDraw.COLOR_BORDER);
+		}
+		drawSlayerGrid(g, font, leftX, rightX, slayersTop, colW, layout.rowH);
 	}
 
 	private void drawSkillGrid(GuiGraphicsExtractor g, Font font, int leftX, int rightX, int startY, int colW, int rowH) {

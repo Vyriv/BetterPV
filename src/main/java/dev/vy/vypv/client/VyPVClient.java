@@ -4,6 +4,8 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import dev.vy.vypv.VyPV;
 import dev.vy.vypv.client.api.VyPVConfig;
 import dev.vy.vypv.client.cosmetics.VyPvCosmetics;
+import dev.vy.vypv.client.neu.NeuRepoCache;
+import dev.vy.vypv.client.neu.SkyBlockPackCache;
 import dev.vy.vypv.client.price.ItemPricer;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
@@ -15,6 +17,8 @@ public final class VyPVClient implements ClientModInitializer {
 	public void onInitializeClient() {
 		VyPVConfig.load();
 		ItemPricer.start();
+		NeuRepoCache.start();
+		SkyBlockPackCache.start();
 		VyPvCosmetics.initialize();
 		ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
 			dispatcher.register(

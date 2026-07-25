@@ -12,3 +12,9 @@ out/
 .settings/
 bin/
 **/config/vypv.json
+
+# Local build secrets (baked into jar at compile time — never commit)
+vypv.local.properties
+
+# Stray decompile / dump output
+/net/

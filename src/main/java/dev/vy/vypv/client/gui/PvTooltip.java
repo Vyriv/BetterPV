@@ -50,6 +50,51 @@ public final class PvTooltip {
 		draw(g, font, lines, mouseX, mouseY, screenW, screenH, PvDraw.COLOR_TEXT);
 	}
 
+	public static void drawComponents(
+		GuiGraphicsExtractor g,
+		Font font,
+		List<Component> lines,
+		int mouseX,
+		int mouseY,
+		int screenW,
+		int screenH
+	) {
+		if (lines == null || lines.isEmpty()) {
+			return;
+		}
+		int pad = 6;
+		int lineH = font.lineHeight + 2;
+		int width = 0;
+		for (Component line : lines) {
+			width = Math.max(width, Math.max(8, font.width(line)));
+		}
+		int boxW = width + pad * 2;
+		int boxH = lines.size() * lineH + pad * 2;
+		int x = mouseX + 12;
+		int y = mouseY - 12;
+		if (x + boxW > screenW - 4) {
+			x = mouseX - boxW - 8;
+		}
+		if (y + boxH > screenH - 4) {
+			y = screenH - boxH - 4;
+		}
+		if (x < 4) {
+			x = 4;
+		}
+		if (y < 4) {
+			y = 4;
+		}
+		PvDraw.fill(g, x, y, boxW, boxH, 0xF0101018);
+		g.outline(x, y, boxW, boxH, PvDraw.COLOR_BORDER);
+		int ty = y + pad;
+		for (Component line : lines) {
+			if (!line.getString().isEmpty()) {
+				PvDraw.text(g, font, line, x + pad, ty);
+			}
+			ty += lineH;
+		}
+	}
+
 	public static void draw(
 		GuiGraphicsExtractor g,
 		Font font,
@@ -78,15 +123,15 @@ public final class PvTooltip {
 		if (lines == null || lines.isEmpty()) {
 			return;
 		}
-		int pad = 4;
-		int lineH = font.lineHeight + 1;
+		int pad = 6;
+		int lineH = font.lineHeight + 2;
 		List<Component> rendered = lines.stream().map(Line::toComponent).toList();
 		int width = 0;
 		for (Component line : rendered) {
-			width = Math.max(width, font.width(line));
+			width = Math.max(width, Math.max(8, font.width(line)));
 		}
 		int boxW = width + pad * 2;
-		int boxH = rendered.size() * lineH + pad * 2 - 1;
+		int boxH = rendered.size() * lineH + pad * 2;
 		int x = mouseX + 12;
 		int y = mouseY - 12;
 		if (x + boxW > screenW - 4) {
@@ -105,7 +150,9 @@ public final class PvTooltip {
 		g.outline(x, y, boxW, boxH, PvDraw.COLOR_BORDER);
 		int ty = y + pad;
 		for (Component line : rendered) {
-			PvDraw.text(g, font, line, x + pad, ty);
+			if (!line.getString().isEmpty()) {
+				PvDraw.text(g, font, line, x + pad, ty);
+			}
 			ty += lineH;
 		}
 	}

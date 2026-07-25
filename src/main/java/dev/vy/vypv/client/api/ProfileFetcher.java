@@ -5,7 +5,9 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import dev.vy.vypv.client.data.DungeonSnapshot;
 import dev.vy.vypv.client.data.FormatUtil;
+import dev.vy.vypv.client.data.InventorySnapshot;
 import dev.vy.vypv.client.data.Leveling;
+import dev.vy.vypv.client.data.PetSnapshot;
 import dev.vy.vypv.client.data.ProfileSnapshot;
 import dev.vy.vypv.client.data.RepoData;
 import dev.vy.vypv.client.dungeons.CataXpMath;
@@ -18,6 +20,7 @@ import dev.vy.vypv.client.networth.NetworthCalculator;
 import dev.vy.vypv.client.price.ItemPricer;
 import dev.vy.vypv.client.weight.WeightBreakdown;
 import dev.vy.vypv.client.weight.WeightCalculator;
+import dev.vy.vypv.VyPV;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -25,9 +28,14 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.world.item.ItemStack;
 
 public final class ProfileFetcher {
+	/** Match worker profiles cache TTL (5 minutes). */
+	private static final long CACHE_TTL_MS = 5L * 60L * 1000L;
+	private static final ConcurrentHashMap<String, CacheEntry> CACHE = new ConcurrentHashMap<>();
+
 	private static final String[] HOME_SKILLS = {
 		"combat", "foraging", "farming", "enchanting", "mining", "alchemy", "fishing", "carpentry", "taming", "hunting"
 	};
@@ -50,6 +58,8 @@ public final class ProfileFetcher {
 	public record LoadedProfile(
 		ProfileSnapshot snapshot,
 		DungeonSnapshot dungeons,
+		InventorySnapshot inventories,
+		PetSnapshot pets,
 		WeightBreakdown senither,
 		WeightBreakdown lily,
 		NetworthBreakdown networth,
@@ -68,6 +78,8 @@ public final class ProfileFetcher {
 			return CompletableFuture.completedFuture(new LoadedProfile(
 				ProfileSnapshot.loading(playerName),
 				DungeonSnapshot.empty(),
+				InventorySnapshot.empty(),
+				PetSnapshot.empty(),
 				WeightBreakdown.empty(dev.vy.vypv.client.weight.WeightSystem.SENITHER),
 				WeightBreakdown.empty(dev.vy.vypv.client.weight.WeightSystem.LILY),
 				NetworthBreakdown.empty("API unavailable"),
@@ -75,11 +87,24 @@ public final class ProfileFetcher {
 				"API unavailable"
 			));
 		}
-		return HypixelApiClient.resolveUuid(playerName).thenCompose(uuidOpt -> {
+		String cleaned = playerName == null ? "" : playerName.trim();
+		LoadedProfile cached = getCached(nameKey(cleaned));
+		if (cached != null) {
+			VyPV.LOGGER.info("Profile cache hit for {}", cleaned);
+			return CompletableFuture.completedFuture(cached);
+		}
+		return HypixelApiClient.resolveUuid(cleaned).thenCompose(uuidOpt -> {
 			if (uuidOpt.isEmpty()) {
-				return CompletableFuture.completedFuture(fail(playerName, "Player not found"));
+				return CompletableFuture.completedFuture(fail(cleaned, "Player not found"));
 			}
 			HypixelApiClient.UuidName id = uuidOpt.get();
+			LoadedProfile byUuid = getCached(uuidKey(id.uuid()));
+			if (byUuid != null) {
+				VyPV.LOGGER.info("Profile cache hit for {} ({})", id.name(), id.uuid());
+				putCache(nameKey(cleaned), byUuid);
+				putCache(nameKey(id.name()), byUuid);
+				return CompletableFuture.completedFuture(byUuid);
+			}
 			return HypixelApiClient.skyblockProfiles(id.uuid()).thenCompose(profilesOpt -> {
 				if (profilesOpt.isEmpty()) {
 					return CompletableFuture.completedFuture(fail(id.name(), "Profiles request failed"));
@@ -89,11 +114,57 @@ public final class ProfileFetcher {
 				String profileId = best != null && best.has("profile_id") ? best.get("profile_id").getAsString() : null;
 				CompletableFuture<Optional<JsonObject>> museumFut = HypixelApiClient.skyblockMuseum(id.uuid(), profileId);
 				CompletableFuture<Optional<JsonObject>> electionFut = HypixelApiClient.skyblockElection();
-				return museumFut.thenCombine(electionFut, (museumOpt, electionOpt) ->
-					parse(id.name(), id.uuid(), root, museumOpt.orElse(null), electionOpt.orElse(null))
+				return museumFut.thenCombineAsync(
+					electionFut,
+					(museumOpt, electionOpt) -> {
+						LoadedProfile loaded = parse(id.name(), id.uuid(), root, museumOpt.orElse(null), electionOpt.orElse(null));
+						if (loaded.ok()) {
+							putCache(uuidKey(id.uuid()), loaded);
+							putCache(nameKey(id.name()), loaded);
+							putCache(nameKey(cleaned), loaded);
+						}
+						return loaded;
+					},
+					HypixelApiClient.parseExecutor()
 				);
 			});
 		});
+	}
+
+	private static String nameKey(String name) {
+		return "n:" + (name == null ? "" : name.trim().toLowerCase(Locale.ROOT));
+	}
+
+	private static String uuidKey(UUID uuid) {
+		return "u:" + HypixelApiClient.undashed(uuid);
+	}
+
+	private static LoadedProfile getCached(String key) {
+		if (key == null || key.isBlank()) {
+			return null;
+		}
+		CacheEntry entry = CACHE.get(key);
+		if (entry == null) {
+			return null;
+		}
+		if (!entry.fresh()) {
+			CACHE.remove(key, entry);
+			return null;
+		}
+		return entry.profile();
+	}
+
+	private static void putCache(String key, LoadedProfile profile) {
+		if (key == null || key.isBlank() || profile == null || !profile.ok()) {
+			return;
+		}
+		CACHE.put(key, new CacheEntry(profile, System.currentTimeMillis() + CACHE_TTL_MS));
+	}
+
+	private record CacheEntry(LoadedProfile profile, long expiresAtMs) {
+		boolean fresh() {
+			return System.currentTimeMillis() < this.expiresAtMs;
+		}
 	}
 
 	private static JsonObject selectedProfile(JsonObject root) {
@@ -124,6 +195,8 @@ public final class ProfileFetcher {
 		return new LoadedProfile(
 			ProfileSnapshot.loading(name),
 			DungeonSnapshot.empty(),
+			InventorySnapshot.empty(),
+			PetSnapshot.empty(),
 			WeightBreakdown.empty(dev.vy.vypv.client.weight.WeightSystem.SENITHER),
 			WeightBreakdown.empty(dev.vy.vypv.client.weight.WeightSystem.LILY),
 			NetworthBreakdown.empty(error),
@@ -137,6 +210,15 @@ public final class ProfileFetcher {
 	}
 
 	private static LoadedProfile parse(String name, UUID uuid, JsonObject root, JsonObject museumRoot, JsonObject electionRoot) {
+		try {
+			return parseUnsafe(name, uuid, root, museumRoot, electionRoot);
+		} catch (Exception exception) {
+			VyPV.LOGGER.warn("Profile parse failed for {}", name, exception);
+			return fail(name, exception.getMessage() == null ? "Parse failed" : exception.getMessage());
+		}
+	}
+
+	private static LoadedProfile parseUnsafe(String name, UUID uuid, JsonObject root, JsonObject museumRoot, JsonObject electionRoot) {
 		JsonArray profiles = root.has("profiles") && root.get("profiles").isJsonArray()
 			? root.getAsJsonArray("profiles")
 			: null;
@@ -177,9 +259,14 @@ public final class ProfileFetcher {
 		WeightBreakdown senither = WeightCalculator.senither(member, weightLevels);
 		WeightBreakdown lily = WeightCalculator.lily(member, weightLevels);
 
-		ItemPricer.awaitReady(12_000L);
+		if (!ItemPricer.isReady()) {
+			ItemPricer.awaitReady(12_000L);
+		}
 		JsonObject museumMember = findMuseumMember(museumRoot, profileId, undashed);
-		NetworthBreakdown networth = NetworthCalculator.calculate(member, best, museumMember);
+		VyPV.LOGGER.info("Parsing profile {} ({})", name, cuteName);
+		Map<String, List<InventoryDecoder.Stack>> inventoryCategories =
+			InventoryDecoder.parseCategories(member, museumMember);
+		NetworthBreakdown networth = NetworthCalculator.calculate(member, best, museumMember, inventoryCategories);
 
 		List<ProfileSnapshot.SkillEntry> skills = new ArrayList<>();
 		for (String skill : HOME_SKILLS) {
@@ -249,11 +336,34 @@ public final class ProfileFetcher {
 			slayers,
 			social
 		);
-		DungeonSnapshot dungeons = parseDungeons(member, museumRoot, electionRoot);
-		return new LoadedProfile(snapshot, dungeons, senither, lily, networth, ArmorStacks.fromMember(member), null);
+		DungeonSnapshot dungeons = parseDungeons(member, museumMember, electionRoot, inventoryCategories);
+		InventorySnapshot inventories;
+		try {
+			inventories = InventoryDecoder.parseUi(member);
+			// Texture warm is slow; show the profile immediately and fill icons in the background.
+			dev.vy.vypv.client.gui.inventories.SkyBlockItemFactory.warmAsync(inventories);
+		} catch (Exception exception) {
+			VyPV.LOGGER.warn("Inventory decode failed for {}", name, exception);
+			inventories = InventorySnapshot.empty();
+		}
+		PetSnapshot pets;
+		try {
+			pets = PetSnapshot.fromMember(member);
+			dev.vy.vypv.client.gui.inventories.SkyBlockItemFactory.warmPetsAsync(pets);
+		} catch (Exception exception) {
+			VyPV.LOGGER.warn("Pets decode failed for {}", name, exception);
+			pets = PetSnapshot.empty();
+		}
+		VyPV.LOGGER.info("Profile ready for {} (nw={})", name, nwText);
+		return new LoadedProfile(snapshot, dungeons, inventories, pets, senither, lily, networth, ArmorStacks.fromMember(member), null);
 	}
 
-	private static DungeonSnapshot parseDungeons(JsonObject member, JsonObject museumRoot, JsonObject electionRoot) {
+	private static DungeonSnapshot parseDungeons(
+		JsonObject member,
+		JsonObject museumMember,
+		JsonObject electionRoot,
+		Map<String, List<InventoryDecoder.Stack>> inventoryCategories
+	) {
 		float cataXp = Leveling.readCatacombsXp(member);
 		Leveling.Progress cata = Leveling.getLevel(RepoData.catacombsXp(), cataXp, 50, false);
 
@@ -326,7 +436,10 @@ public final class ProfileFetcher {
 
 		DungeonModifierScanner.Mods mods = DungeonModifierScanner.Mods.none();
 		try {
-			mods = DungeonModifierScanner.scan(InventoryDecoder.parseCategories(member, museumRoot));
+			Map<String, List<InventoryDecoder.Stack>> categories = inventoryCategories != null
+				? inventoryCategories
+				: InventoryDecoder.parseCategories(member, museumMember);
+			mods = DungeonModifierScanner.scan(categories);
 		} catch (Exception ignored) {
 			// Inventory decode can fail on odd NBT; calc still works without gear mods.
 		}

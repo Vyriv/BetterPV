@@ -25,17 +25,29 @@ import java.util.concurrent.Executors;
  */
 public final class HypixelApiClient {
 	private static final String WORKER_BASE = "https://plain-dawn-a5d2.ryaneagers2015.workers.dev";
+	private static final String WORKER_HYPIXEL_HEADER = "X-VyPV-Key";
 	private static final URI DIRECT_HYPIXEL = URI.create("https://api.hypixel.net/v2/");
 	private static final URI MOJANG_PROFILE = URI.create("https://api.mojang.com/users/profiles/minecraft/");
 	private static final Duration TIMEOUT = Duration.ofSeconds(12);
 	private static final long SPACING_MS = 350L;
 
 	private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
-	private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor(r -> {
+	/** Small pool so museum + election (and other GETs) can overlap; rate limit still serializes spacing. */
+	private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(4, r -> {
 		Thread t = new Thread(r, "VyPV-HypixelApi");
 		t.setDaemon(true);
 		return t;
 	});
+	/** Heavy profile parse (NBT / networth) stays off the HTTP pool. */
+	private static final ExecutorService PARSE_EXECUTOR = Executors.newFixedThreadPool(2, r -> {
+		Thread t = new Thread(r, "VyPV-ProfileParse");
+		t.setDaemon(true);
+		return t;
+	});
+
+	public static ExecutorService parseExecutor() {
+		return PARSE_EXECUTOR;
+	}
 
 	private static volatile String apiKey = "";
 	private static long nextRequestAtMillis;
@@ -147,6 +159,12 @@ public final class HypixelApiClient {
 			HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url)).timeout(TIMEOUT).GET();
 			if (sendApiKey) {
 				builder.header("API-Key", apiKey);
+			}
+			if (url != null && url.startsWith(WORKER_BASE) && url.contains("/hypixel/")) {
+				String secret = WorkerSecrets.HYPIXEL_WORKER_SECRET;
+				if (secret != null && !secret.isBlank()) {
+					builder.header(WORKER_HYPIXEL_HEADER, secret);
+				}
 			}
 			HttpResponse<String> response = HTTP.send(builder.build(), HttpResponse.BodyHandlers.ofString());
 			if (response.statusCode() < 200 || response.statusCode() >= 300 || response.body() == null || response.body().isBlank()) {

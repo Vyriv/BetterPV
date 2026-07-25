@@ -1,17 +1,20 @@
-BetterPV
+# BetterPV
 SkyBlock Profile Viewer for Fabric
 
-A client-side Hypixel SkyBlock profile viewer for Minecraft 26.1.2.
+A client-side Hypixel SkyBlock profile viewer for Minecraft **26.1.2**. Peek at a profile without leaving the game: yours with `/pv`, or anyone else's with `/pv <username>`.
 
-Open your profile with /pv, or someone else's with /pv <username>.
-Use the buttons along the top to move between pages. If a page has categories, use the buttons on the left to switch between them.
+Use the buttons along the top to switch pages. When a page has categories, the buttons on the left switch between them.
 
-What it is for
-- Quick look at networth, weight, skills, and progress without leaving the game
-- Inventories, pets, collections, and island-specific pages as they get built out
-- Built to feel clean enough to screenshot and share
+## What it's for
+- Networth, weight, skills, and progress at a glance
+- Inventories, pets, auctions, and more island pages as they land
+- Clean enough to screenshot and share
 
-Status
-Work in progress. Home overview is the starting point. More pages (dungeons, inventories, garden, mining, and others) are on the way.
+## Credits
+- **[NotEnoughUpdates Repo](https://github.com/NotEnoughUpdates/NotEnoughUpdates-REPO)**: item data, leveling tables, and other SkyBlock reference data
+- **[SkyCofl](https://sky.coflnet.com/)**: auction history
+
+## Status
+Work in progress. Home, dungeons, inventories, pets, and auctions are in; more pages (collections, garden, mining, and others) are still coming.
 
 Fabric 26.1.2 · Client-side

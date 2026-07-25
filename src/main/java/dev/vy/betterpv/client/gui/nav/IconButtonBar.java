@@ -1,8 +1,10 @@
 package dev.vy.betterpv.client.gui.nav;
 
 import dev.vy.betterpv.client.gui.PvDraw;
+import dev.vy.betterpv.client.gui.PvTooltip;
 import java.util.ArrayList;
 import java.util.List;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
@@ -53,7 +55,7 @@ public final class IconButtonBar {
 		g.item(icon, x + 5, y + 5);
 		this.hits.add(new Hit(x, y, TAB, TAB, onClick));
 		if (hovered) {
-			g.setTooltipForNextFrame(font, label, x + TAB, y + TAB);
+			tooltipAbove(g, font, label, x + TAB / 2, y);
 		}
 	}
 
@@ -139,7 +141,7 @@ public final class IconButtonBar {
 		g.item(icon, x + 5, y + 4);
 		this.hits.add(new Hit(x, y, TAB, Math.max(h, TAB - SEAM), onClick));
 		if (hovered) {
-			g.setTooltipForNextFrame(font, label, x + TAB, y);
+			tooltipAbove(g, font, label, x + TAB / 2, y);
 		}
 	}
 
@@ -175,7 +177,7 @@ public final class IconButtonBar {
 		g.item(icon, x + 4, y + 5);
 		this.hits.add(new Hit(x, y, Math.max(w, TAB - SEAM), TAB, onClick));
 		if (hovered) {
-			g.setTooltipForNextFrame(font, label, x + w, y);
+			tooltipLeft(g, font, label, x, y + TAB / 2);
 		}
 	}
 
@@ -184,9 +186,26 @@ public final class IconButtonBar {
 	}
 
 	public void maybeTooltip(GuiGraphicsExtractor g, Font font, Component label, boolean hovered, int x, int y) {
-		if (hovered) {
-			g.setTooltipForNextFrame(font, label, x, y);
+		if (!hovered) {
+			return;
 		}
+		int[] screen = screenSize();
+		PvTooltip.drawComponents(g, font, List.of(label), x, y, screen[0], screen[1]);
+	}
+
+	private static void tooltipAbove(GuiGraphicsExtractor g, Font font, Component label, int cx, int topY) {
+		int[] screen = screenSize();
+		PvTooltip.drawCenteredAbove(g, font, label, cx, topY, screen[0], screen[1]);
+	}
+
+	private static void tooltipLeft(GuiGraphicsExtractor g, Font font, Component label, int leftX, int cy) {
+		int[] screen = screenSize();
+		PvTooltip.drawCenteredLeft(g, font, label, leftX, cy, screen[0], screen[1]);
+	}
+
+	private static int[] screenSize() {
+		var window = Minecraft.getInstance().getWindow();
+		return new int[] { window.getGuiScaledWidth(), window.getGuiScaledHeight() };
 	}
 
 	public record Entry(Object key, ItemStack icon, Component label, Runnable onClick) {

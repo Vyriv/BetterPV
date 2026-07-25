@@ -5,7 +5,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 public final class NetworthCalculator {
@@ -16,7 +15,14 @@ public final class NetworthCalculator {
 		if (member == null) {
 			return NetworthBreakdown.empty("No profile member");
 		}
-		return calculate(member, profileRoot, museumMember, InventoryDecoder.parseCategories(member, museumMember));
+		return calculate(
+			member,
+			profileRoot,
+			museumMember,
+			InventoryDecoder.parseCategories(member, museumMember),
+			true,
+			NetworthMode.SoulboundFilter.ALL
+		);
 	}
 
 	public static NetworthBreakdown calculate(
@@ -25,9 +31,53 @@ public final class NetworthCalculator {
 		JsonObject museumMember,
 		Map<String, List<InventoryDecoder.Stack>> categories
 	) {
+		return calculate(member, profileRoot, museumMember, categories, true, NetworthMode.SoulboundFilter.ALL);
+	}
+
+	public static NetworthBreakdown calculate(
+		JsonObject member,
+		JsonObject profileRoot,
+		JsonObject museumMember,
+		Map<String, List<InventoryDecoder.Stack>> categories,
+		boolean includeCosmetics
+	) {
+		return calculate(member, profileRoot, museumMember, categories, includeCosmetics, NetworthMode.SoulboundFilter.ALL);
+	}
+
+	public static NetworthBreakdown calculate(
+		JsonObject member,
+		JsonObject profileRoot,
+		JsonObject museumMember,
+		Map<String, List<InventoryDecoder.Stack>> categories,
+		NetworthMode mode
+	) {
+		if (mode == null) {
+			mode = NetworthMode.NORMAL;
+		}
+		return calculate(
+			member,
+			profileRoot,
+			museumMember,
+			categories,
+			mode.includeCosmetics(),
+			mode.soulboundFilter()
+		);
+	}
+
+	public static NetworthBreakdown calculate(
+		JsonObject member,
+		JsonObject profileRoot,
+		JsonObject museumMember,
+		Map<String, List<InventoryDecoder.Stack>> categories,
+		boolean includeCosmetics,
+		NetworthMode.SoulboundFilter filter
+	) {
 		NetworthData.ensureLoaded();
 		if (member == null) {
 			return NetworthBreakdown.empty("No profile member");
+		}
+		if (filter == null) {
+			filter = NetworthMode.SoulboundFilter.ALL;
 		}
 		if (categories == null) {
 			categories = InventoryDecoder.parseCategories(member, museumMember);
@@ -40,9 +90,14 @@ public final class NetworthCalculator {
 			if ("pets".equals(entry.getKey())) {
 				continue;
 			}
+			boolean museumCategory = "museum".equals(entry.getKey());
 			double sum = 0;
 			for (InventoryDecoder.Stack stack : entry.getValue()) {
-				sum += ItemWorth.value(stack);
+				boolean soulbound = stack.soulbound() || museumCategory;
+				if (!filter.accepts(soulbound)) {
+					continue;
+				}
+				sum += ItemWorth.value(stack, includeCosmetics);
 			}
 			if (sum > 0) {
 				lines.add(new NetworthBreakdown.Line(entry.getKey(), sum));
@@ -50,26 +105,28 @@ public final class NetworthCalculator {
 			}
 		}
 
-		double pets = petsValue(member);
+		double pets = petsValue(member, includeCosmetics, filter);
 		if (pets > 0) {
 			lines.add(new NetworthBreakdown.Line("pets", pets));
 			total += pets;
 		}
 
-		double purse = purse(member);
-		double bank = bank(profileRoot);
-		double personalBank = personalBank(member);
-		if (purse > 0) {
-			lines.add(new NetworthBreakdown.Line("purse", purse));
-			total += purse;
-		}
-		if (bank > 0) {
-			lines.add(new NetworthBreakdown.Line("bank", bank));
-			total += bank;
-		}
-		if (personalBank > 0) {
-			lines.add(new NetworthBreakdown.Line("personal_bank", personalBank));
-			total += personalBank;
+		if (filter.includesLiquid()) {
+			double purse = purse(member);
+			double bank = bank(profileRoot);
+			double personalBank = personalBank(member);
+			if (purse > 0) {
+				lines.add(new NetworthBreakdown.Line("purse", purse));
+				total += purse;
+			}
+			if (bank > 0) {
+				lines.add(new NetworthBreakdown.Line("bank", bank));
+				total += bank;
+			}
+			if (personalBank > 0) {
+				lines.add(new NetworthBreakdown.Line("personal_bank", personalBank));
+				total += personalBank;
+			}
 		}
 
 		String note = "";
@@ -81,7 +138,11 @@ public final class NetworthCalculator {
 		return new NetworthBreakdown(total, lines, note);
 	}
 
-	private static double petsValue(JsonObject member) {
+	private static double petsValue(
+		JsonObject member,
+		boolean includeCosmetics,
+		NetworthMode.SoulboundFilter filter
+	) {
 		JsonObject petsData = obj(member.get("pets_data"));
 		JsonArray pets = petsData != null && petsData.has("pets") && petsData.get("pets").isJsonArray()
 			? petsData.getAsJsonArray("pets")
@@ -91,9 +152,14 @@ public final class NetworthCalculator {
 		}
 		double total = 0;
 		for (JsonElement element : pets) {
-			if (element.isJsonObject()) {
-				total += PetWorth.value(element.getAsJsonObject());
+			if (!element.isJsonObject()) {
+				continue;
 			}
+			JsonObject pet = element.getAsJsonObject();
+			if (!filter.accepts(PetWorth.isSoulbound(pet))) {
+				continue;
+			}
+			total += PetWorth.value(pet, includeCosmetics);
 		}
 		return total;
 	}

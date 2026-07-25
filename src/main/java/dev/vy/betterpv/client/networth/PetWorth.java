@@ -42,7 +42,24 @@ public final class PetWorth {
 	) {
 	}
 
+	public static boolean isSoulbound(JsonObject pet) {
+		if (pet == null) {
+			return false;
+		}
+		if (pet.has("soulbound") && pet.get("soulbound").isJsonPrimitive() && pet.get("soulbound").getAsBoolean()) {
+			return true;
+		}
+		if (!pet.has("type") || pet.get("type").isJsonNull()) {
+			return false;
+		}
+		return NetworthData.soulboundPets().contains(pet.get("type").getAsString());
+	}
+
 	public static double value(JsonObject pet) {
+		return value(pet, true);
+	}
+
+	public static double value(JsonObject pet, boolean includeCosmetics) {
 		if (pet == null || !pet.has("type") || !pet.has("tier") || !pet.has("exp")) {
 			return 0;
 		}
@@ -61,12 +78,13 @@ public final class PetWorth {
 
 		// Price keys use the pet's actual tier (SkyHelper); XP table uses boosted tier.
 		String basePetId = tier + "_" + type;
-		String petId = basePetId + (skin != null && !skin.isBlank() ? "_SKINNED_" + skin : "");
+		boolean useSkin = includeCosmetics && skin != null && !skin.isBlank();
+		String petId = basePetId + (useSkin ? "_SKINNED_" + skin : "");
 
 		LevelInfo level = getPetLevel(type, boostedTier, exp);
-		double lvl1 = maxPrice("LVL_1_" + basePetId, skin == null ? 0 : ItemPricer.price("LVL_1_" + petId));
-		double lvl100 = maxPrice("LVL_100_" + basePetId, skin == null ? 0 : ItemPricer.price("LVL_100_" + petId));
-		double lvl200 = maxPrice("LVL_200_" + basePetId, skin == null ? 0 : ItemPricer.price("LVL_200_" + petId));
+		double lvl1 = maxPrice("LVL_1_" + basePetId, useSkin ? ItemPricer.price("LVL_1_" + petId) : 0);
+		double lvl100 = maxPrice("LVL_100_" + basePetId, useSkin ? ItemPricer.price("LVL_100_" + petId) : 0);
+		double lvl200 = maxPrice("LVL_200_" + basePetId, useSkin ? ItemPricer.price("LVL_200_" + petId) : 0);
 
 		double basePrice = lvl200 > 0 ? lvl200 : lvl100;
 		if (level.level() < 100 && level.xpMax() > 0) {
@@ -89,8 +107,8 @@ public final class PetWorth {
 		if (heldItem != null && !heldItem.isBlank()) {
 			mods += ItemPricer.price(heldItem) * NetworthData.worth("petItem", 1);
 		}
-		boolean soulbound = NetworthData.soulboundPets().contains(type);
-		if (skin != null && !skin.isBlank() && soulbound) {
+		boolean soulbound = isSoulbound(pet);
+		if (useSkin && soulbound) {
 			mods += ItemPricer.price("PET_SKIN_" + skin) * NetworthData.worth("soulboundPetSkins", 0.8);
 		}
 		if (candyUsed > 0 && !NetworthData.blockedCandyPets().contains(type)) {

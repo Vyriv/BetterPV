@@ -43,7 +43,11 @@ public final class HypixelItemsCache {
 		if (itemId == null || itemId.isBlank()) {
 			return null;
 		}
-		return items.get(itemId);
+		JsonObject direct = items.get(itemId);
+		if (direct != null) {
+			return direct;
+		}
+		return items.get(itemId.toUpperCase(java.util.Locale.ROOT));
 	}
 
 	private static void refreshSafely() {

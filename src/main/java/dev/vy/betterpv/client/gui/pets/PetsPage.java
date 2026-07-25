@@ -8,7 +8,6 @@ import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import dev.vy.betterpv.client.networth.InventoryDecoder;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -23,7 +22,6 @@ public final class PetsPage {
 	private static final int MAX_SLOT = 32;
 	private static final int SLOT_GAP = 2;
 	private static final int ITEM_ICON = 16;
-	private static final int ACTIVE_BG = 0xFF1A2E1A;
 	private static final int SELECTED_BORDER = PvDraw.COLOR_ACCENT;
 	private static final int ACTIVE_BORDER = 0xFF55FF55;
 
@@ -136,7 +134,7 @@ public final class PetsPage {
 			if (sy + this.slotSize < this.gridY || sy > this.gridY + this.gridH) {
 				continue;
 			}
-			drawSlot(g, pets.get(i), i, sx, sy, mouseX, mouseY);
+			drawSlot(g, font, pets.get(i), i, sx, sy, mouseX, mouseY);
 		}
 	}
 
@@ -158,6 +156,7 @@ public final class PetsPage {
 
 	private void drawSlot(
 		GuiGraphicsExtractor g,
+		Font font,
 		PetSnapshot.Entry pet,
 		int index,
 		int sx,
@@ -168,7 +167,8 @@ public final class PetsPage {
 		int slot = this.slotSize;
 		boolean selected = index == this.selected;
 		boolean hovered = mouseX >= sx && mouseX < sx + slot && mouseY >= sy && mouseY < sy + slot;
-		int bg = pet.active() ? ACTIVE_BG : selected ? 0xFF1A2438 : hovered ? 0xFF2A2A38 : 0xFF101018;
+		int rarity = SkyBlockItemFactory.tierArgb(pet.tier());
+		int bg = raritySlotBackground(rarity, pet.active(), selected, hovered);
 		int border = selected ? SELECTED_BORDER : pet.active() ? ACTIVE_BORDER : hovered ? PvDraw.COLOR_ACCENT : 0xFF2A2A35;
 		PvDraw.fill(g, sx, sy, slot, slot, bg);
 		g.outline(sx, sy, slot, slot, border);
@@ -185,7 +185,34 @@ public final class PetsPage {
 			// Item renders are fixed 16×16 - center inside the larger slot.
 			g.item(icon, sx + (slot - ITEM_ICON) / 2, sy + (slot - ITEM_ICON) / 2);
 		}
+
+		String level = String.valueOf(pet.level());
+		int levelY = sy + slot - font.lineHeight + 1;
+		int levelRight = sx + slot - 1;
+		PvDraw.textRight(g, font, level, levelRight + 1, levelY + 1, 0xFF000000);
+		PvDraw.textRight(g, font, level, levelRight, levelY, 0xFFFFFFFF);
+
 		this.hits.add(new SlotHit(sx, sy, slot, slot, index));
+	}
+
+	/** Dark rarity-tinted slot fill (keeps icons readable). */
+	private static int raritySlotBackground(int rarityArgb, boolean active, boolean selected, boolean hovered) {
+		int r = (rarityArgb >>> 16) & 0xFF;
+		int green = (rarityArgb >>> 8) & 0xFF;
+		int b = rarityArgb & 0xFF;
+		float tint = hovered ? 0.38f : selected ? 0.32f : 0.26f;
+		int outR = Math.round(16 + r * tint);
+		int outG = Math.round(16 + green * tint);
+		int outB = Math.round(16 + b * tint);
+		if (active) {
+			outG = Math.min(255, outG + 18);
+			outR = Math.max(0, outR - 4);
+		}
+		return 0xFF000000 | (clampByte(outR) << 16) | (clampByte(outG) << 8) | clampByte(outB);
+	}
+
+	private static int clampByte(int value) {
+		return Math.max(0, Math.min(255, value));
 	}
 
 	private void drawStats(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h) {
@@ -214,11 +241,11 @@ public final class PetsPage {
 			trim(font, pet.displayName(), contentW - ITEM_ICON - 6),
 			cx + ITEM_ICON + 4,
 			cy + (ITEM_ICON - font.lineHeight) / 2,
-			tierColor(pet.tier())
+			SkyBlockItemFactory.tierArgb(pet.tier())
 		);
 		cy += ITEM_ICON + 8;
 
-		cy += row(g, font, "Tier", InventoryDecoder.prettyWords(pet.tier()), cx, cy, contentW, tierColor(pet.tier()));
+		cy += row(g, font, "Tier", InventoryDecoder.prettyWords(pet.tier()), cx, cy, contentW, SkyBlockItemFactory.tierArgb(pet.tier()));
 		cy += row(g, font, "Level", pet.level() + " / " + pet.maxLevel(), cx, cy, contentW, PvDraw.COLOR_TEXT);
 
 		boolean maxed = pet.level() >= pet.maxLevel();
@@ -265,13 +292,15 @@ public final class PetsPage {
 			} else if (!held.isEmpty()) {
 				g.item(held, cx, cy);
 			}
+			String heldName = SkyBlockItemFactory.plainDisplayName(pet.heldItem());
+			int heldColor = SkyBlockItemFactory.tierArgb(SkyBlockItemFactory.resolveTier(pet.heldItem()));
 			PvDraw.text(
 				g,
 				font,
-				trim(font, InventoryDecoder.prettyWords(pet.heldItem()), contentW - ITEM_ICON - 6),
+				trim(font, heldName, contentW - ITEM_ICON - 6),
 				cx + ITEM_ICON + 4,
 				cy + (ITEM_ICON - font.lineHeight) / 2,
-				PvDraw.COLOR_TEXT
+				heldColor
 			);
 			cy += ITEM_ICON + 6;
 		} else {
@@ -327,23 +356,6 @@ public final class PetsPage {
 			sb.setLength(sb.length() - 1);
 		}
 		return sb + ellipsis;
-	}
-
-	private static int tierColor(String tier) {
-		if (tier == null) {
-			return PvDraw.COLOR_TEXT;
-		}
-		return switch (tier.toUpperCase(Locale.ROOT)) {
-			case "COMMON" -> 0xFFFFFFFF;
-			case "UNCOMMON" -> 0xFF55FF55;
-			case "RARE" -> 0xFF5555FF;
-			case "EPIC" -> 0xFFAA00AA;
-			case "LEGENDARY" -> 0xFFFFAA00;
-			case "MYTHIC" -> 0xFFFF55FF;
-			case "DIVINE" -> 0xFF55FFFF;
-			case "SPECIAL", "VERY_SPECIAL" -> 0xFFFF5555;
-			default -> PvDraw.COLOR_TEXT;
-		};
 	}
 
 	private record SlotHit(int x, int y, int w, int h, int index) {

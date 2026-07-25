@@ -61,6 +61,7 @@ public final class DungeonSnapshot {
 	private final boolean expertRing;
 	private final int hecatombLevel;
 	private final double scarfBonus;
+	private final double catacombsGraduateBonus;
 	private final Map<String, Double> classEssenceBonuses;
 	private final double mayorFactor;
 	private final String mayorName;
@@ -83,6 +84,7 @@ public final class DungeonSnapshot {
 		boolean expertRing,
 		int hecatombLevel,
 		double scarfBonus,
+		double catacombsGraduateBonus,
 		Map<String, Double> classEssenceBonuses,
 		double mayorFactor,
 		String mayorName
@@ -104,6 +106,7 @@ public final class DungeonSnapshot {
 		this.expertRing = expertRing;
 		this.hecatombLevel = hecatombLevel;
 		this.scarfBonus = scarfBonus;
+		this.catacombsGraduateBonus = Math.max(0, catacombsGraduateBonus);
 		this.classEssenceBonuses = classEssenceBonuses == null
 			? Map.of()
 			: Collections.unmodifiableMap(Map.copyOf(classEssenceBonuses));
@@ -183,6 +186,11 @@ public final class DungeonSnapshot {
 		return this.scarfBonus;
 	}
 
+	/** Catacombs Graduate attribute bonus (0–0.20). */
+	public double catacombsGraduateBonus() {
+		return this.catacombsGraduateBonus;
+	}
+
 	public double classEssenceBonus(String classId) {
 		if (classId == null || this.classEssenceBonuses.isEmpty()) {
 			return 0;
@@ -207,7 +215,7 @@ public final class DungeonSnapshot {
 			List.of(),
 			ModeStats.empty(),
 			ModeStats.empty(),
-			false, 0, 0, Map.of(), 1.0, ""
+			false, 0, 0, 0, Map.of(), 1.0, ""
 		);
 	}
 }

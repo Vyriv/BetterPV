@@ -11,6 +11,7 @@ import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
 import dev.vy.betterpv.client.gui.SkyBlockLevelColors;
 import dev.vy.betterpv.client.networth.NetworthBreakdown;
+import dev.vy.betterpv.client.networth.NetworthMode;
 import dev.vy.betterpv.client.weight.WeightBreakdown;
 import dev.vy.betterpv.client.weight.WeightSystem;
 import net.minecraft.client.gui.Font;
@@ -37,8 +38,12 @@ public final class HomePage {
 	private ProfileSnapshot snapshot;
 	private WeightBreakdown senither = WeightBreakdown.empty(WeightSystem.SENITHER);
 	private WeightBreakdown lily = WeightBreakdown.empty(WeightSystem.LILY);
-	private NetworthBreakdown networth = NetworthBreakdown.empty("");
+	private NetworthBreakdown networthNormal = NetworthBreakdown.empty("");
+	private NetworthBreakdown networthNonCosmetic = NetworthBreakdown.empty("");
+	private NetworthBreakdown networthUnsoulbound = NetworthBreakdown.empty("");
+	private NetworthBreakdown networthUnsoulboundNonCosmetic = NetworthBreakdown.empty("");
 	private WeightSystem weightSystem = WeightSystem.SENITHER;
+	private NetworthMode networthMode = NetworthMode.NORMAL;
 	private String loadError;
 
 	private int weightHitX;
@@ -65,14 +70,20 @@ public final class HomePage {
 		ProfileSnapshot snapshot,
 		WeightBreakdown senither,
 		WeightBreakdown lily,
-		NetworthBreakdown networth,
+		NetworthBreakdown networthNormal,
+		NetworthBreakdown networthNonCosmetic,
+		NetworthBreakdown networthUnsoulbound,
+		NetworthBreakdown networthUnsoulboundNonCosmetic,
 		ItemStack[] armor,
 		String error
 	) {
 		this.snapshot = snapshot;
 		this.senither = senither == null ? WeightBreakdown.empty(WeightSystem.SENITHER) : senither;
 		this.lily = lily == null ? WeightBreakdown.empty(WeightSystem.LILY) : lily;
-		this.networth = networth == null ? NetworthBreakdown.empty("") : networth;
+		this.networthNormal = networthNormal == null ? NetworthBreakdown.empty("") : networthNormal;
+		this.networthNonCosmetic = networthNonCosmetic == null ? NetworthBreakdown.empty("") : networthNonCosmetic;
+		this.networthUnsoulbound = networthUnsoulbound == null ? NetworthBreakdown.empty("") : networthUnsoulbound;
+		this.networthUnsoulboundNonCosmetic = networthUnsoulboundNonCosmetic == null ? NetworthBreakdown.empty("") : networthUnsoulboundNonCosmetic;
 		this.armor = armor == null
 			? new ItemStack[] { ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY }
 			: armor;
@@ -87,6 +98,32 @@ public final class HomePage {
 			return true;
 		}
 		return false;
+	}
+
+	/** @param button GLFW mouse button (0 = left / next, 1 = right / prev) */
+	public boolean clickNetworth(double mouseX, double mouseY, int button) {
+		if (mouseX < this.networthHitX || mouseX >= this.networthHitX + this.networthHitW
+			|| mouseY < this.networthHitY || mouseY >= this.networthHitY + this.networthHitH) {
+			return false;
+		}
+		if (button == 0) {
+			this.networthMode = this.networthMode.next();
+			return true;
+		}
+		if (button == 1) {
+			this.networthMode = this.networthMode.prev();
+			return true;
+		}
+		return false;
+	}
+
+	private NetworthBreakdown activeNetworth() {
+		return switch (this.networthMode) {
+			case NORMAL -> this.networthNormal;
+			case NON_COSMETIC -> this.networthNonCosmetic;
+			case UNSOULBOUND -> this.networthUnsoulbound;
+			case UNSOULBOUND_NON_COSMETIC -> this.networthUnsoulboundNonCosmetic;
+		};
 	}
 
 	public int preferredHeight(Font font, int width) {
@@ -120,13 +157,16 @@ public final class HomePage {
 		if (mouseX >= this.weightHitX && mouseX < this.weightHitX + this.weightHitW
 			&& mouseY >= this.weightHitY && mouseY < this.weightHitY + this.weightHitH) {
 			if (this.loadError != null && !this.loadError.isBlank()) {
-				tip = List.of("Weight unavailable", this.loadError);
+				styledTip = List.of(
+					PvTooltip.Line.of("Weight unavailable", PvDraw.COLOR_TEXT),
+					PvTooltip.Line.of(this.loadError, PvDraw.COLOR_MUTED)
+				);
 			} else {
-				tip = activeWeight().tooltipLines();
+				styledTip = activeWeight().tooltipStyledLines();
 			}
 		} else if (mouseX >= this.networthHitX && mouseX < this.networthHitX + this.networthHitW
 			&& mouseY >= this.networthHitY && mouseY < this.networthHitY + this.networthHitH) {
-			styledTip = this.networth.tooltipStyledLines();
+			styledTip = activeNetworth().tooltipStyledLines(this.networthMode);
 		} else {
 			for (HoverZone zone : this.zones) {
 				if (mouseX >= zone.x && mouseX < zone.x + zone.w && mouseY >= zone.y && mouseY < zone.y + zone.h) {
@@ -193,7 +233,15 @@ public final class HomePage {
 		int ty = y + PAD;
 		String nwLabel = Component.translatable("betterpv.home.networth_label").getString();
 		String weightLabel = Component.translatable("betterpv.home.weight_label").getString();
-		String nwValue = this.snapshot.networthText();
+		NetworthBreakdown activeNw = activeNetworth();
+		String nwValue = activeNw.total() > 0
+			? FormatUtil.shortCoins(activeNw.total())
+			: (this.snapshot.networthText() == null || this.snapshot.networthText().isBlank()
+				? "—"
+				: this.snapshot.networthText());
+		if (this.loadError != null && !this.loadError.isBlank() && activeNw.total() <= 0) {
+			nwValue = "—";
+		}
 		String weightValue = this.weightSystem == WeightSystem.SENITHER
 			? FormatUtil.weight(this.senither.total())
 			: FormatUtil.weight(this.lily.total());
@@ -208,7 +256,7 @@ public final class HomePage {
 		int nwValueW = PvDraw.widthBold(font, nwValue);
 		int nwLineW = nwLabelW + nwValueW;
 		int nwX = x + (w - nwLineW) / 2;
-		PvDraw.text(g, font, nwLabel, nwX, ty, PvDraw.COLOR_TEXT);
+		PvDraw.text(g, font, nwLabel, nwX, ty, 0xFF55FF55);
 		PvDraw.textBold(g, font, nwValue, nwX + nwLabelW, ty, PvDraw.COLOR_GOLD);
 		this.networthHitX = nwX;
 		this.networthHitY = ty;
@@ -220,7 +268,7 @@ public final class HomePage {
 		int weightValueW = PvDraw.widthBold(font, weightValue);
 		int weightLineW = weightLabelW + weightValueW;
 		int weightX = x + (w - weightLineW) / 2;
-		PvDraw.text(g, font, weightLabel, weightX, ty, PvDraw.COLOR_TEXT);
+		PvDraw.text(g, font, weightLabel, weightX, ty, 0xFF55FF55);
 		PvDraw.textBold(g, font, weightValue, weightX + weightLabelW, ty, PvDraw.COLOR_GOLD);
 		this.weightHitX = weightX;
 		this.weightHitY = ty;
@@ -264,15 +312,21 @@ public final class HomePage {
 
 		ProfileSnapshot.SkillEntry social = this.snapshot.social();
 		int socialLabelY = y + layout.socialLabelY;
-		int socialBarY = y + layout.socialBarY;
 		int socialBarW = Math.min(boxW, Math.max(48, boxW - 8));
 		int socialBarX = cx - socialBarW / 2;
-		PvDraw.textCentered(g, font, social.name(), cx, socialLabelY, PvDraw.COLOR_TEXT);
-		PvDraw.progressBar(
-			g, socialBarX, socialBarY, socialBarW, BAR_H,
-			social.progress(), PvDraw.COLOR_BAR_FILL, social.maxed()
+		PvDraw.labeledBar(
+			g, font,
+			social.name(), String.valueOf(social.level()), social.progress(),
+			socialBarX, socialLabelY, socialBarW,
+			PvDraw.COLOR_BAR_FILL, social.maxed()
 		);
-		this.zones.add(new HoverZone(socialBarX, socialLabelY, socialBarW, socialBarY + BAR_H - socialLabelY + 2, social.xpHover()));
+		this.zones.add(new HoverZone(
+			socialBarX,
+			socialLabelY,
+			socialBarW,
+			font.lineHeight + BAR_LABEL_GAP + BAR_H + 2,
+			social.xpHover()
+		));
 
 		PvDraw.textCentered(
 			g, font,

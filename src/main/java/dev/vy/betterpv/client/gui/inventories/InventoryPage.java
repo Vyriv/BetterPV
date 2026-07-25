@@ -327,13 +327,20 @@ public final class InventoryPage {
 			g.item(new ItemStack(Items.BONE), metaX + 1, my + 1);
 		}
 		String petText = loadout.petLabel().isBlank() ? "—" : loadout.petLabel();
+		int petColor = PvDraw.COLOR_TEXT;
+		if (loadout.pet() != null && !loadout.pet().isEmpty()) {
+			String tier = SkyBlockItemFactory.resolveTier(loadout.pet().id());
+			if (!tier.isBlank()) {
+				petColor = SkyBlockItemFactory.tierArgb(tier);
+			}
+		}
 		PvDraw.text(
 			g,
 			font,
 			trimToWidth(font, petText, Math.max(20, metaW - SLOT - 4)),
 			metaX + SLOT + 4,
 			my + (SLOT - font.lineHeight) / 2,
-			PvDraw.COLOR_TEXT
+			petColor
 		);
 	}
 

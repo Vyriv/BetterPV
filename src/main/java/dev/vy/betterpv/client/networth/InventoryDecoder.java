@@ -123,6 +123,31 @@ public final class InventoryDecoder {
 	}
 
 	/** Structured inventories for the Inventories tab (keeps empty slots / pages). */
+	/** Decode a single auction {@code item_bytes} blob into a UI slot (or null). */
+	public static InventorySnapshot.Slot slotFromItemBytes(JsonElement itemBytes) {
+		List<Stack> decoded = decodeDataElement(itemBytes);
+		if (decoded.isEmpty()) {
+			return null;
+		}
+		return toUiSlot(decoded.get(0));
+	}
+
+	/** Minimal slot from a SkyBlock item tag (Coflnet history rows). */
+	public static InventorySnapshot.Slot slotFromTag(String tag, String displayName) {
+		if (tag == null || tag.isBlank()) {
+			return null;
+		}
+		return new InventorySnapshot.Slot(
+			tag.toUpperCase(Locale.ROOT),
+			1,
+			List.of(),
+			displayName == null ? "" : displayName,
+			null,
+			null,
+			null
+		);
+	}
+
 	public static InventorySnapshot parseUi(JsonObject member) {
 		if (member == null) {
 			return InventorySnapshot.empty();

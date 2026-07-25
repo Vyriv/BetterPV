@@ -30,7 +30,14 @@ public final class ItemWorth {
 	}
 
 	public static double value(InventoryDecoder.Stack stack) {
+		return value(stack, true);
+	}
+
+	public static double value(InventoryDecoder.Stack stack, boolean includeCosmetics) {
 		if (stack == null || stack.id() == null) {
+			return 0;
+		}
+		if (!includeCosmetics && isCosmeticItem(stack)) {
 			return 0;
 		}
 		// Simple stacks (sacks / essence): id × count only
@@ -40,7 +47,7 @@ public final class ItemWorth {
 		}
 
 		JsonObject skyblockItem = HypixelItemsCache.get(stack.id());
-		String itemId = resolveItemId(stack, skyblockItem);
+		String itemId = resolveItemId(stack, skyblockItem, includeCosmetics);
 		double base = ItemPricer.price(itemId) * stack.count();
 		double mods = 0;
 
@@ -66,18 +73,39 @@ public final class ItemWorth {
 		mods += reforge(stack, skyblockItem, ea);
 		mods += drillParts(ea);
 		mods += rodParts(ea);
-		mods += dye(ea);
-		mods += runeOnItem(stack, ea);
-		mods += soulboundSkin(stack, ea);
+		if (includeCosmetics) {
+			mods += dye(ea);
+			mods += runeOnItem(stack, ea);
+			mods += soulboundSkin(stack, ea);
+		}
 
 		return Math.max(0, base + mods);
 	}
 
-	private static String resolveItemId(InventoryDecoder.Stack stack, JsonObject skyblockItem) {
+	/** Standalone cosmetic items (skins, dyes, furniture, etc.) — zeroed when cosmetics off. */
+	private static boolean isCosmeticItem(InventoryDecoder.Stack stack) {
+		String id = stack.id().toUpperCase(Locale.ROOT);
+		if (id.contains("_SKIN") || id.startsWith("PET_SKIN_") || id.endsWith("_DYE") || id.contains("DYE_")) {
+			return true;
+		}
+		if ("RUNE".equals(id) || "UNIQUE_RUNE".equals(id) || id.startsWith("RUNE_")) {
+			return true;
+		}
+		JsonObject hypixel = HypixelItemsCache.get(id);
+		if (hypixel != null && hypixel.has("category") && hypixel.get("category").isJsonPrimitive()) {
+			String cat = hypixel.get("category").getAsString();
+			if ("COSMETIC".equalsIgnoreCase(cat)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private static String resolveItemId(InventoryDecoder.Stack stack, JsonObject skyblockItem, boolean includeCosmetics) {
 		String itemId = stack.id();
 		CompoundTag ea = stack.extraAttributes();
 		String skin = NbtAttrs.string(ea, "skin");
-		if (skin != null && !skin.isBlank()) {
+		if (includeCosmetics && skin != null && !skin.isBlank()) {
 			String skinned = itemId + "_SKINNED_" + skin;
 			if (ItemPricer.price(skinned) > ItemPricer.price(itemId)) {
 				return skinned;
@@ -94,7 +122,7 @@ public final class ItemWorth {
 		if ("NEW_YEAR_CAKE".equals(itemId)) {
 			return "NEW_YEAR_CAKE_" + NbtAttrs.intValue(ea, "new_years_cake", 0);
 		}
-		if (NbtAttrs.has(ea, "is_shiny") && ItemPricer.price(itemId + "_SHINY") > 0) {
+		if (includeCosmetics && NbtAttrs.has(ea, "is_shiny") && ItemPricer.price(itemId + "_SHINY") > 0) {
 			return itemId + "_SHINY";
 		}
 		if (itemId.startsWith("STARRED_") && ItemPricer.price(itemId) <= 0) {

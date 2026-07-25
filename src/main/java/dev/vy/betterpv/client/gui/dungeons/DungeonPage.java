@@ -26,9 +26,14 @@ public final class DungeonPage {
 	private static final int CALC_H = 70;
 	private static final int FIELD_H = 14;
 	private static final int BTN_W = 36;
+	private static final int HELP_GAP = 3;
+	private static final int HELP_TIP_MAX_W = 180;
 	private static final int CATA_MAX_LEN = 3;
 	private static final int CLASS_MAX_LEN = 32;
 	private static final int HINT_COLOR = 0xFF5A5A68;
+	private static final int HELP_ICON_COLOR = 0xFF9A9AAC;
+	private static final int HELP_ICON_HOVER = 0xFF5B8CFF;
+	private static final String HELP_MARK = "(?)";
 
 	private DungeonSnapshot data = DungeonSnapshot.empty();
 	private final List<HoverZone> zones = new ArrayList<>();
@@ -213,6 +218,11 @@ public final class DungeonPage {
 			&& my >= row.fieldY && my < row.fieldY + row.fieldH;
 	}
 
+	private static boolean hitHelp(CalcRow row, double mx, double my) {
+		return mx >= row.helpX && mx < row.helpX + row.helpW
+			&& my >= row.helpY && my < row.helpY + row.helpH;
+	}
+
 	private static DungeonCalcOverlay.View toView(CataXpCalculator.Result result) {
 		List<DungeonCalcOverlay.FloorLine> floors = new ArrayList<>();
 		for (CataXpCalculator.FloorEstimate floor : result.floors()) {
@@ -341,25 +351,27 @@ public final class DungeonPage {
 		String classLabel = Component.translatable("betterpv.dungeons.calc.class_wanted").getString();
 		int labelW = Math.max(font.width(cataLabel), font.width(classLabel)) + 4;
 
-		layoutRow(this.cataRow, x, w, cx, cy, labelW);
+		layoutRow(this.cataRow, font, x, w, cx, cy, labelW);
 		drawCalcRow(
 			g, font, this.cataRow, cx, cataLabel, this.cataLevelText,
 			"betterpv.dungeons.calc.level_hint",
+			"betterpv.dungeons.calc.level_help",
 			this.focus == FieldFocus.CATA,
 			mouseX, mouseY
 		);
 
 		cy += FIELD_H + 6;
-		layoutRow(this.classRow, x, w, cx, cy, labelW);
+		layoutRow(this.classRow, font, x, w, cx, cy, labelW);
 		drawCalcRow(
 			g, font, this.classRow, cx, classLabel, this.classLevelText,
 			"betterpv.dungeons.calc.class_hint",
+			"betterpv.dungeons.calc.class_help",
 			this.focus == FieldFocus.CLASS,
 			mouseX, mouseY
 		);
 	}
 
-	private static void layoutRow(CalcRow row, int panelX, int panelW, int cx, int cy, int labelW) {
+	private static void layoutRow(CalcRow row, Font font, int panelX, int panelW, int cx, int cy, int labelW) {
 		row.fieldH = FIELD_H;
 		row.fieldX = cx + labelW;
 		row.fieldY = cy;
@@ -367,7 +379,11 @@ public final class DungeonPage {
 		row.btnH = FIELD_H;
 		row.btnX = panelX + panelW - PAD - row.btnW;
 		row.btnY = cy;
-		row.fieldW = Math.max(28, row.btnX - 4 - row.fieldX);
+		row.helpW = font.width(HELP_MARK);
+		row.helpH = font.lineHeight;
+		row.helpX = row.btnX - HELP_GAP - row.helpW;
+		row.helpY = cy + Math.max(0, (FIELD_H - row.helpH) / 2);
+		row.fieldW = Math.max(28, row.helpX - 4 - row.fieldX);
 	}
 
 	private void drawCalcRow(
@@ -378,6 +394,7 @@ public final class DungeonPage {
 		String label,
 		String text,
 		String hintKey,
+		String helpKey,
 		boolean focused,
 		int mouseX,
 		int mouseY
@@ -403,6 +420,13 @@ public final class DungeonPage {
 			}
 		}
 
+		boolean helpHover = hitHelp(row, mouseX, mouseY);
+		PvDraw.text(g, font, HELP_MARK, row.helpX, row.helpY, helpHover ? HELP_ICON_HOVER : HELP_ICON_COLOR);
+		this.zones.add(new HoverZone(
+			row.helpX - 1, row.helpY - 1, row.helpW + 2, row.helpH + 2,
+			wrapTip(font, Component.translatable(helpKey).getString(), HELP_TIP_MAX_W)
+		));
+
 		boolean btnHover = hitButton(row, mouseX, mouseY);
 		PvDraw.fill(g, row.btnX, row.btnY, row.btnW, row.btnH, btnHover ? 0xFF2A3A55 : 0xFF16161E);
 		g.outline(row.btnX, row.btnY, row.btnW, row.btnH, btnHover ? PvDraw.COLOR_ACCENT : PvDraw.COLOR_BORDER);
@@ -413,6 +437,30 @@ public final class DungeonPage {
 			row.btnY + (row.btnH - font.lineHeight) / 2,
 			PvDraw.COLOR_TEXT
 		);
+	}
+
+	private static List<PvTooltip.Line> wrapTip(Font font, String text, int maxW) {
+		List<PvTooltip.Line> lines = new ArrayList<>();
+		if (text == null || text.isBlank()) {
+			return lines;
+		}
+		String[] words = text.trim().split("\\s+");
+		StringBuilder current = new StringBuilder();
+		for (String word : words) {
+			String candidate = current.isEmpty() ? word : current + " " + word;
+			if (!current.isEmpty() && font.width(candidate) > maxW) {
+				lines.add(PvTooltip.Line.plain(current.toString()));
+				current.setLength(0);
+				current.append(word);
+			} else {
+				current.setLength(0);
+				current.append(candidate);
+			}
+		}
+		if (!current.isEmpty()) {
+			lines.add(PvTooltip.Line.plain(current.toString()));
+		}
+		return lines;
 	}
 
 	private static String trimToWidth(Font font, String text, int maxW) {
@@ -445,6 +493,9 @@ public final class DungeonPage {
 		}
 		if (this.data.scarfBonus() > 0) {
 			bits.add("Scarf +" + Math.round(this.data.scarfBonus() * 100) + "%");
+		}
+		if (this.data.catacombsGraduateBonus() > 0) {
+			bits.add("Grad +" + Math.round(this.data.catacombsGraduateBonus() * 100) + "%");
 		}
 		if (this.data.mayorFactor() > 1.0 && this.data.mayorName() != null && !this.data.mayorName().isBlank()) {
 			bits.add(this.data.mayorName());
@@ -722,6 +773,10 @@ public final class DungeonPage {
 		int fieldY;
 		int fieldW;
 		int fieldH;
+		int helpX;
+		int helpY;
+		int helpW;
+		int helpH;
 		int btnX;
 		int btnY;
 		int btnW;

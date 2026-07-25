@@ -9,6 +9,7 @@ import net.minecraft.world.item.Items;
 public enum PvSubTab {
 	DUNGEON_NORMAL(Items.STONE_BRICKS, "betterpv.sub.dungeon_normal"),
 	DUNGEON_MASTER(Items.NETHER_BRICKS, "betterpv.sub.dungeon_master"),
+	AUCTION_STATS(Items.GOLD_BLOCK, "betterpv.sub.auction_stats"),
 	AUCTION_SOLD(Items.GOLD_INGOT, "betterpv.sub.auction_sold"),
 	AUCTION_BOUGHT(Items.EMERALD, "betterpv.sub.auction_bought"),
 	COLLECTIONS_LIST(Items.ITEM_FRAME, "betterpv.sub.collections"),

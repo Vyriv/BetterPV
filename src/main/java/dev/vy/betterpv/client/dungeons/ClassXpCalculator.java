@@ -9,8 +9,13 @@ import java.util.Map;
 
 /** Estimates class XP/run and runs to a target class level. */
 public final class ClassXpCalculator {
-	/** Off-class share (PixelStats / Adjectils docs). Selected class gets full rate. */
-	private static final double OFF_CLASS_RATE = 0.2;
+	/**
+	 * Off-class share used by Adjectils / common RTCA sims ({@code selectedRate / 4}).
+	 * UI tips often say 0.2×; matching Adjectils requires 0.25.
+	 */
+	private static final double OFF_CLASS_RATE = 0.25;
+	/** Adjectils caps Derpy/Aura class XP at +50% even when Aura is +59%. */
+	private static final double CLASS_MAYOR_CAP = 1.5;
 	private static final int RTCA_MAX_RUNS = 200_000;
 
 	public record FloorEstimate(String id, String label, long xpPerRun, long runsNeeded, long completions) {
@@ -182,9 +187,9 @@ public final class ClassXpCalculator {
 				: completions(data.normal(), String.valueOf(floor.floor()));
 			long xpPerRun = Math.max(1L, Math.round(classXpPerRun(
 				floor.baseXp(),
-				comps,
 				data.hecatombLevel(),
 				data.scarfBonus(),
+				data.catacombsGraduateBonus(),
 				data.classEssenceBonus(classId),
 				data.mayorFactor(),
 				0.0
@@ -211,26 +216,28 @@ public final class ClassXpCalculator {
 	}
 
 	/**
-	 * Class XP for an S+ run while playing that class (full rate):
-	 * {@code base * (1 + hecClass + scarf + essence) * experienced * mayor}.
-	 * Expert Ring does not affect class XP. Hecatomb class bonus is 2× the S+ cata table.
+	 * Class XP for an S+ run while playing that class (full rate), Adjectils-style:
+	 * {@code base * (1 + hecClass + scarf + graduate + essence + (global-1)) * min(1.5, mayor)}.
+	 * Expert Ring and Experienced Floor do not affect class XP in this model.
 	 */
 	public static double classXpPerRun(
 		double baseXp,
-		long completions,
 		int hecatombLevel,
 		double scarfBonus,
+		double graduateBonus,
 		double essenceBonus,
 		double mayorXpFactor,
 		double globalBoost
 	) {
 		double hec = 2.0 * DungeonXpData.hecatombBonus(hecatombLevel);
-		double bonus = 1.0 + hec + Math.max(0, scarfBonus) + Math.max(0, essenceBonus);
-		double experienced = DungeonXpData.isExperiencedFloor(completions)
-			? (1.0 + DungeonXpData.experiencedFloorBonus())
-			: 1.0;
-		double mayor = mayorXpFactor > 0 ? mayorXpFactor : 1.0;
-		return baseXp * bonus * experienced * mayor * (1.0 + globalBoost);
+		double bonus = 1.0
+			+ hec
+			+ Math.max(0, scarfBonus)
+			+ Math.max(0, graduateBonus)
+			+ Math.max(0, essenceBonus)
+			+ Math.max(0, globalBoost);
+		double mayor = mayorXpFactor > 0 ? Math.min(CLASS_MAYOR_CAP, mayorXpFactor) : 1.0;
+		return baseXp * bonus * mayor;
 	}
 
 	private record FloorPick(String label, Map<String, Double> ratesByClass, double fallbackRate) {
@@ -253,9 +260,6 @@ public final class ClassXpCalculator {
 			if (!chainUnlocked(data, floor)) {
 				continue;
 			}
-			long comps = floor.master()
-				? completions(data.master(), String.valueOf(floor.floor()))
-				: completions(data.normal(), String.valueOf(floor.floor()));
 
 			Map<String, Double> rates = new LinkedHashMap<>();
 			double sum = 0;
@@ -263,9 +267,9 @@ public final class ClassXpCalculator {
 			for (DungeonSnapshot.ClassEntry clazz : data.classes()) {
 				double rate = Math.max(1.0, classXpPerRun(
 					floor.baseXp(),
-					comps,
 					data.hecatombLevel(),
 					data.scarfBonus(),
+					data.catacombsGraduateBonus(),
 					data.classEssenceBonus(clazz.id()),
 					data.mayorFactor(),
 					0.0
@@ -293,6 +297,9 @@ public final class ClassXpCalculator {
 		}
 		if (data.scarfBonus() > 0) {
 			bits.add("Scarf +" + Math.round(data.scarfBonus() * 100) + "%");
+		}
+		if (data.catacombsGraduateBonus() > 0) {
+			bits.add("Grad +" + Math.round(data.catacombsGraduateBonus() * 100) + "%");
 		}
 		if (classId != null) {
 			double essence = data.classEssenceBonus(classId);

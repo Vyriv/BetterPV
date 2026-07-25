@@ -1,9 +1,18 @@
 package dev.vy.betterpv.client.weight;
 
+import dev.vy.betterpv.client.data.FormatUtil;
+import dev.vy.betterpv.client.gui.PvDraw;
+import dev.vy.betterpv.client.gui.PvTooltip;
 import java.util.ArrayList;
 import java.util.List;
 
 public final class WeightBreakdown {
+	private static final int COLOR_WEIGHT = 0xFF55FFFF;
+	private static final int COLOR_OVERFLOW = 0xFF7AD7FF;
+	private static final int COLOR_SKILLS = 0xFF55FF55;
+	private static final int COLOR_SLAYERS = 0xFFFF5555;
+	private static final int COLOR_DUNGEONS = 0xFFAA55FF;
+
 	public record Line(String label, double value, double overflow) {
 		public double total() {
 			return value + overflow;
@@ -59,26 +68,60 @@ public final class WeightBreakdown {
 	}
 
 	public List<String> tooltipLines() {
-		List<String> lines = new ArrayList<>();
+		return tooltipStyledLines().stream()
+			.map(line -> line.spans().stream().map(PvTooltip.Span::text).reduce("", String::concat))
+			.toList();
+	}
+
+	public List<PvTooltip.Line> tooltipStyledLines() {
+		List<PvTooltip.Line> lines = new ArrayList<>();
+		lines.add(PvTooltip.Line.bold(this.system.display() + " Weight", PvDraw.COLOR_ACCENT));
+		lines.add(new PvTooltip.Line(List.of(
+			PvTooltip.Span.of("Total: ", PvDraw.COLOR_MUTED),
+			PvTooltip.Span.bold(format(total()), COLOR_WEIGHT),
+			PvTooltip.Span.of(" (", PvDraw.COLOR_MUTED),
+			PvTooltip.Span.of(format(this.base), PvDraw.COLOR_TEXT),
+			PvTooltip.Span.of(" without Overflow)", PvDraw.COLOR_MUTED)
+		)));
 		String kind = this.system == WeightSystem.SENITHER ? "Stage" : "Rank";
-		lines.add(this.system.display() + " Weight");
-		lines.add("Total: " + format(total()) + " (" + format(this.base) + " without Overflow)");
-		lines.add(kind + ": " + this.stageOrRank);
+		lines.add(new PvTooltip.Line(List.of(
+			PvTooltip.Span.of(kind + ": ", PvDraw.COLOR_MUTED),
+			PvTooltip.Span.bold(this.stageOrRank, WeightStages.colorFor(this.stageOrRank))
+		)));
 		for (Category category : this.categories) {
-			lines.add("");
-			lines.add(category.name() + ": " + format(category.total())
-				+ (category.overflow() > 0.05 ? " (+" + format(category.overflow()) + ")" : ""));
+			lines.add(PvTooltip.Line.of("", PvDraw.COLOR_MUTED));
+			int catColor = switch (category.name()) {
+				case "Skills" -> COLOR_SKILLS;
+				case "Slayers" -> COLOR_SLAYERS;
+				case "Dungeons" -> COLOR_DUNGEONS;
+				default -> PvDraw.COLOR_ACCENT;
+			};
+			List<PvTooltip.Span> header = new ArrayList<>();
+			header.add(PvTooltip.Span.bold(category.name() + ": ", catColor));
+			header.add(PvTooltip.Span.bold(format(category.total()), COLOR_WEIGHT));
+			if (category.overflow() > 0.05) {
+				header.add(PvTooltip.Span.of(" (+" + format(category.overflow()) + ")", COLOR_OVERFLOW));
+			}
+			lines.add(new PvTooltip.Line(header));
 			for (Line line : category.lines()) {
-				String overflow = line.overflow() > 0.05 ? " (+" + format(line.overflow()) + ")" : "";
-				lines.add("  " + line.label() + ": " + format(line.total()) + overflow);
+				List<PvTooltip.Span> row = new ArrayList<>();
+				row.add(PvTooltip.Span.of("  " + line.label() + ": ", PvDraw.COLOR_MUTED));
+				row.add(PvTooltip.Span.of(format(line.total()), PvDraw.COLOR_TEXT));
+				if (line.overflow() > 0.05) {
+					row.add(PvTooltip.Span.of(" (+" + format(line.overflow()) + ")", COLOR_OVERFLOW));
+				}
+				lines.add(new PvTooltip.Line(row));
 			}
 		}
-		lines.add("");
-		lines.add("Click to switch to " + this.system.other().display());
+		lines.add(PvTooltip.Line.of("", PvDraw.COLOR_MUTED));
+		lines.add(PvTooltip.Line.of(
+			"Click to switch to " + this.system.other().display(),
+			PvDraw.COLOR_MUTED
+		));
 		return lines;
 	}
 
 	private static String format(double value) {
-		return dev.vy.betterpv.client.data.FormatUtil.weight(value);
+		return FormatUtil.weight(value);
 	}
 }

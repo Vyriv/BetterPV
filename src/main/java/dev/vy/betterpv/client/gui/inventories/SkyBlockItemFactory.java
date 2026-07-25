@@ -1,6 +1,8 @@
 package dev.vy.betterpv.client.gui.inventories;
 
 import com.google.common.collect.ImmutableListMultimap;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mojang.authlib.GameProfile;
 import com.mojang.authlib.properties.Property;
@@ -8,6 +10,7 @@ import com.mojang.authlib.properties.PropertyMap;
 import dev.vy.betterpv.client.api.HypixelApiClient;
 import dev.vy.betterpv.client.data.InventorySnapshot;
 import dev.vy.betterpv.client.data.PetSnapshot;
+import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.SkyBlockSymbols;
 import dev.vy.betterpv.client.neu.NeuRepoCache;
 import dev.vy.betterpv.client.neu.SkyBlockPackCache;
@@ -70,6 +73,10 @@ public final class SkyBlockItemFactory {
 	private static final Pattern SACK_RUNE_ID = Pattern.compile(
 		"^RUNE_(.+)_(\\d+)$",
 		Pattern.CASE_INSENSITIVE
+	);
+	/** Rarity word in NEU lore tails ({@code §5§lEPIC DUNGEON CHESTPLATE}, {@code §6§lLEGENDARY DYE}). */
+	private static final Pattern RARITY_WORD = Pattern.compile(
+		"(?i)\\b(COMMON|UNCOMMON|RARE|EPIC|LEGENDARY|MYTHIC|DIVINE|VERY[_ ]SPECIAL|SPECIAL|ULTIMATE)\\b"
 	);
 	private static final String[] DYE_COLORS = {
 		"white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray",
@@ -440,6 +447,16 @@ public final class SkyBlockItemFactory {
 		if (rune.matches()) {
 			addCandidate(out, rune.group(1) + "_RUNE;" + rune.group(2));
 		}
+		// Cofl / AH pet tags: PET_JELLYFISH → NEU JELLYFISH;3 (not PET_ITEM_*).
+		if (key.startsWith("PET_") && !key.startsWith("PET_ITEM_")) {
+			String type = key.substring(4);
+			if (!type.isBlank()) {
+				for (int i : new int[] { 3, 4, 5, 2, 1, 0 }) {
+					addCandidate(out, type + ";" + i);
+				}
+				addCandidate(out, type);
+			}
+		}
 		// COLOUR_STAINED_GLASS_PANE / COLOUR_WOOL / etc. → legacy NEU damage form
 		for (String color : COLOR_NAMES) {
 			String prefix = color + "_";
@@ -692,6 +709,168 @@ public final class SkyBlockItemFactory {
 			case "ULTIMATE" -> "§4";
 			default -> "§f";
 		};
+	}
+
+	/** ARGB colour for a SkyBlock rarity tier name. */
+	public static int tierArgb(String tier) {
+		String key = normalizeTier(tier);
+		if (key.isBlank()) {
+			return PvDraw.COLOR_TEXT;
+		}
+		return switch (key) {
+			case "COMMON" -> 0xFFFFFFFF;
+			case "UNCOMMON" -> 0xFF55FF55;
+			case "RARE" -> 0xFF5555FF;
+			case "EPIC" -> 0xFFAA00AA;
+			case "LEGENDARY" -> 0xFFFFAA00;
+			case "MYTHIC" -> 0xFFFF55FF;
+			case "DIVINE" -> 0xFF55FFFF;
+			case "SPECIAL", "VERY_SPECIAL" -> 0xFFFF5555;
+			case "ULTIMATE" -> 0xFFAA0000;
+			default -> PvDraw.COLOR_TEXT;
+		};
+	}
+
+	/** Resolve rarity tier from NEU (or empty). */
+	public static String neuTier(String skyblockId) {
+		JsonObject neu = neuItem(skyblockId);
+		if (neu == null) {
+			return "";
+		}
+		if (neu.has("tier") && neu.get("tier").isJsonPrimitive()) {
+			String tier = normalizeTier(neu.get("tier").getAsString());
+			if (!tier.isBlank()) {
+				return tier;
+			}
+		}
+		return tierFromNeuItem(neu);
+	}
+
+	/**
+	 * Resolve rarity from NEU, then Hypixel items definitions.
+	 * Cofl pet tags ({@code PET_JELLYFISH}) omit rarity — do not guess from {@code TYPE;n} NEU files.
+	 */
+	public static String resolveTier(String skyblockId) {
+		if (skyblockId == null || skyblockId.isBlank()) {
+			return "";
+		}
+		String key = skyblockId.toUpperCase(Locale.ROOT);
+		boolean petAuctionTag = key.startsWith("PET_") && !key.startsWith("PET_ITEM_");
+		if (!petAuctionTag) {
+			String neu = neuTier(skyblockId);
+			if (!neu.isBlank()) {
+				return neu;
+			}
+		}
+		JsonObject hypixel = HypixelItemsCache.get(key);
+		if (hypixel == null) {
+			hypixel = HypixelItemsCache.get(canonicalId(skyblockId));
+		}
+		if (hypixel != null && hypixel.has("tier") && hypixel.get("tier").isJsonPrimitive()) {
+			return normalizeTier(hypixel.get("tier").getAsString());
+		}
+		return "";
+	}
+
+	/** Normalize rarity labels ({@code Very Special} → {@code VERY_SPECIAL}). */
+	public static String normalizeTier(String tier) {
+		if (tier == null || tier.isBlank()) {
+			return "";
+		}
+		String t = stripFormatting(tier).trim().toUpperCase(Locale.ROOT).replace(' ', '_');
+		if (t.startsWith("VERY_SPECIAL")) {
+			return "VERY_SPECIAL";
+		}
+		return switch (t) {
+			case "COMMON", "UNCOMMON", "RARE", "EPIC", "LEGENDARY", "MYTHIC", "DIVINE", "SPECIAL", "ULTIMATE" -> t;
+			default -> {
+				Matcher m = RARITY_WORD.matcher(t);
+				yield m.find() ? m.group(1).toUpperCase(Locale.ROOT).replace(' ', '_') : "";
+			}
+		};
+	}
+
+	/** Newer NEU items often omit {@code tier}; rarity lives in the last lore line / name colour. */
+	private static String tierFromNeuItem(JsonObject neu) {
+		if (neu.has("lore") && neu.get("lore").isJsonArray()) {
+			JsonArray lore = neu.getAsJsonArray("lore");
+			for (int i = lore.size() - 1; i >= 0; i--) {
+				JsonElement el = lore.get(i);
+				if (!el.isJsonPrimitive()) {
+					continue;
+				}
+				String plain = stripFormatting(el.getAsString());
+				if (plain.isBlank()) {
+					continue;
+				}
+				Matcher m = RARITY_WORD.matcher(plain);
+				if (m.find()) {
+					return normalizeTier(m.group(1));
+				}
+			}
+		}
+		if (neu.has("displayname") && neu.get("displayname").isJsonPrimitive()) {
+			return tierFromFormattingPrefix(neu.get("displayname").getAsString());
+		}
+		return "";
+	}
+
+	private static String tierFromFormattingPrefix(String text) {
+		if (text == null || text.isBlank()) {
+			return "";
+		}
+		Matcher code = Pattern.compile("§([0-9a-fk-or])", Pattern.CASE_INSENSITIVE).matcher(text);
+		while (code.find()) {
+			String tier = switch (Character.toLowerCase(code.group(1).charAt(0))) {
+				case 'a' -> "UNCOMMON";
+				case '9' -> "RARE";
+				case '5' -> "EPIC";
+				case '6' -> "LEGENDARY";
+				case 'd' -> "MYTHIC";
+				case 'b' -> "DIVINE";
+				case 'c' -> "SPECIAL";
+				case '4' -> "ULTIMATE";
+				case 'f', '7' -> "COMMON";
+				default -> "";
+			};
+			if (!tier.isBlank()) {
+				return tier;
+			}
+		}
+		return "";
+	}
+
+	/** Plain display name (no § codes) from NEU / Hypixel / pretty id. */
+	public static String plainDisplayName(String skyblockId) {
+		if (skyblockId == null || skyblockId.isBlank()) {
+			return "";
+		}
+		JsonObject neu = neuItem(skyblockId);
+		if (neu != null && neu.has("displayname") && neu.get("displayname").isJsonPrimitive()) {
+			String name = neu.get("displayname").getAsString();
+			if (name != null && !name.isBlank()) {
+				name = name.replaceAll("(?i)\\[Lvl\\s*\\{?LVL\\}?\\]\\s*", "").trim();
+				return stripFormatting(name);
+			}
+		}
+		JsonObject def = HypixelItemsCache.get(canonicalId(skyblockId));
+		if (def == null) {
+			def = HypixelItemsCache.get(skyblockId.toUpperCase(Locale.ROOT));
+		}
+		if (def != null && def.has("name") && def.get("name").isJsonPrimitive()) {
+			String name = def.get("name").getAsString();
+			if (name != null && !name.isBlank()) {
+				return stripFormatting(name);
+			}
+		}
+		return prettyId(canonicalId(skyblockId));
+	}
+
+	private static String stripFormatting(String text) {
+		if (text == null || text.isEmpty()) {
+			return "";
+		}
+		return text.replaceAll("§.", "").replaceAll("&[0-9a-fk-or]", "");
 	}
 
 	private static boolean isBanner(String itemId) {

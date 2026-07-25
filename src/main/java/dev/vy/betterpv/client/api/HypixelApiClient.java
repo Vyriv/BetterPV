@@ -125,6 +125,19 @@ public final class HypixelApiClient {
 		);
 	}
 
+	/** Player auctions (Active). Requires API key / worker. */
+	public static CompletableFuture<Optional<JsonObject>> skyblockAuction(UUID uuid) {
+		String id = undashed(uuid);
+		return CompletableFuture.supplyAsync(
+			() -> fetchPreferWorker(
+				WORKER_BASE + "/hypixel/skyblock/auction/" + id,
+				"skyblock/auction",
+				"player=" + id
+			),
+			EXECUTOR
+		);
+	}
+
 	/** SkyBlock election / current mayor. Resources endpoint; no API key required. */
 	public static CompletableFuture<Optional<JsonObject>> skyblockElection() {
 		return CompletableFuture.supplyAsync(() -> {

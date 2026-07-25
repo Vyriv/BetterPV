@@ -49,6 +49,48 @@ public final class FormatUtil {
 		return m + ":" + pad2(s);
 	}
 
+	/**
+	 * Compact age/remaining span: at most the two largest non-zero units.
+	 * e.g. {@code 6d 4h}, {@code 3h 12m}, {@code 45s}.
+	 */
+	public static String prettySpan(long ms) {
+		long totalSec = Math.max(0L, ms / 1000L);
+		if (totalSec < 1L) {
+			return "0s";
+		}
+		long years = totalSec / 31_536_000L; // 365d
+		totalSec %= 31_536_000L;
+		long months = totalSec / 2_592_000L; // 30d
+		totalSec %= 2_592_000L;
+		long days = totalSec / 86_400L;
+		totalSec %= 86_400L;
+		long hours = totalSec / 3_600L;
+		totalSec %= 3_600L;
+		long minutes = totalSec / 60L;
+		long seconds = totalSec % 60L;
+
+		StringBuilder out = new StringBuilder();
+		int parts = 0;
+		parts = appendUnit(out, years, "y", parts);
+		parts = appendUnit(out, months, "mo", parts);
+		parts = appendUnit(out, days, "d", parts);
+		parts = appendUnit(out, hours, "h", parts);
+		parts = appendUnit(out, minutes, "m", parts);
+		appendUnit(out, seconds, "s", parts);
+		return out.isEmpty() ? "0s" : out.toString();
+	}
+
+	private static int appendUnit(StringBuilder out, long value, String suffix, int parts) {
+		if (value <= 0L || parts >= 2) {
+			return parts;
+		}
+		if (!out.isEmpty()) {
+			out.append(' ');
+		}
+		out.append(value).append(suffix);
+		return parts + 1;
+	}
+
 	private static String pad2(long value) {
 		return value < 10L ? "0" + value : Long.toString(value);
 	}

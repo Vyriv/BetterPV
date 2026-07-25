@@ -2,6 +2,7 @@ package dev.vy.betterpv.client.gui;
 
 import dev.vy.betterpv.client.api.ProfileFetcher;
 import dev.vy.betterpv.client.data.ProfileSnapshot;
+import dev.vy.betterpv.client.gui.auctions.AuctionPage;
 import dev.vy.betterpv.client.gui.dungeons.DungeonPage;
 import dev.vy.betterpv.client.gui.home.HomePage;
 import dev.vy.betterpv.client.gui.inventories.InventoryPage;
@@ -41,6 +42,7 @@ public final class ProfileViewerScreen extends Screen {
 	private final DungeonPage dungeonPage = new DungeonPage();
 	private final InventoryPage inventoryPage = new InventoryPage();
 	private final PetsPage petsPage = new PetsPage();
+	private final AuctionPage auctionPage = new AuctionPage();
 	private final IconButtonBar topBar = new IconButtonBar();
 	private final IconButtonBar sideBar = new IconButtonBar();
 	private final IconButtonBar inventoryBar = new IconButtonBar();
@@ -108,6 +110,9 @@ public final class ProfileViewerScreen extends Screen {
 						WeightBreakdown.empty(WeightSystem.SENITHER),
 						WeightBreakdown.empty(WeightSystem.LILY),
 						NetworthBreakdown.empty("Fetch failed"),
+						NetworthBreakdown.empty("Fetch failed"),
+						NetworthBreakdown.empty("Fetch failed"),
+						NetworthBreakdown.empty("Fetch failed"),
 						new ItemStack[] { ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY },
 						error == null ? "Fetch failed" : (error.getMessage() == null ? error.toString() : error.getMessage())
 					);
@@ -117,13 +122,17 @@ public final class ProfileViewerScreen extends Screen {
 					loaded.snapshot(),
 					loaded.senither(),
 					loaded.lily(),
-					loaded.networth(),
+					loaded.networthNormal(),
+					loaded.networthNonCosmetic(),
+					loaded.networthUnsoulbound(),
+					loaded.networthUnsoulboundNonCosmetic(),
 					loaded.armor(),
 					loaded.error()
 				);
 				this.dungeonPage.apply(loaded.dungeons());
 				this.inventoryPage.apply(loaded.inventories());
 				this.petsPage.apply(loaded.pets());
+				this.auctionPage.apply(loaded.auctions());
 			});
 		});
 	}
@@ -225,6 +234,14 @@ public final class ProfileViewerScreen extends Screen {
 			hideInventorySearch();
 			this.dungeonPage.blurField();
 			this.petsPage.render(g, this.font, x, y, w, h, mouseX, mouseY, this.width, this.height);
+			return;
+		}
+
+		if (this.tab == PvTab.AUCTIONS) {
+			hideInventorySearch();
+			this.dungeonPage.blurField();
+			PvSubTab sub = this.subSelection.getOrDefault(this.tab, PvSubTab.AUCTION_STATS);
+			this.auctionPage.render(g, this.font, sub, x, y, w, h, mouseX, mouseY, this.width, this.height);
 			return;
 		}
 
@@ -387,6 +404,10 @@ public final class ProfileViewerScreen extends Screen {
 		if (this.tab == PvTab.PETS && this.petsPage.mouseClicked(mx, my)) {
 			return true;
 		}
+		if (this.tab == PvTab.AUCTIONS
+			&& this.auctionPage.mouseClicked(mx, my, this.subSelection.getOrDefault(this.tab, PvSubTab.AUCTION_STATS))) {
+			return true;
+		}
 		if (this.tab.isInventorySplit() && this.inventoryPage.mouseClicked(mx, my)) {
 			return true;
 		}
@@ -394,6 +415,9 @@ public final class ProfileViewerScreen extends Screen {
 			return true;
 		}
 		if (this.tab == PvTab.HOME && this.homePage.clickWeight(mx, my)) {
+			return true;
+		}
+		if (this.tab == PvTab.HOME && this.homePage.clickNetworth(mx, my, click.button())) {
 			return true;
 		}
 		return super.mouseClicked(click, doubled);
@@ -407,6 +431,9 @@ public final class ProfileViewerScreen extends Screen {
 		if (this.tab == PvTab.PETS && this.petsPage.mouseScrolled(scrollY)) {
 			return true;
 		}
+		if (this.tab == PvTab.AUCTIONS && this.auctionPage.mouseScrolled(mouseX, mouseY, scrollY)) {
+			return true;
+		}
 		if (this.tab.isInventorySplit() && this.inventoryPage.mouseScrolled(scrollY)) {
 			return true;
 		}
@@ -415,18 +442,38 @@ public final class ProfileViewerScreen extends Screen {
 
 	@Override
 	public boolean keyPressed(KeyEvent event) {
-		if (event != null && this.tab == PvTab.DUNGEONS && this.dungeonPage.keyPressed(event.key())) {
-			return true;
+		if (event != null) {
+			boolean typingSearch = this.inventorySearch != null
+				&& this.inventorySearch.isVisible()
+				&& this.inventorySearch.isFocused();
+			// Always feed arrows / BA / Enter into Konami unless typing in search.
+			if (!typingSearch && MoulberryMode.keyPressed(event.key())) {
+				return true;
+			}
+			if (this.tab == PvTab.DUNGEONS && this.dungeonPage.keyPressed(event.key())) {
+				return true;
+			}
 		}
 		return super.keyPressed(event);
 	}
 
 	@Override
 	public boolean charTyped(CharacterEvent event) {
-		if (event != null && this.tab == PvTab.DUNGEONS) {
-			String text = event.codepointAsString();
-			if (text != null && !text.isEmpty() && this.dungeonPage.charTyped(text.charAt(0))) {
-				return true;
+		if (event != null) {
+			boolean typingSearch = this.inventorySearch != null
+				&& this.inventorySearch.isVisible()
+				&& this.inventorySearch.isFocused();
+			if (!typingSearch) {
+				String text = event.codepointAsString();
+				if (text != null && !text.isEmpty() && MoulberryMode.charTyped(text.charAt(0))) {
+					return true;
+				}
+			}
+			if (this.tab == PvTab.DUNGEONS) {
+				String text = event.codepointAsString();
+				if (text != null && !text.isEmpty() && this.dungeonPage.charTyped(text.charAt(0))) {
+					return true;
+				}
 			}
 		}
 		return super.charTyped(event);

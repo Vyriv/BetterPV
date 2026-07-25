@@ -27,6 +27,9 @@ public final class PvDraw {
 	public static final int COLOR_MAXED_BAR_RIGHT = 0xFFF3E6FD;
 	public static final int BAR_HEIGHT = 6;
 
+	/** Cosmetics-inspired loop + vivid HSV rainbow for the Konami easter egg. */
+	private static final float EASTER_EGG_SPEED = 0.12F;
+
 	private PvDraw() {
 	}
 
@@ -124,7 +127,9 @@ public final class PvDraw {
 		if (filled <= 0) {
 			return;
 		}
-		if (maxedShiny) {
+		if (MoulberryMode.isActive()) {
+			drawXpBarAnimatedGradient(g, x, y, filled, h);
+		} else if (maxedShiny) {
 			drawXpBarGradient(g, x, y, filled, h, COLOR_MAXED_BAR_LEFT, COLOR_MAXED_BAR_RIGHT);
 		} else {
 			drawXpBarTrack(g, x, y, filled, h, fillColor);
@@ -163,6 +168,50 @@ public final class PvDraw {
 		}
 		fill(g, x, y + 1, 1, h - 2, from);
 		fill(g, x + w - 1, y + 1, 1, h - 2, to);
+	}
+
+	/** Scrolling HSV rainbow fill — unmistakable vs normal / maxed bars. */
+	private static void drawXpBarAnimatedGradient(GuiGraphicsExtractor g, int x, int y, int w, int h) {
+		if (w <= 0 || h <= 0) {
+			return;
+		}
+		if (w <= 2 || h <= 2) {
+			fill(g, x, y, w, h, rainbowArgb(0F));
+			return;
+		}
+		int segments = Math.min(Math.max(w - 2, 1), 32);
+		int inner = w - 2;
+		double time = System.currentTimeMillis() / 50.0D;
+		float offset = (float) positiveModulo(time * EASTER_EGG_SPEED, 1.0D);
+		int left = rainbowArgb(offset);
+		int right = rainbowArgb(positiveModulo(offset + 0.45F, 1.0F));
+		for (int s = 0; s < segments; s++) {
+			int x0 = x + 1 + s * inner / segments;
+			int x1 = x + 1 + (s + 1) * inner / segments;
+			float t = segments <= 1 ? 0F : (float) s / (float) (segments - 1);
+			fill(g, x0, y, Math.max(1, x1 - x0), h, rainbowArgb(positiveModulo(t * 0.85F + offset, 1.0F)));
+		}
+		fill(g, x, y + 1, 1, h - 2, left);
+		fill(g, x + w - 1, y + 1, 1, h - 2, right);
+	}
+
+	/** Hue wheel colour; blends toward cosmetics purple so it still nods to the name gradient. */
+	private static int rainbowArgb(float hue) {
+		float h = positiveModulo(hue, 1.0F);
+		int rgb = java.awt.Color.HSBtoRGB(h, 0.85F, 1.0F) & 0xFFFFFF;
+		// Soft pull toward cosmetics lilac so it isn't a totally foreign palette.
+		int cosmetics = COLOR_MAXED_BAR_LEFT & 0xFFFFFF;
+		return lerpArgb(rgb | 0xFF000000, cosmetics | 0xFF000000, 0.18F);
+	}
+
+	private static float positiveModulo(float value, float modulus) {
+		float remainder = value % modulus;
+		return remainder < 0.0F ? remainder + modulus : remainder;
+	}
+
+	private static double positiveModulo(double value, double modulus) {
+		double remainder = value % modulus;
+		return remainder < 0.0D ? remainder + modulus : remainder;
 	}
 
 	private static int lerpArgb(int from, int to, float t) {

@@ -3,6 +3,7 @@ package dev.vy.betterpv.client.api;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import dev.vy.betterpv.client.data.AuctionSnapshot;
 import dev.vy.betterpv.client.data.DungeonSnapshot;
 import dev.vy.betterpv.client.data.FormatUtil;
 import dev.vy.betterpv.client.data.InventorySnapshot;
@@ -17,6 +18,7 @@ import dev.vy.betterpv.client.gui.ArmorStacks;
 import dev.vy.betterpv.client.networth.InventoryDecoder;
 import dev.vy.betterpv.client.networth.NetworthBreakdown;
 import dev.vy.betterpv.client.networth.NetworthCalculator;
+import dev.vy.betterpv.client.networth.NetworthMode;
 import dev.vy.betterpv.client.price.ItemPricer;
 import dev.vy.betterpv.client.weight.WeightBreakdown;
 import dev.vy.betterpv.client.weight.WeightCalculator;
@@ -60,14 +62,30 @@ public final class ProfileFetcher {
 		DungeonSnapshot dungeons,
 		InventorySnapshot inventories,
 		PetSnapshot pets,
+		AuctionSnapshot auctions,
 		WeightBreakdown senither,
 		WeightBreakdown lily,
-		NetworthBreakdown networth,
+		NetworthBreakdown networthNormal,
+		NetworthBreakdown networthNonCosmetic,
+		NetworthBreakdown networthUnsoulbound,
+		NetworthBreakdown networthUnsoulboundNonCosmetic,
 		ItemStack[] armor,
 		String error
 	) {
 		public boolean ok() {
 			return error == null || error.isBlank();
+		}
+
+		public NetworthBreakdown networth(NetworthMode mode) {
+			if (mode == null) {
+				return networthNormal;
+			}
+			return switch (mode) {
+				case NORMAL -> networthNormal;
+				case NON_COSMETIC -> networthNonCosmetic;
+				case UNSOULBOUND -> networthUnsoulbound;
+				case UNSOULBOUND_NON_COSMETIC -> networthUnsoulboundNonCosmetic;
+			};
 		}
 	}
 
@@ -80,8 +98,12 @@ public final class ProfileFetcher {
 				DungeonSnapshot.empty(),
 				InventorySnapshot.empty(),
 				PetSnapshot.empty(),
+				AuctionSnapshot.empty(),
 				WeightBreakdown.empty(dev.vy.betterpv.client.weight.WeightSystem.SENITHER),
 				WeightBreakdown.empty(dev.vy.betterpv.client.weight.WeightSystem.LILY),
+				NetworthBreakdown.empty("API unavailable"),
+				NetworthBreakdown.empty("API unavailable"),
+				NetworthBreakdown.empty("API unavailable"),
 				NetworthBreakdown.empty("API unavailable"),
 				emptyArmor(),
 				"API unavailable"
@@ -114,19 +136,31 @@ public final class ProfileFetcher {
 				String profileId = best != null && best.has("profile_id") ? best.get("profile_id").getAsString() : null;
 				CompletableFuture<Optional<JsonObject>> museumFut = HypixelApiClient.skyblockMuseum(id.uuid(), profileId);
 				CompletableFuture<Optional<JsonObject>> electionFut = HypixelApiClient.skyblockElection();
-				return museumFut.thenCombineAsync(
-					electionFut,
-					(museumOpt, electionOpt) -> {
-						LoadedProfile loaded = parse(id.name(), id.uuid(), root, museumOpt.orElse(null), electionOpt.orElse(null));
+				CompletableFuture<Optional<JsonObject>> auctionFut = HypixelApiClient.skyblockAuction(id.uuid());
+				CompletableFuture<Optional<JsonArray>> soldFut = CoflnetApiClient.playerAuctions(id.uuid(), 0);
+				CompletableFuture<Optional<JsonArray>> bidsFut = CoflnetApiClient.playerBids(id.uuid(), 0);
+				return CompletableFuture.allOf(museumFut, electionFut, auctionFut, soldFut, bidsFut)
+					.thenApplyAsync(ignored -> {
+						LoadedProfile loaded = parse(
+							id.name(),
+							id.uuid(),
+							root,
+							museumFut.join().orElse(null),
+							electionFut.join().orElse(null),
+							AuctionSnapshot.build(
+								id.uuid(),
+								auctionFut.join().orElse(null),
+								soldFut.join().orElse(null),
+								bidsFut.join().orElse(null)
+							)
+						);
 						if (loaded.ok()) {
 							putCache(uuidKey(id.uuid()), loaded);
 							putCache(nameKey(id.name()), loaded);
 							putCache(nameKey(cleaned), loaded);
 						}
 						return loaded;
-					},
-					HypixelApiClient.parseExecutor()
-				);
+					}, HypixelApiClient.parseExecutor());
 			});
 		});
 	}
@@ -197,8 +231,12 @@ public final class ProfileFetcher {
 			DungeonSnapshot.empty(),
 			InventorySnapshot.empty(),
 			PetSnapshot.empty(),
+			AuctionSnapshot.empty(),
 			WeightBreakdown.empty(dev.vy.betterpv.client.weight.WeightSystem.SENITHER),
 			WeightBreakdown.empty(dev.vy.betterpv.client.weight.WeightSystem.LILY),
+			NetworthBreakdown.empty(error),
+			NetworthBreakdown.empty(error),
+			NetworthBreakdown.empty(error),
 			NetworthBreakdown.empty(error),
 			emptyArmor(),
 			error
@@ -209,16 +247,30 @@ public final class ProfileFetcher {
 		return new ItemStack[] { ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY };
 	}
 
-	private static LoadedProfile parse(String name, UUID uuid, JsonObject root, JsonObject museumRoot, JsonObject electionRoot) {
+	private static LoadedProfile parse(
+		String name,
+		UUID uuid,
+		JsonObject root,
+		JsonObject museumRoot,
+		JsonObject electionRoot,
+		AuctionSnapshot auctions
+	) {
 		try {
-			return parseUnsafe(name, uuid, root, museumRoot, electionRoot);
+			return parseUnsafe(name, uuid, root, museumRoot, electionRoot, auctions);
 		} catch (Exception exception) {
 			BetterPV.LOGGER.warn("Profile parse failed for {}", name, exception);
 			return fail(name, exception.getMessage() == null ? "Parse failed" : exception.getMessage());
 		}
 	}
 
-	private static LoadedProfile parseUnsafe(String name, UUID uuid, JsonObject root, JsonObject museumRoot, JsonObject electionRoot) {
+	private static LoadedProfile parseUnsafe(
+		String name,
+		UUID uuid,
+		JsonObject root,
+		JsonObject museumRoot,
+		JsonObject electionRoot,
+		AuctionSnapshot auctions
+	) {
 		JsonArray profiles = root.has("profiles") && root.get("profiles").isJsonArray()
 			? root.getAsJsonArray("profiles")
 			: null;
@@ -266,7 +318,14 @@ public final class ProfileFetcher {
 		BetterPV.LOGGER.info("Parsing profile {} ({})", name, cuteName);
 		Map<String, List<InventoryDecoder.Stack>> inventoryCategories =
 			InventoryDecoder.parseCategories(member, museumMember);
-		NetworthBreakdown networth = NetworthCalculator.calculate(member, best, museumMember, inventoryCategories);
+		NetworthBreakdown networthNormal =
+			NetworthCalculator.calculate(member, best, museumMember, inventoryCategories, NetworthMode.NORMAL);
+		NetworthBreakdown networthNonCosmetic =
+			NetworthCalculator.calculate(member, best, museumMember, inventoryCategories, NetworthMode.NON_COSMETIC);
+		NetworthBreakdown networthUnsoulbound =
+			NetworthCalculator.calculate(member, best, museumMember, inventoryCategories, NetworthMode.UNSOULBOUND);
+		NetworthBreakdown networthUnsoulboundNonCosmetic =
+			NetworthCalculator.calculate(member, best, museumMember, inventoryCategories, NetworthMode.UNSOULBOUND_NON_COSMETIC);
 
 		List<ProfileSnapshot.SkillEntry> skills = new ArrayList<>();
 		for (String skill : HOME_SKILLS) {
@@ -320,9 +379,9 @@ public final class ProfileFetcher {
 			}
 		}
 
-		String nwText = networth.total() > 0
-			? FormatUtil.shortCoins(networth.total())
-			: (networth.note().isBlank() ? "—" : "—");
+		String nwText = networthNormal.total() > 0
+			? FormatUtil.shortCoins(networthNormal.total())
+			: "—";
 
 		ProfileSnapshot snapshot = new ProfileSnapshot(
 			name,
@@ -355,7 +414,23 @@ public final class ProfileFetcher {
 			pets = PetSnapshot.empty();
 		}
 		BetterPV.LOGGER.info("Profile ready for {} (nw={})", name, nwText);
-		return new LoadedProfile(snapshot, dungeons, inventories, pets, senither, lily, networth, ArmorStacks.fromMember(member), null);
+		AuctionSnapshot auctionSnapshot = auctions == null ? AuctionSnapshot.empty() : auctions;
+		auctionSnapshot = auctionSnapshot.withStats(AuctionSnapshot.Stats.fromMember(member));
+		return new LoadedProfile(
+			snapshot,
+			dungeons,
+			inventories,
+			pets,
+			auctionSnapshot,
+			senither,
+			lily,
+			networthNormal,
+			networthNonCosmetic,
+			networthUnsoulbound,
+			networthUnsoulboundNonCosmetic,
+			ArmorStacks.fromMember(member),
+			null
+		);
 	}
 
 	private static DungeonSnapshot parseDungeons(
@@ -448,6 +523,7 @@ public final class ProfileFetcher {
 		String mayorName = CataXpMath.mayorName(electionRoot);
 
 		java.util.Map<String, Double> essenceBonuses = DungeonModifierScanner.readEssenceClassBonuses(member);
+		double graduateBonus = DungeonModifierScanner.readCatacombsGraduateBonus(member);
 
 		return new DungeonSnapshot(
 			(int) Math.floor(cata.level()),
@@ -467,6 +543,7 @@ public final class ProfileFetcher {
 			mods.expertRing(),
 			mods.hecatombLevel(),
 			mods.scarfBonus(),
+			graduateBonus,
 			essenceBonuses,
 			mayorFactor,
 			mayorName

@@ -42,7 +42,7 @@ public enum PvTab {
 	public PvSubTab[] subTabs() {
 		return switch (this) {
 			case DUNGEONS -> PvSubTab.NONE;
-			case AUCTIONS -> new PvSubTab[] { PvSubTab.AUCTION_SOLD, PvSubTab.AUCTION_BOUGHT };
+			case AUCTIONS -> new PvSubTab[] { PvSubTab.AUCTION_STATS, PvSubTab.AUCTION_SOLD, PvSubTab.AUCTION_BOUGHT };
 			case COLLECTIONS -> new PvSubTab[] { PvSubTab.COLLECTIONS_LIST, PvSubTab.COLLECTIONS_MINIONS };
 			case GARDEN -> new PvSubTab[] { PvSubTab.GARDEN_VISITORS, PvSubTab.GARDEN_GREENHOUSE };
 			case FORAGING -> new PvSubTab[] { PvSubTab.FORAGING_MAIN, PvSubTab.FORAGING_SHARDS };

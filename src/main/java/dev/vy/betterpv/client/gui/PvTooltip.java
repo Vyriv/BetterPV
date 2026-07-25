@@ -134,8 +134,68 @@ public final class PvTooltip {
 		int boxH = rendered.size() * lineH + pad * 2;
 		int x = mouseX + 12;
 		int y = mouseY - 12;
+		drawBox(g, font, rendered, x, y, boxW, boxH, pad, lineH, screenW, screenH);
+	}
+
+	/** Center a single-line tip horizontally above {@code (cx, topY)}. */
+	public static void drawCenteredAbove(
+		GuiGraphicsExtractor g,
+		Font font,
+		Component line,
+		int cx,
+		int topY,
+		int screenW,
+		int screenH
+	) {
+		if (line == null) {
+			return;
+		}
+		int pad = 6;
+		int lineH = font.lineHeight + 2;
+		int boxW = Math.max(8, font.width(line)) + pad * 2;
+		int boxH = lineH + pad * 2;
+		int x = cx - boxW / 2;
+		int y = topY - boxH - 3;
+		drawBox(g, font, List.of(line), x, y, boxW, boxH, pad, lineH, screenW, screenH);
+	}
+
+	/** Center a single-line tip vertically to the left of {@code (leftX, cy)}. */
+	public static void drawCenteredLeft(
+		GuiGraphicsExtractor g,
+		Font font,
+		Component line,
+		int leftX,
+		int cy,
+		int screenW,
+		int screenH
+	) {
+		if (line == null) {
+			return;
+		}
+		int pad = 6;
+		int lineH = font.lineHeight + 2;
+		int boxW = Math.max(8, font.width(line)) + pad * 2;
+		int boxH = lineH + pad * 2;
+		int x = leftX - boxW - 3;
+		int y = cy - boxH / 2;
+		drawBox(g, font, List.of(line), x, y, boxW, boxH, pad, lineH, screenW, screenH);
+	}
+
+	private static void drawBox(
+		GuiGraphicsExtractor g,
+		Font font,
+		List<Component> rendered,
+		int x,
+		int y,
+		int boxW,
+		int boxH,
+		int pad,
+		int lineH,
+		int screenW,
+		int screenH
+	) {
 		if (x + boxW > screenW - 4) {
-			x = mouseX - boxW - 8;
+			x = screenW - boxW - 4;
 		}
 		if (y + boxH > screenH - 4) {
 			y = screenH - boxH - 4;

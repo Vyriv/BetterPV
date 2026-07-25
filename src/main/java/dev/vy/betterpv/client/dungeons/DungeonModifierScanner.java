@@ -55,6 +55,38 @@ public final class DungeonModifierScanner {
 		return new Mods(ring, hecatomb, scarf);
 	}
 
+	/**
+	 * Catacombs Graduate attribute shard: +2% class XP per level, max 10 → +20%.
+	 * Stored on the profile as {@code attributes.catacombs_graduate}.
+	 * When the attribute is absent from the API payload, assume max (Adjectils does the same).
+	 */
+	public static double readCatacombsGraduateBonus(com.google.gson.JsonObject member) {
+		if (member == null) {
+			return 0.20;
+		}
+		Float level = attributeLevel(member, "catacombs_graduate");
+		if (level == null) {
+			return 0.20;
+		}
+		if (level <= 0) {
+			return 0;
+		}
+		return Math.min(0.20, level * 0.02);
+	}
+
+	private static Float attributeLevel(com.google.gson.JsonObject member, String key) {
+		Float direct = num(obj(member.get("attributes")) == null ? null : obj(member.get("attributes")).get(key));
+		if (direct != null) {
+			return direct;
+		}
+		com.google.gson.JsonObject playerData = obj(member.get("player_data"));
+		if (playerData == null) {
+			return null;
+		}
+		com.google.gson.JsonObject attrs = obj(playerData.get("attributes"));
+		return attrs == null ? null : num(attrs.get(key));
+	}
+
 	/** Essence-shop class XP perk levels (each level = +2%, max typically 5 → +10%). */
 	public static Map<String, Double> readEssenceClassBonuses(com.google.gson.JsonObject member) {
 		Map<String, Double> out = new HashMap<>();

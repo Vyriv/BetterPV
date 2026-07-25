@@ -3,11 +3,18 @@ package dev.vy.betterpv.client.networth;
 import dev.vy.betterpv.client.data.FormatUtil;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
+import dev.vy.betterpv.client.price.ItemPricer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
 public final class NetworthBreakdown {
+	/** SkyBlock gem shop: gems per booster cookie. */
+	private static final double GEMS_PER_COOKIE = 325.0;
+	/** Hypixel store pack: gems for $4.99. */
+	private static final double GEMS_PER_PACK = 675.0;
+	private static final double USD_PER_PACK = 4.99;
+
 	public record Line(String name, double value) {
 	}
 
@@ -44,11 +51,19 @@ public final class NetworthBreakdown {
 	}
 
 	public List<PvTooltip.Line> tooltipStyledLines() {
+		return tooltipStyledLines(null);
+	}
+
+	public List<PvTooltip.Line> tooltipStyledLines(NetworthMode mode) {
 		List<PvTooltip.Line> lines = new ArrayList<>();
 		lines.add(new PvTooltip.Line(List.of(
 			PvTooltip.Span.of("Networth: ", PvDraw.COLOR_WHITE),
 			PvTooltip.Span.bold(FormatUtil.commas(Math.round(this.total)), PvDraw.COLOR_GOLD)
 		)));
+		if (mode != null) {
+			lines.add(PvTooltip.Line.of(mode.display(), PvDraw.COLOR_MUTED));
+		}
+		lines.add(PvTooltip.Line.of("", PvDraw.COLOR_MUTED));
 		for (Line line : this.categories) {
 			if (line.value() <= 0) {
 				continue;
@@ -57,16 +72,62 @@ public final class NetworthBreakdown {
 			String value = FormatUtil.commas(Math.round(line.value()));
 			lines.add(new PvTooltip.Line(List.of(
 				PvTooltip.Span.of(prefix, PvDraw.COLOR_WHITE),
-				PvTooltip.Span.bold(value, PvDraw.COLOR_GOLD)
+				PvTooltip.Span.of(value, PvDraw.COLOR_GOLD)
 			)));
 		}
 		if (!this.note.isBlank()) {
 			lines.add(PvTooltip.Line.of(this.note, PvDraw.COLOR_MUTED));
 		}
+		lines.add(PvTooltip.Line.of("", PvDraw.COLOR_MUTED));
+		lines.add(profileValueLine());
+		lines.add(PvTooltip.Line.of("(Price estimated with cookies)", PvDraw.COLOR_MUTED));
+		lines.add(PvTooltip.Line.of("I do not condone IRL Trading", PvDraw.COLOR_MUTED));
+		if (mode != null) {
+			lines.add(PvTooltip.Line.of("", PvDraw.COLOR_MUTED));
+			lines.add(PvTooltip.Line.of("Left click → " + mode.next().display(), PvDraw.COLOR_MUTED));
+			lines.add(PvTooltip.Line.of("Right click → " + mode.prev().display(), PvDraw.COLOR_MUTED));
+		}
 		return lines;
 	}
 
+	/**
+	 * NEU-style IRL estimate: networth → booster cookies (bazaar) → gems (325/cookie) → USD
+	 * via the 675-gem / $4.99 pack.
+	 */
+	private PvTooltip.Line profileValueLine() {
+		Double usd = profileValueUsd(this.total);
+		if (usd == null) {
+			return new PvTooltip.Line(List.of(
+				PvTooltip.Span.of("Profile Value: ", PvDraw.COLOR_MUTED),
+				PvTooltip.Span.of("—", 0xFFFF5555)
+			));
+		}
+		return new PvTooltip.Line(List.of(
+			PvTooltip.Span.of("Profile Value: ", PvDraw.COLOR_WHITE),
+			PvTooltip.Span.bold("$" + FormatUtil.commas(Math.round(usd)), 0xFF55FF55)
+		));
+	}
+
+	/** @return USD estimate, or null if cookie price unavailable */
+	public static Double profileValueUsd(double networthCoins) {
+		if (networthCoins <= 0) {
+			return 0.0;
+		}
+		double cookiePrice = ItemPricer.price("BOOSTER_COOKIE");
+		if (cookiePrice <= 0) {
+			return null;
+		}
+		double cookies = networthCoins / cookiePrice;
+		return (cookies * GEMS_PER_COOKIE / GEMS_PER_PACK) * USD_PER_PACK;
+	}
+
 	private static String title(String id) {
+		if ("storage".equalsIgnoreCase(id)) {
+			return "Backpacks";
+		}
+		if ("sacks_bag".equalsIgnoreCase(id)) {
+			return "Sacks Bag";
+		}
 		String[] parts = id.split("_");
 		StringBuilder out = new StringBuilder();
 		for (String part : parts) {

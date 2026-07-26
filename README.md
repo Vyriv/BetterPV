@@ -13,6 +13,7 @@ Use the buttons along the top to switch pages. When a page has categories, the b
 ## Credits
 - **[NotEnoughUpdates Repo](https://github.com/NotEnoughUpdates/NotEnoughUpdates-REPO)**: item data, leveling tables, and other SkyBlock reference data
 - **[SkyCofl](https://sky.coflnet.com/)**: auction history
+- **[EliteBot](https://elitebot.dev/)**: garden contests and farming weight
 
 ## Status
 Work in progress. Home, dungeons, inventories, pets, auctions, collections, and minions are in; more pages (garden, mining, and others) are still coming.

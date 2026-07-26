@@ -40,7 +40,7 @@ public final class WeightBreakdown {
 	}
 
 	public static WeightBreakdown empty(WeightSystem system) {
-		return new WeightBreakdown(system, 0, 0, "—", List.of());
+		return new WeightBreakdown(system, 0, 0, "-", List.of());
 	}
 
 	public WeightSystem system() {

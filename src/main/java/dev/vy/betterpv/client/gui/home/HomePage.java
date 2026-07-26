@@ -5,11 +5,13 @@ import dev.vy.betterpv.BetterPV;
 import dev.vy.betterpv.client.cosmetics.NameStyler;
 import dev.vy.betterpv.client.cosmetics.BetterPvCosmetics;
 import dev.vy.betterpv.client.data.FormatUtil;
+import dev.vy.betterpv.client.data.PlayerStatsSnapshot;
 import dev.vy.betterpv.client.data.ProfileSnapshot;
 import dev.vy.betterpv.client.gui.PlayerModelRenderer;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
 import dev.vy.betterpv.client.gui.SkyBlockLevelColors;
+import dev.vy.betterpv.client.gui.SkyBlockStats;
 import dev.vy.betterpv.client.networth.NetworthBreakdown;
 import dev.vy.betterpv.client.networth.NetworthMode;
 import dev.vy.betterpv.client.weight.WeightBreakdown;
@@ -34,8 +36,11 @@ public final class HomePage {
 	private static final int PAD = 6;
 	private static final int SKILL_ROWS = 5;
 	private static final int SLAYER_ROWS = 3;
+	private static final int FLIP_MS = 280;
+	private static final int PANEL_HOVER = 0x0AFFFFFF;
 
 	private ProfileSnapshot snapshot;
+	private PlayerStatsSnapshot playerStats = PlayerStatsSnapshot.empty();
 	private WeightBreakdown senither = WeightBreakdown.empty(WeightSystem.SENITHER);
 	private WeightBreakdown lily = WeightBreakdown.empty(WeightSystem.LILY);
 	private NetworthBreakdown networthNormal = NetworthBreakdown.empty("");
@@ -54,6 +59,14 @@ public final class HomePage {
 	private int networthHitY;
 	private int networthHitW;
 	private int networthHitH;
+	private int leftHitX;
+	private int leftHitY;
+	private int leftHitW;
+	private int leftHitH;
+	/** False = profile face, true = stats face. */
+	private boolean leftStatsFace;
+	private long leftFlipStartMs;
+	private boolean leftFlipTarget;
 	private final PlayerModelRenderer playerModel = new PlayerModelRenderer();
 	private ItemStack[] armor = new ItemStack[] {
 		ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY
@@ -75,6 +88,7 @@ public final class HomePage {
 		NetworthBreakdown networthUnsoulbound,
 		NetworthBreakdown networthUnsoulboundNonCosmetic,
 		ItemStack[] armor,
+		PlayerStatsSnapshot playerStats,
 		String error
 	) {
 		this.snapshot = snapshot;
@@ -87,11 +101,15 @@ public final class HomePage {
 		this.armor = armor == null
 			? new ItemStack[] { ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY }
 			: armor;
+		this.playerStats = playerStats == null ? PlayerStatsSnapshot.empty() : playerStats;
 		this.loadError = error;
 		invalidateLayoutCache();
 	}
 
 	public boolean clickWeight(double mouseX, double mouseY) {
+		if (showingLeftStatsFace()) {
+			return false;
+		}
 		if (mouseX >= this.weightHitX && mouseX < this.weightHitX + this.weightHitW
 			&& mouseY >= this.weightHitY && mouseY < this.weightHitY + this.weightHitH) {
 			this.weightSystem = this.weightSystem.other();
@@ -100,8 +118,25 @@ public final class HomePage {
 		return false;
 	}
 
+	/** Flip the left profile / stats panel. */
+	public boolean clickLeftPanel(double mouseX, double mouseY) {
+		if (mouseX < this.leftHitX || mouseX >= this.leftHitX + this.leftHitW
+			|| mouseY < this.leftHitY || mouseY >= this.leftHitY + this.leftHitH) {
+			return false;
+		}
+		if (this.leftFlipStartMs != 0L) {
+			return true;
+		}
+		this.leftFlipTarget = !this.leftStatsFace;
+		this.leftFlipStartMs = System.currentTimeMillis();
+		return true;
+	}
+
 	/** @param button GLFW mouse button (0 = left / next, 1 = right / prev) */
 	public boolean clickNetworth(double mouseX, double mouseY, int button) {
+		if (showingLeftStatsFace()) {
+			return false;
+		}
 		if (mouseX < this.networthHitX || mouseX >= this.networthHitX + this.networthHitW
 			|| mouseY < this.networthHitY || mouseY >= this.networthHitY + this.networthHitH) {
 			return false;
@@ -115,6 +150,14 @@ public final class HomePage {
 			return true;
 		}
 		return false;
+	}
+
+	private boolean showingLeftStatsFace() {
+		if (this.leftFlipStartMs != 0L) {
+			float progress = Math.min(1F, (System.currentTimeMillis() - this.leftFlipStartMs) / (float) FLIP_MS);
+			return progress < 0.5F ? this.leftStatsFace : this.leftFlipTarget;
+		}
+		return this.leftStatsFace;
 	}
 
 	private NetworthBreakdown activeNetworth() {
@@ -154,7 +197,8 @@ public final class HomePage {
 
 		List<String> tip = null;
 		List<PvTooltip.Line> styledTip = null;
-		if (mouseX >= this.weightHitX && mouseX < this.weightHitX + this.weightHitW
+		boolean onProfileFace = !showingLeftStatsFace();
+		if (onProfileFace && mouseX >= this.weightHitX && mouseX < this.weightHitX + this.weightHitW
 			&& mouseY >= this.weightHitY && mouseY < this.weightHitY + this.weightHitH) {
 			if (this.loadError != null && !this.loadError.isBlank()) {
 				styledTip = List.of(
@@ -164,7 +208,7 @@ public final class HomePage {
 			} else {
 				styledTip = activeWeight().tooltipStyledLines();
 			}
-		} else if (mouseX >= this.networthHitX && mouseX < this.networthHitX + this.networthHitW
+		} else if (onProfileFace && mouseX >= this.networthHitX && mouseX < this.networthHitX + this.networthHitW
 			&& mouseY >= this.networthHitY && mouseY < this.networthHitY + this.networthHitH) {
 			styledTip = activeNetworth().tooltipStyledLines(this.networthMode);
 		} else {
@@ -228,8 +272,67 @@ public final class HomePage {
 		int mouseX,
 		int mouseY
 	) {
-		PvDraw.innerPanel(g, x, y, w, h);
+		this.leftHitX = x;
+		this.leftHitY = y;
+		this.leftHitW = w;
+		this.leftHitH = h;
 
+		boolean hovered = mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + h;
+		float flipProgress = 0F;
+		boolean animating = this.leftFlipStartMs != 0L;
+		if (animating) {
+			flipProgress = Math.min(1F, (System.currentTimeMillis() - this.leftFlipStartMs) / (float) FLIP_MS);
+			if (flipProgress >= 1F) {
+				this.leftStatsFace = this.leftFlipTarget;
+				this.leftFlipStartMs = 0L;
+				animating = false;
+				flipProgress = 0F;
+			}
+		}
+		boolean showStats = animating
+			? (flipProgress < 0.5F ? this.leftStatsFace : this.leftFlipTarget)
+			: this.leftStatsFace;
+		float scaleX = 1F;
+		if (animating) {
+			scaleX = flipProgress < 0.5F
+				? 1F - flipProgress * 2F
+				: (flipProgress - 0.5F) * 2F;
+			scaleX = Math.max(0.02F, scaleX);
+		}
+
+		float cxFlip = x + w / 2F;
+		g.pose().pushMatrix();
+		g.pose().translate(cxFlip, y);
+		g.pose().scale(scaleX, 1F);
+		g.pose().translate(-cxFlip, -y);
+
+		PvDraw.innerPanel(g, x, y, w, h);
+		if (hovered && !animating) {
+			PvDraw.fill(g, x + 1, y + 1, w - 2, h - 2, PANEL_HOVER);
+		}
+
+		if (showStats) {
+			this.networthHitW = 0;
+			this.weightHitW = 0;
+			drawStatsFace(g, font, x, y, w, h);
+		} else {
+			drawProfileFace(g, font, x, y, w, h, layout, mouseX, mouseY);
+		}
+
+		g.pose().popMatrix();
+	}
+
+	private void drawProfileFace(
+		GuiGraphicsExtractor g,
+		Font font,
+		int x,
+		int y,
+		int w,
+		int h,
+		Layout layout,
+		int mouseX,
+		int mouseY
+	) {
 		int ty = y + PAD;
 		String nwLabel = Component.translatable("betterpv.home.networth_label").getString();
 		String weightLabel = Component.translatable("betterpv.home.weight_label").getString();
@@ -237,10 +340,10 @@ public final class HomePage {
 		String nwValue = activeNw.total() > 0
 			? FormatUtil.shortCoins(activeNw.total())
 			: (this.snapshot.networthText() == null || this.snapshot.networthText().isBlank()
-				? "—"
+				? "-"
 				: this.snapshot.networthText());
 		if (this.loadError != null && !this.loadError.isBlank() && activeNw.total() <= 0) {
-			nwValue = "—";
+			nwValue = "-";
 		}
 		String weightValue = this.weightSystem == WeightSystem.SENITHER
 			? FormatUtil.weight(this.senither.total())
@@ -249,7 +352,7 @@ public final class HomePage {
 			weightValue = "…";
 		}
 		if (this.loadError != null && !this.loadError.isBlank() && this.senither.total() <= 0 && this.lily.total() <= 0) {
-			weightValue = "—";
+			weightValue = "-";
 		}
 
 		int nwLabelW = font.width(nwLabel);
@@ -388,6 +491,69 @@ public final class HomePage {
 		double pct = this.snapshot.skyBlockProgress() * 100.0;
 		String xpHover = xp + "/100 (" + Math.round(pct) + "%)";
 		this.zones.add(new HoverZone(barX, ty - font.lineHeight - 2, barW, font.lineHeight + 2 + BAR_H + 2, xpHover));
+	}
+
+	private void drawStatsFace(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h) {
+		List<PlayerStatsSnapshot.Entry> entries = this.playerStats.entries();
+		if (entries.isEmpty()) {
+			PvDraw.textCentered(g, font, "No stats", x + w / 2, y + h / 2 - font.lineHeight / 2, PvDraw.COLOR_MUTED);
+			return;
+		}
+		int cols = 2;
+		int colGap = 8;
+		int colW = (w - PAD * 2 - colGap) / cols;
+		int symbolSlot = 0;
+		for (PlayerStatsSnapshot.Entry entry : entries) {
+			symbolSlot = Math.max(symbolSlot, font.width(SkyBlockStats.stat(entry.id()).symbol()));
+		}
+		symbolSlot = Math.max(symbolSlot, font.width("⚔"));
+		int labelGap = 3;
+		int rows = (entries.size() + cols - 1) / cols;
+		int rowH = font.lineHeight + 1;
+		int contentH = rows * rowH;
+		int availH = h - PAD * 2;
+		if (rows > 0 && contentH < availH) {
+			rowH = Math.max(rowH, availH / rows);
+			contentH = rows * rowH;
+		}
+		int ty = y + Math.max(PAD, (h - contentH) / 2);
+		for (int i = 0; i < entries.size(); i++) {
+			PlayerStatsSnapshot.Entry entry = entries.get(i);
+			int col = i % cols;
+			int row = i / cols;
+			int bx = x + PAD + col * (colW + colGap);
+			int by = ty + row * rowH;
+			SkyBlockStats.StatStyle style = SkyBlockStats.stat(entry.id());
+			String symbol = style.symbol();
+			int symW = font.width(symbol);
+			PvDraw.text(g, font, symbol, bx + (symbolSlot - symW) / 2, by, style.color());
+			PvDraw.text(g, font, entry.label(), bx + symbolSlot + labelGap, by, style.color());
+			String value = entry.present() ? formatStat(entry.value().getAsDouble()) : "-";
+			PvDraw.textRight(g, font, value, bx + colW, by, PvDraw.COLOR_WHITE);
+		}
+	}
+
+	/** Compact rounded stats: {@code 3908.7 → 3.9k}, {@code 469.5 → 470}, {@code 0.0 → 0}. */
+	private static String formatStat(double value) {
+		double abs = Math.abs(value);
+		if (abs >= 1_000_000_000L) {
+			return formatCompact(value / 1_000_000_000L, "b");
+		}
+		if (abs >= 1_000_000L) {
+			return formatCompact(value / 1_000_000L, "m");
+		}
+		if (abs >= 1_000L) {
+			return formatCompact(value / 1_000L, "k");
+		}
+		return String.valueOf(Math.round(value));
+	}
+
+	private static String formatCompact(double scaled, String suffix) {
+		double one = Math.round(scaled * 10.0) / 10.0;
+		if (Math.abs(one - Math.rint(one)) < 0.05) {
+			return ((long) Math.rint(one)) + suffix;
+		}
+		return String.format(java.util.Locale.US, "%.1f%s", one, suffix);
 	}
 
 	private void drawBarsColumn(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, Layout layout) {

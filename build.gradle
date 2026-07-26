@@ -132,6 +132,7 @@ java {
 }
 
 tasks.named("sourcesJar", Jar).configure {
+	dependsOn("generateWorkerSecrets")
 	exclude("**/WorkerSecrets.java")
 }
 

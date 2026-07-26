@@ -99,7 +99,7 @@ public final class NetworthBreakdown {
 		if (usd == null) {
 			return new PvTooltip.Line(List.of(
 				PvTooltip.Span.of("Profile Value: ", PvDraw.COLOR_MUTED),
-				PvTooltip.Span.of("—", 0xFFFF5555)
+				PvTooltip.Span.of("-", 0xFFFF5555)
 			));
 		}
 		return new PvTooltip.Line(List.of(

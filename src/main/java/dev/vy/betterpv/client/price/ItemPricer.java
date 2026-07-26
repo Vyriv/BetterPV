@@ -11,6 +11,7 @@ public final class ItemPricer {
 		AthenPriceCache.start();
 		SkyHelperPriceCache.start();
 		HypixelItemsCache.start();
+		HypixelCollectionsCache.start();
 	}
 
 	public static boolean isReady() {

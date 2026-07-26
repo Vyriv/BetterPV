@@ -9,15 +9,30 @@ import net.minecraft.network.chat.MutableComponent;
 
 /** Hypixel-style SkyBlock stat symbols / colours and power-stone name colours. */
 public final class SkyBlockStats {
-	private static final Map<String, StatStyle> STATS = Map.of(
-		"health", new StatStyle("❤", 0xFFFF5555),
-		"defense", new StatStyle("❈", 0xFF55FF55),
-		"walk_speed", new StatStyle("✦", 0xFFFFFFFF),
-		"strength", new StatStyle("❁", 0xFFFF5555),
-		"critical_damage", new StatStyle("☠", 0xFF5555FF),
-		"critical_chance", new StatStyle("☣", 0xFF5555FF),
-		"attack_speed", new StatStyle("⚔", 0xFFFFFF55),
-		"intelligence", new StatStyle("✎", 0xFF55FFFF)
+	private static final Map<String, StatStyle> STATS = Map.ofEntries(
+		Map.entry("health", new StatStyle("❤", 0xFFFF5555)),
+		Map.entry("defense", new StatStyle("❈", 0xFF55FF55)),
+		Map.entry("speed", new StatStyle("✦", 0xFFFFFFFF)),
+		Map.entry("walk_speed", new StatStyle("✦", 0xFFFFFFFF)),
+		Map.entry("strength", new StatStyle("❁", 0xFFFF5555)),
+		Map.entry("critical_damage", new StatStyle("☠", 0xFF5555FF)),
+		Map.entry("critical_chance", new StatStyle("☣", 0xFF5555FF)),
+		Map.entry("attack_speed", new StatStyle("⚔", 0xFFFFFF55)),
+		Map.entry("intelligence", new StatStyle("✎", 0xFF55FFFF)),
+		Map.entry("ferocity", new StatStyle("⫽", 0xFFFF5555)),
+		Map.entry("ability_damage", new StatStyle("๑", 0xFFFF5555)),
+		Map.entry("health_regen", new StatStyle("❣", 0xFFFF5555)),
+		Map.entry("vitality", new StatStyle("♥", 0xFFAA0000)),
+		Map.entry("magic_find", new StatStyle("✯", 0xFF55FFFF)),
+		Map.entry("pet_luck", new StatStyle("♣", 0xFFFF55FF)),
+		Map.entry("true_defense", new StatStyle("❂", 0xFFFFFFFF)),
+		Map.entry("mining_fortune", new StatStyle("☘", 0xFFFFAA00)),
+		Map.entry("farming_fortune", new StatStyle("☘", 0xFFFFAA00)),
+		Map.entry("foraging_fortune", new StatStyle("☘", 0xFFFFAA00)),
+		Map.entry("mining_speed", new StatStyle("⸕", 0xFFFFAA00)),
+		Map.entry("pristine", new StatStyle("✧", 0xFFAA00AA)),
+		Map.entry("sea_creature_chance", new StatStyle("α", 0xFF00AAAA)),
+		Map.entry("fishing_speed", new StatStyle("☂", 0xFF55FFFF))
 	);
 
 	/** Rough Hypixel/Maxwell power name colours. */
@@ -62,7 +77,7 @@ public final class SkyBlockStats {
 
 	public static Component powerName(String power) {
 		if (power == null || power.isBlank()) {
-			return PvDraw.styled("—", PvDraw.COLOR_MUTED, false);
+			return PvDraw.styled("-", PvDraw.COLOR_MUTED, false);
 		}
 		return PvDraw.styled(InventoryDecoder.prettyWords(power), powerColor(power), true);
 	}
@@ -87,7 +102,7 @@ public final class SkyBlockStats {
 	public static Component tuningStats(java.util.List<InventorySnapshot.StatPoint> stats) {
 		MutableComponent out = Component.empty();
 		if (stats == null || stats.isEmpty()) {
-			out.append(PvDraw.styled("—", PvDraw.COLOR_MUTED, false));
+			out.append(PvDraw.styled("-", PvDraw.COLOR_MUTED, false));
 			return out;
 		}
 		boolean first = true;

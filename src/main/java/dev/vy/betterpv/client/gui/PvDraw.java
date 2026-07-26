@@ -57,6 +57,19 @@ public final class PvDraw {
 		g.text(font, value, x, y, color, true);
 	}
 
+	/** Draw text scaled about its top-left corner (e.g. footer credits). */
+	public static void textScaled(GuiGraphicsExtractor g, Font font, String value, int x, int y, int color, float scale) {
+		if (scale == 1.0F) {
+			text(g, font, value, x, y, color);
+			return;
+		}
+		g.pose().pushMatrix();
+		g.pose().translate(x, y);
+		g.pose().scale(scale, scale);
+		g.text(font, value, 0, 0, color, true);
+		g.pose().popMatrix();
+	}
+
 	public static void text(GuiGraphicsExtractor g, Font font, Component value, int x, int y) {
 		g.text(font, value, x, y, COLOR_WHITE, true);
 	}
@@ -127,72 +140,147 @@ public final class PvDraw {
 		if (filled <= 0) {
 			return;
 		}
+		// Round the progressing edge only when fill covers the track; otherwise a mid-bar
+		// “pill tip” looks broken — especially on short fills like Social.
+		boolean roundRight = filled >= w;
 		if (MoulberryMode.isActive()) {
-			drawXpBarAnimatedGradient(g, x, y, filled, h);
+			drawXpBarAnimatedGradient(g, x, y, filled, h, roundRight);
 		} else if (maxedShiny) {
-			drawXpBarGradient(g, x, y, filled, h, COLOR_MAXED_BAR_LEFT, COLOR_MAXED_BAR_RIGHT);
+			drawXpBarGradient(g, x, y, filled, h, COLOR_MAXED_BAR_LEFT, COLOR_MAXED_BAR_RIGHT, roundRight);
 		} else {
-			drawXpBarTrack(g, x, y, filled, h, fillColor);
+			drawPillSolid(g, x, y, filled, h, fillColor, true, roundRight);
 		}
 	}
 
 	private static void drawXpBarTrack(GuiGraphicsExtractor g, int x, int y, int w, int h, int argb) {
+		drawPillSolid(g, x, y, w, h, argb, true, true);
+	}
+
+	private static void drawXpBarGradient(
+		GuiGraphicsExtractor g, int x, int y, int w, int h, int from, int to, boolean roundRight
+	) {
+		drawPillGradient(g, x, y, w, h, t -> lerpArgb(from, to, t), true, roundRight);
+	}
+
+	/** Scrolling HSV rainbow — tips sample the same t-map as the body so ends stay in sync. */
+	private static void drawXpBarAnimatedGradient(
+		GuiGraphicsExtractor g, int x, int y, int w, int h, boolean roundRight
+	) {
+		double time = System.currentTimeMillis() / 50.0D;
+		float offset = (float) positiveModulo(time * EASTER_EGG_SPEED, 1.0D);
+		final float span = 0.85F;
+		drawPillGradient(
+			g, x, y, w, h,
+			t -> rainbowArgb(positiveModulo(t * span + offset, 1.0F)),
+			true,
+			roundRight
+		);
+	}
+
+	@FunctionalInterface
+	private interface BarColorAt {
+		int at(float t);
+	}
+
+	/**
+	 * Mild rounded-rect ends for short XP bars (h≈6).
+	 * Only a 1px corner cut — a 2px “capsule tip” on a 6px bar reads as a point, not a curve.
+	 * Low fill widths still keep a soft left tip; the right tip is optional (flat progress edge).
+	 */
+	private static void drawPillSolid(
+		GuiGraphicsExtractor g, int x, int y, int w, int h, int argb, boolean roundLeft, boolean roundRight
+	) {
 		if (w <= 0 || h <= 0) {
 			return;
 		}
-		if (w <= 2 || h <= 2) {
+		if (h < 3) {
 			fill(g, x, y, w, h, argb);
 			return;
 		}
-		fill(g, x + 1, y, w - 2, h, argb);
-		fill(g, x, y + 1, 1, h - 2, argb);
-		fill(g, x + w - 1, y + 1, 1, h - 2, argb);
+		if (w == 1) {
+			fill(g, x, y + 1, 1, h - 2, argb);
+			return;
+		}
+		int leftInset = roundLeft ? 1 : 0;
+		int rightInset = roundRight ? 1 : 0;
+		int bodyW = w - leftInset - rightInset;
+		if (bodyW > 0) {
+			fill(g, x + leftInset, y, bodyW, h, argb);
+		}
+		if (roundLeft) {
+			fill(g, x, y + 1, 1, h - 2, argb);
+		}
+		if (roundRight) {
+			fill(g, x + w - 1, y + 1, 1, h - 2, argb);
+		}
 	}
 
-	private static void drawXpBarGradient(GuiGraphicsExtractor g, int x, int y, int w, int h, int from, int to) {
+	/**
+	 * Gradient / rainbow with the same 1px rounded ends. Cap colours use the bar’s t at that
+	 * pixel so rainbow tips stay in sync with the fill.
+	 */
+	private static void drawPillGradient(
+		GuiGraphicsExtractor g,
+		int x,
+		int y,
+		int w,
+		int h,
+		BarColorAt colorAt,
+		boolean roundLeft,
+		boolean roundRight
+	) {
 		if (w <= 0 || h <= 0) {
 			return;
 		}
-		if (w <= 2 || h <= 2) {
-			fill(g, x, y, w, h, from);
+		if (h < 3) {
+			fill(g, x, y, w, h, colorAt.at(0.5F));
 			return;
 		}
-		// Segmented fill instead of 1px columns - much cheaper with many maxed bars.
-		int segments = Math.min(w - 2, 12);
-		int inner = w - 2;
-		for (int s = 0; s < segments; s++) {
-			int x0 = x + 1 + s * inner / segments;
-			int x1 = x + 1 + (s + 1) * inner / segments;
-			float t = segments <= 1 ? 0F : (float) s / (float) (segments - 1);
-			fill(g, x0, y, Math.max(1, x1 - x0), h, lerpArgb(from, to, t));
+
+		java.util.function.IntUnaryOperator atPx = px -> {
+			float t = w <= 1 ? 0F : (float) px / (float) (w - 1);
+			return colorAt.at(t);
+		};
+
+		if (w == 1) {
+			fill(g, x, y + 1, 1, h - 2, atPx.applyAsInt(0));
+			return;
 		}
-		fill(g, x, y + 1, 1, h - 2, from);
-		fill(g, x + w - 1, y + 1, 1, h - 2, to);
+
+		int fromCol = roundLeft ? 1 : 0;
+		int toCol = roundRight ? w - 1 : w;
+		if (roundLeft) {
+			fill(g, x, y + 1, 1, h - 2, atPx.applyAsInt(0));
+		}
+		if (roundRight) {
+			fill(g, x + w - 1, y + 1, 1, h - 2, atPx.applyAsInt(w - 1));
+		}
+		fillGradientSpan(g, x, y, w, h, fromCol, toCol, colorAt);
 	}
 
-	/** Scrolling HSV rainbow fill — unmistakable vs normal / maxed bars. */
-	private static void drawXpBarAnimatedGradient(GuiGraphicsExtractor g, int x, int y, int w, int h) {
-		if (w <= 0 || h <= 0) {
+	/** Horizontal gradient across [x+fromCol, x+toCol). Plenty of segments, still far cheaper than per-pixel. */
+	private static void fillGradientSpan(
+		GuiGraphicsExtractor g,
+		int barX,
+		int y,
+		int barW,
+		int h,
+		int fromCol,
+		int toCol,
+		BarColorAt colorAt
+	) {
+		int span = toCol - fromCol;
+		if (span <= 0) {
 			return;
 		}
-		if (w <= 2 || h <= 2) {
-			fill(g, x, y, w, h, rainbowArgb(0F));
-			return;
-		}
-		int segments = Math.min(Math.max(w - 2, 1), 32);
-		int inner = w - 2;
-		double time = System.currentTimeMillis() / 50.0D;
-		float offset = (float) positiveModulo(time * EASTER_EGG_SPEED, 1.0D);
-		int left = rainbowArgb(offset);
-		int right = rainbowArgb(positiveModulo(offset + 0.45F, 1.0F));
+		int segments = Math.min(span, 64);
 		for (int s = 0; s < segments; s++) {
-			int x0 = x + 1 + s * inner / segments;
-			int x1 = x + 1 + (s + 1) * inner / segments;
-			float t = segments <= 1 ? 0F : (float) s / (float) (segments - 1);
-			fill(g, x0, y, Math.max(1, x1 - x0), h, rainbowArgb(positiveModulo(t * 0.85F + offset, 1.0F)));
+			int x0 = barX + fromCol + s * span / segments;
+			int x1 = barX + fromCol + (s + 1) * span / segments;
+			int midPx = Math.max(0, Math.min(barW - 1, (x0 + x1 - 1) / 2 - barX));
+			float t = barW <= 1 ? 0F : (float) midPx / (float) (barW - 1);
+			fill(g, x0, y, Math.max(1, x1 - x0), h, colorAt.at(t));
 		}
-		fill(g, x, y + 1, 1, h - 2, left);
-		fill(g, x + w - 1, y + 1, 1, h - 2, right);
 	}
 
 	/** Hue wheel colour; blends toward cosmetics purple so it still nods to the name gradient. */

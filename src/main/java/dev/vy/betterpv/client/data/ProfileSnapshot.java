@@ -113,7 +113,7 @@ public final class ProfileSnapshot {
 			slayer("spider", "Tarantula"), slayer("blaze", "Blaze"),
 			slayer("wolf", "Sven"), slayer("vampire", "Vampire")
 		);
-		return new ProfileSnapshot(player, null, "…", 0, 0, "…", "—", skills, slayers, entry("social", "Social"));
+		return new ProfileSnapshot(player, null, "…", 0, 0, "…", "-", skills, slayers, entry("social", "Social"));
 	}
 
 	private static SkillEntry entry(String id, String name) {

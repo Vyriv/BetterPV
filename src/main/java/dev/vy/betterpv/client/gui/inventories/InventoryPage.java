@@ -240,7 +240,7 @@ public final class InventoryPage {
 		MutableComponent tune = Component.empty();
 		tune.append(PvDraw.styled("Tuning ", PvDraw.COLOR_MUTED, false));
 		if (info.tunings().isEmpty()) {
-			tune.append(PvDraw.styled("—", PvDraw.COLOR_MUTED, false));
+			tune.append(PvDraw.styled("-", PvDraw.COLOR_MUTED, false));
 		} else {
 			boolean first = true;
 			for (InventorySnapshot.TuningTemplate template : info.tunings()) {
@@ -326,7 +326,7 @@ public final class InventoryPage {
 		if (loadout.pet() == null || loadout.pet().isEmpty()) {
 			g.item(new ItemStack(Items.BONE), metaX + 1, my + 1);
 		}
-		String petText = loadout.petLabel().isBlank() ? "—" : loadout.petLabel();
+		String petText = loadout.petLabel().isBlank() ? "-" : loadout.petLabel();
 		int petColor = PvDraw.COLOR_TEXT;
 		if (loadout.pet() != null && !loadout.pet().isEmpty()) {
 			String tier = SkyBlockItemFactory.resolveTier(loadout.pet().id());

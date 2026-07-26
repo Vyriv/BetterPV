@@ -55,6 +55,6 @@ public final class BetterPVClient implements ClientModInitializer {
 		});
 
 		ClientTickEvents.END_CLIENT_TICK.register(ProfileViewerOpener::tick);
-		BetterPV.LOGGER.info("BetterPV client ready — /pv");
+		BetterPV.LOGGER.info("BetterPV client ready - /pv");
 	}
 }

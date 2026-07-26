@@ -1,9 +1,15 @@
 package dev.vy.betterpv.client.gui;
 
+import dev.vy.betterpv.client.api.EliteBotApiClient;
+import dev.vy.betterpv.client.api.HypixelApiClient;
 import dev.vy.betterpv.client.api.ProfileFetcher;
+import dev.vy.betterpv.client.data.GardenSnapshot;
+import dev.vy.betterpv.client.data.PlayerStatsSnapshot;
 import dev.vy.betterpv.client.data.ProfileSnapshot;
 import dev.vy.betterpv.client.gui.auctions.AuctionPage;
+import dev.vy.betterpv.client.gui.collections.CollectionsPage;
 import dev.vy.betterpv.client.gui.dungeons.DungeonPage;
+import dev.vy.betterpv.client.gui.garden.GardenPage;
 import dev.vy.betterpv.client.gui.home.HomePage;
 import dev.vy.betterpv.client.gui.inventories.InventoryPage;
 import dev.vy.betterpv.client.gui.nav.IconButtonBar;
@@ -20,6 +26,7 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.EditBox;
@@ -43,6 +50,8 @@ public final class ProfileViewerScreen extends Screen {
 	private final InventoryPage inventoryPage = new InventoryPage();
 	private final PetsPage petsPage = new PetsPage();
 	private final AuctionPage auctionPage = new AuctionPage();
+	private final CollectionsPage collectionsPage = new CollectionsPage();
+	private final GardenPage gardenPage = new GardenPage();
 	private final IconButtonBar topBar = new IconButtonBar();
 	private final IconButtonBar sideBar = new IconButtonBar();
 	private final IconButtonBar inventoryBar = new IconButtonBar();
@@ -51,6 +60,11 @@ public final class ProfileViewerScreen extends Screen {
 	private PvTab tab = PvTab.HOME;
 	private MuseumSort museumSort = MuseumSort.COMBAT;
 	private boolean fetchStarted;
+	private String profileId;
+	private UUID playerUuid;
+	private boolean gardenFetchStarted;
+	private boolean gardenContestsFetchStarted;
+	private boolean gardenWeightFetchStarted;
 	private EditBox inventorySearch;
 	private String inventorySearchQuery = "";
 
@@ -114,6 +128,7 @@ public final class ProfileViewerScreen extends Screen {
 						NetworthBreakdown.empty("Fetch failed"),
 						NetworthBreakdown.empty("Fetch failed"),
 						new ItemStack[] { ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY },
+						PlayerStatsSnapshot.empty(),
 						error == null ? "Fetch failed" : (error.getMessage() == null ? error.toString() : error.getMessage())
 					);
 					return;
@@ -127,12 +142,20 @@ public final class ProfileViewerScreen extends Screen {
 					loaded.networthUnsoulbound(),
 					loaded.networthUnsoulboundNonCosmetic(),
 					loaded.armor(),
+					loaded.playerStats(),
 					loaded.error()
 				);
 				this.dungeonPage.apply(loaded.dungeons());
 				this.inventoryPage.apply(loaded.inventories());
 				this.petsPage.apply(loaded.pets());
 				this.auctionPage.apply(loaded.auctions());
+				this.collectionsPage.apply(loaded.collections());
+				this.gardenPage.apply(loaded.garden());
+				this.profileId = loaded.profileId();
+				this.playerUuid = loaded.snapshot() == null ? null : loaded.snapshot().playerUuid();
+				this.gardenFetchStarted = false;
+				this.gardenContestsFetchStarted = false;
+				this.gardenWeightFetchStarted = false;
 			});
 		});
 	}
@@ -242,6 +265,27 @@ public final class ProfileViewerScreen extends Screen {
 			this.dungeonPage.blurField();
 			PvSubTab sub = this.subSelection.getOrDefault(this.tab, PvSubTab.AUCTION_STATS);
 			this.auctionPage.render(g, this.font, sub, x, y, w, h, mouseX, mouseY, this.width, this.height);
+			return;
+		}
+
+		if (this.tab == PvTab.COLLECTIONS) {
+			hideInventorySearch();
+			this.dungeonPage.blurField();
+			PvSubTab sub = this.subSelection.getOrDefault(this.tab, PvSubTab.COLLECTIONS_LIST);
+			this.collectionsPage.render(g, this.font, sub, x, y, w, h, mouseX, mouseY, this.width, this.height);
+			return;
+		}
+
+		if (this.tab == PvTab.GARDEN) {
+			hideInventorySearch();
+			this.dungeonPage.blurField();
+			ensureGardenIsland();
+			ensureGardenWeight();
+			PvSubTab sub = this.subSelection.getOrDefault(this.tab, PvSubTab.GARDEN_OVERVIEW);
+			if (sub == PvSubTab.GARDEN_JACOB) {
+				ensureGardenContests();
+			}
+			this.gardenPage.render(g, this.font, sub, x, y, w, h, mouseX, mouseY, this.width, this.height);
 			return;
 		}
 
@@ -408,6 +452,10 @@ public final class ProfileViewerScreen extends Screen {
 			&& this.auctionPage.mouseClicked(mx, my, this.subSelection.getOrDefault(this.tab, PvSubTab.AUCTION_STATS))) {
 			return true;
 		}
+		if (this.tab == PvTab.COLLECTIONS
+			&& this.collectionsPage.mouseClicked(mx, my, this.subSelection.getOrDefault(this.tab, PvSubTab.COLLECTIONS_LIST))) {
+			return true;
+		}
 		if (this.tab.isInventorySplit() && this.inventoryPage.mouseClicked(mx, my)) {
 			return true;
 		}
@@ -418,6 +466,9 @@ public final class ProfileViewerScreen extends Screen {
 			return true;
 		}
 		if (this.tab == PvTab.HOME && this.homePage.clickNetworth(mx, my, click.button())) {
+			return true;
+		}
+		if (this.tab == PvTab.HOME && this.homePage.clickLeftPanel(mx, my)) {
 			return true;
 		}
 		return super.mouseClicked(click, doubled);
@@ -434,10 +485,174 @@ public final class ProfileViewerScreen extends Screen {
 		if (this.tab == PvTab.AUCTIONS && this.auctionPage.mouseScrolled(mouseX, mouseY, scrollY)) {
 			return true;
 		}
+		if (this.tab == PvTab.COLLECTIONS
+			&& this.collectionsPage.mouseScrolled(
+				mouseX,
+				mouseY,
+				scrollY,
+				this.subSelection.getOrDefault(this.tab, PvSubTab.COLLECTIONS_LIST)
+			)) {
+			return true;
+		}
+		if (this.tab == PvTab.GARDEN
+			&& this.gardenPage.mouseScrolled(
+				mouseX,
+				mouseY,
+				scrollY,
+				this.subSelection.getOrDefault(this.tab, PvSubTab.GARDEN_OVERVIEW)
+			)) {
+			return true;
+		}
 		if (this.tab.isInventorySplit() && this.inventoryPage.mouseScrolled(scrollY)) {
 			return true;
 		}
 		return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+	}
+
+	private void ensureGardenIsland() {
+		if (this.gardenFetchStarted) {
+			return;
+		}
+		GardenSnapshot current = this.gardenPage.snapshot();
+		if (current.islandLoaded()) {
+			return;
+		}
+		String id = this.profileId;
+		if (id == null || id.isBlank()) {
+			this.gardenPage.apply(current.withIslandError("Missing profile id"));
+			this.gardenFetchStarted = true;
+			return;
+		}
+		this.gardenFetchStarted = true;
+		this.gardenPage.apply(current.withIslandLoading());
+		HypixelApiClient.skyblockGarden(id).whenComplete((opt, error) -> {
+			Minecraft client = Minecraft.getInstance();
+			if (client == null) {
+				return;
+			}
+			client.execute(() -> {
+				if (client.screen != this) {
+					return;
+				}
+				GardenSnapshot base = this.gardenPage.snapshot();
+				if (error != null) {
+					BetterPV.LOGGER.warn("Garden fetch failed for profile {}", id, error);
+					this.gardenPage.apply(base.withIslandError(
+						error.getMessage() == null ? "Garden fetch failed" : error.getMessage()
+					));
+					return;
+				}
+				if (opt == null || opt.isEmpty()) {
+					this.gardenPage.apply(base.withIslandError("Garden unavailable"));
+					return;
+				}
+				try {
+					this.gardenPage.apply(base.withIsland(opt.get()));
+				} catch (Exception exception) {
+					BetterPV.LOGGER.warn("Garden parse failed for profile {}", id, exception);
+					this.gardenPage.apply(base.withIslandError("Garden parse failed"));
+				}
+			});
+		});
+	}
+
+	private void ensureGardenContests() {
+		if (this.gardenContestsFetchStarted) {
+			return;
+		}
+		GardenSnapshot current = this.gardenPage.snapshot();
+		UUID uuid = this.playerUuid;
+		String id = this.profileId;
+		if (uuid == null || id == null || id.isBlank()) {
+			this.gardenPage.apply(current.withContestsError("Missing profile id"));
+			this.gardenContestsFetchStarted = true;
+			return;
+		}
+		this.gardenContestsFetchStarted = true;
+		this.gardenPage.apply(current.withContestsLoading());
+		EliteBotApiClient.contests(uuid, id).whenComplete((opt, error) -> {
+			Minecraft client = Minecraft.getInstance();
+			if (client == null) {
+				return;
+			}
+			client.execute(() -> {
+				if (client.screen != this) {
+					return;
+				}
+				GardenSnapshot base = this.gardenPage.snapshot();
+				if (error != null) {
+					BetterPV.LOGGER.warn("Elite contests failed for {}", id, error);
+					if (!base.contests().isEmpty()) {
+						this.gardenPage.patch(base.withContestsReady());
+					} else {
+						this.gardenPage.patch(base.withContestsError(
+							error.getMessage() == null ? "Contests unavailable" : error.getMessage()
+						));
+					}
+					return;
+				}
+				if (opt == null || opt.isEmpty()) {
+					// Keep Hypixel contest list if Elite miss.
+					if (!base.contests().isEmpty()) {
+						this.gardenPage.patch(base.withContestsReady());
+					} else {
+						this.gardenPage.patch(base.withContestsError("Contests unavailable"));
+					}
+					return;
+				}
+				try {
+					this.gardenPage.patch(base.withEliteContests(opt.get()));
+				} catch (Exception exception) {
+					BetterPV.LOGGER.warn("Elite contests parse failed for {}", id, exception);
+					this.gardenPage.patch(base.withContestsError("Contest parse failed"));
+				}
+			});
+		});
+	}
+
+	private void ensureGardenWeight() {
+		if (this.gardenWeightFetchStarted) {
+			return;
+		}
+		GardenSnapshot current = this.gardenPage.snapshot();
+		UUID uuid = this.playerUuid;
+		String id = this.profileId;
+		if (uuid == null || id == null || id.isBlank()) {
+			this.gardenPage.apply(current.withFarmingWeight(GardenSnapshot.FarmingWeightInfo.failed("Missing profile id")));
+			this.gardenWeightFetchStarted = true;
+			return;
+		}
+		this.gardenWeightFetchStarted = true;
+		this.gardenPage.patch(current.withFarmingWeight(GardenSnapshot.FarmingWeightInfo.pending()));
+		EliteBotApiClient.weight(uuid, id).whenComplete((opt, error) -> {
+			Minecraft client = Minecraft.getInstance();
+			if (client == null) {
+				return;
+			}
+			client.execute(() -> {
+				if (client.screen != this) {
+					return;
+				}
+				GardenSnapshot base = this.gardenPage.snapshot();
+				if (error != null) {
+					BetterPV.LOGGER.warn("Elite weight failed for {}", id, error);
+					this.gardenPage.patch(base.withFarmingWeight(GardenSnapshot.FarmingWeightInfo.failed(
+						error.getMessage() == null ? "Weight unavailable" : error.getMessage()
+					)));
+					return;
+				}
+				if (opt == null || opt.isEmpty()) {
+					this.gardenPage.patch(base.withFarmingWeight(GardenSnapshot.FarmingWeightInfo.failed("Weight unavailable")));
+					return;
+				}
+				try {
+					this.gardenPage.patch(base.withFarmingWeight(GardenSnapshot.FarmingWeightInfo.fromElite(opt.get())));
+				} catch (Exception exception) {
+					BetterPV.LOGGER.warn("Elite weight parse failed for {}", id, exception);
+					this.gardenPage.patch(base.withFarmingWeight(GardenSnapshot.FarmingWeightInfo.failed("Weight parse failed")));
+				}
+			});
+		});
 	}
 
 	@Override

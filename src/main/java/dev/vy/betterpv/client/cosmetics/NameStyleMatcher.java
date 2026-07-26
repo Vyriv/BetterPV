@@ -26,10 +26,11 @@ final class NameStyleMatcher {
 		PlayerCustomizationRegistry.NameCandidate bestCandidate = null;
 
 		for (PlayerCustomizationRegistry.NameCandidate candidate : candidates) {
-			String needle = candidate.value();
-			if (needle == null || needle.isEmpty()) {
+			String needleRaw = candidate.value();
+			if (needleRaw == null || needleRaw.isEmpty()) {
 				continue;
 			}
+			String needle = needleRaw.toLowerCase(Locale.ROOT);
 			if (text.length() - from < needle.length()) {
 				continue;
 			}
@@ -54,7 +55,12 @@ final class NameStyleMatcher {
 		if (bestCandidate == null) {
 			return null;
 		}
-		return new MatchedCustomization(bestIndex, bestCandidate.value(), bestCandidate.customization());
+		// Keep the in-text casing length; candidate.value() may differ in case only.
+		return new MatchedCustomization(
+			bestIndex,
+			text.substring(bestIndex, bestIndex + bestCandidate.value().length()),
+			bestCandidate.customization()
+		);
 	}
 
 	private static boolean isNameBoundary(String text, int start, int endExclusive) {

@@ -68,7 +68,7 @@ public final class ClassXpCalculator {
 		float targetXp = CataXpMath.xpForLevel(target);
 
 		if (data.classes().isEmpty()) {
-			return new AverageResult(target, "—", 0L, List.of(), mods, false);
+			return new AverageResult(target, "-", 0L, List.of(), mods, false);
 		}
 
 		FloorPick floor = pickBestFloor(data);
@@ -77,7 +77,7 @@ public final class ClassXpCalculator {
 			for (DungeonSnapshot.ClassEntry clazz : data.classes()) {
 				empty.add(new ClassRuns(clazz.id(), ClassLevelQuery.displayName(clazz.id()), clazz.level(), 0L));
 			}
-			return new AverageResult(target, "—", 0L, List.copyOf(empty), mods, false);
+			return new AverageResult(target, "-", 0L, List.copyOf(empty), mods, false);
 		}
 
 		Map<String, Double> remaining = new LinkedHashMap<>();

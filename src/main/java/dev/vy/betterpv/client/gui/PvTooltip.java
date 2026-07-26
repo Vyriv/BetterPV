@@ -4,6 +4,7 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
+import java.util.ArrayList;
 import java.util.List;
 
 public final class PvTooltip {
@@ -34,12 +35,29 @@ public final class PvTooltip {
 			return of(text, PvDraw.COLOR_TEXT);
 		}
 
+		/** Empty row used as section spacing. */
+		public static Line blank() {
+			return new Line(List.of());
+		}
+
 		public Component toComponent() {
 			MutableComponent out = Component.empty();
 			for (Span span : this.spans) {
 				out.append(span.toComponent());
 			}
 			return out;
+		}
+
+		public boolean isBlank() {
+			if (this.spans == null || this.spans.isEmpty()) {
+				return true;
+			}
+			for (Span span : this.spans) {
+				if (span.text() != null && !span.text().isEmpty()) {
+					return false;
+				}
+			}
+			return true;
 		}
 	}
 
@@ -123,18 +141,27 @@ public final class PvTooltip {
 		if (lines == null || lines.isEmpty()) {
 			return;
 		}
-		int pad = 6;
-		int lineH = font.lineHeight + 2;
-		List<Component> rendered = lines.stream().map(Line::toComponent).toList();
+		int pad = 8;
+		int lineH = font.lineHeight + 3;
+		int blankH = Math.max(4, font.lineHeight / 2);
+		List<Component> rendered = new ArrayList<>(lines.size());
+		List<Integer> heights = new ArrayList<>(lines.size());
 		int width = 0;
-		for (Component line : rendered) {
-			width = Math.max(width, Math.max(8, font.width(line)));
+		int boxH = pad * 2;
+		for (Line line : lines) {
+			Component component = line.toComponent();
+			rendered.add(component);
+			int h = line.isBlank() ? blankH : lineH;
+			heights.add(h);
+			boxH += h;
+			if (!line.isBlank()) {
+				width = Math.max(width, Math.max(8, font.width(component)));
+			}
 		}
 		int boxW = width + pad * 2;
-		int boxH = rendered.size() * lineH + pad * 2;
 		int x = mouseX + 12;
 		int y = mouseY - 12;
-		drawBox(g, font, rendered, x, y, boxW, boxH, pad, lineH, screenW, screenH);
+		drawBox(g, font, rendered, heights, x, y, boxW, boxH, pad, screenW, screenH);
 	}
 
 	/** Center a single-line tip horizontally above {@code (cx, topY)}. */
@@ -194,6 +221,26 @@ public final class PvTooltip {
 		int screenW,
 		int screenH
 	) {
+		List<Integer> heights = new ArrayList<>(rendered.size());
+		for (int i = 0; i < rendered.size(); i++) {
+			heights.add(lineH);
+		}
+		drawBox(g, font, rendered, heights, x, y, boxW, boxH, pad, screenW, screenH);
+	}
+
+	private static void drawBox(
+		GuiGraphicsExtractor g,
+		Font font,
+		List<Component> rendered,
+		List<Integer> heights,
+		int x,
+		int y,
+		int boxW,
+		int boxH,
+		int pad,
+		int screenW,
+		int screenH
+	) {
 		if (x + boxW > screenW - 4) {
 			x = screenW - boxW - 4;
 		}
@@ -209,11 +256,12 @@ public final class PvTooltip {
 		PvDraw.fill(g, x, y, boxW, boxH, 0xF0101018);
 		g.outline(x, y, boxW, boxH, PvDraw.COLOR_BORDER);
 		int ty = y + pad;
-		for (Component line : rendered) {
+		for (int i = 0; i < rendered.size(); i++) {
+			Component line = rendered.get(i);
 			if (!line.getString().isEmpty()) {
 				PvDraw.text(g, font, line, x + pad, ty);
 			}
-			ty += lineH;
+			ty += heights.get(i);
 		}
 	}
 }

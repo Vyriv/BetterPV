@@ -15,6 +15,6 @@ Use the buttons along the top to switch pages. When a page has categories, the b
 - **[SkyCofl](https://sky.coflnet.com/)**: auction history
 
 ## Status
-Work in progress. Home, dungeons, inventories, pets, and auctions are in; more pages (collections, garden, mining, and others) are still coming.
+Work in progress. Home, dungeons, inventories, pets, auctions, collections, and minions are in; more pages (garden, mining, and others) are still coming.
 
 Fabric 26.1.2 · Client-side

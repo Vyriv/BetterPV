@@ -4,11 +4,16 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import dev.vy.betterpv.client.data.AuctionSnapshot;
+import dev.vy.betterpv.client.data.CollectionSnapshot;
 import dev.vy.betterpv.client.data.DungeonSnapshot;
 import dev.vy.betterpv.client.data.FormatUtil;
+import dev.vy.betterpv.client.data.GardenData;
+import dev.vy.betterpv.client.data.GardenSnapshot;
 import dev.vy.betterpv.client.data.InventorySnapshot;
 import dev.vy.betterpv.client.data.Leveling;
 import dev.vy.betterpv.client.data.PetSnapshot;
+import dev.vy.betterpv.client.data.PlayerStatsCalculator;
+import dev.vy.betterpv.client.data.PlayerStatsSnapshot;
 import dev.vy.betterpv.client.data.ProfileSnapshot;
 import dev.vy.betterpv.client.data.RepoData;
 import dev.vy.betterpv.client.dungeons.CataXpMath;
@@ -63,6 +68,9 @@ public final class ProfileFetcher {
 		InventorySnapshot inventories,
 		PetSnapshot pets,
 		AuctionSnapshot auctions,
+		CollectionSnapshot collections,
+		GardenSnapshot garden,
+		String profileId,
 		WeightBreakdown senither,
 		WeightBreakdown lily,
 		NetworthBreakdown networthNormal,
@@ -70,6 +78,7 @@ public final class ProfileFetcher {
 		NetworthBreakdown networthUnsoulbound,
 		NetworthBreakdown networthUnsoulboundNonCosmetic,
 		ItemStack[] armor,
+		PlayerStatsSnapshot playerStats,
 		String error
 	) {
 		public boolean ok() {
@@ -92,6 +101,7 @@ public final class ProfileFetcher {
 	public static CompletableFuture<LoadedProfile> fetch(String playerName) {
 		RepoData.ensureLoaded();
 		DungeonXpData.ensureLoaded();
+		GardenData.ensureLoaded();
 		if (!HypixelApiClient.canFetch()) {
 			return CompletableFuture.completedFuture(new LoadedProfile(
 				ProfileSnapshot.loading(playerName),
@@ -99,6 +109,9 @@ public final class ProfileFetcher {
 				InventorySnapshot.empty(),
 				PetSnapshot.empty(),
 				AuctionSnapshot.empty(),
+				CollectionSnapshot.empty(),
+				GardenSnapshot.empty(),
+				null,
 				WeightBreakdown.empty(dev.vy.betterpv.client.weight.WeightSystem.SENITHER),
 				WeightBreakdown.empty(dev.vy.betterpv.client.weight.WeightSystem.LILY),
 				NetworthBreakdown.empty("API unavailable"),
@@ -106,6 +119,7 @@ public final class ProfileFetcher {
 				NetworthBreakdown.empty("API unavailable"),
 				NetworthBreakdown.empty("API unavailable"),
 				emptyArmor(),
+				PlayerStatsSnapshot.empty(),
 				"API unavailable"
 			));
 		}
@@ -232,6 +246,9 @@ public final class ProfileFetcher {
 			InventorySnapshot.empty(),
 			PetSnapshot.empty(),
 			AuctionSnapshot.empty(),
+			CollectionSnapshot.empty(),
+			GardenSnapshot.empty(),
+			null,
 			WeightBreakdown.empty(dev.vy.betterpv.client.weight.WeightSystem.SENITHER),
 			WeightBreakdown.empty(dev.vy.betterpv.client.weight.WeightSystem.LILY),
 			NetworthBreakdown.empty(error),
@@ -239,6 +256,7 @@ public final class ProfileFetcher {
 			NetworthBreakdown.empty(error),
 			NetworthBreakdown.empty(error),
 			emptyArmor(),
+			PlayerStatsSnapshot.empty(),
 			error
 		);
 	}
@@ -381,7 +399,7 @@ public final class ProfileFetcher {
 
 		String nwText = networthNormal.total() > 0
 			? FormatUtil.shortCoins(networthNormal.total())
-			: "—";
+			: "-";
 
 		ProfileSnapshot snapshot = new ProfileSnapshot(
 			name,
@@ -413,15 +431,33 @@ public final class ProfileFetcher {
 			BetterPV.LOGGER.warn("Pets decode failed for {}", name, exception);
 			pets = PetSnapshot.empty();
 		}
+		CollectionSnapshot collections;
+		try {
+			collections = CollectionSnapshot.fromProfile(members, uuid, name);
+		} catch (Exception exception) {
+			BetterPV.LOGGER.warn("Collections decode failed for {}", name, exception);
+			collections = CollectionSnapshot.empty();
+		}
+		GardenSnapshot garden;
+		try {
+			garden = GardenSnapshot.fromMember(member);
+		} catch (Exception exception) {
+			BetterPV.LOGGER.warn("Garden member parse failed for {}", name, exception);
+			garden = GardenSnapshot.empty();
+		}
 		BetterPV.LOGGER.info("Profile ready for {} (nw={})", name, nwText);
 		AuctionSnapshot auctionSnapshot = auctions == null ? AuctionSnapshot.empty() : auctions;
 		auctionSnapshot = auctionSnapshot.withStats(AuctionSnapshot.Stats.fromMember(member));
+		PlayerStatsSnapshot playerStats = PlayerStatsCalculator.fromMember(member, inventoryCategories);
 		return new LoadedProfile(
 			snapshot,
 			dungeons,
 			inventories,
 			pets,
 			auctionSnapshot,
+			collections,
+			garden,
+			profileId,
 			senither,
 			lily,
 			networthNormal,
@@ -429,6 +465,7 @@ public final class ProfileFetcher {
 			networthUnsoulbound,
 			networthUnsoulboundNonCosmetic,
 			ArmorStacks.fromMember(member),
+			playerStats,
 			null
 		);
 	}

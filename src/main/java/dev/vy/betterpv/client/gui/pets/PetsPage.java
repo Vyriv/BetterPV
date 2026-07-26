@@ -325,7 +325,7 @@ public final class PetsPage {
 			g,
 			font,
 			"Networth",
-			pet.networth() > 0 ? FormatUtil.shortCoins(pet.networth()) : "—",
+			pet.networth() > 0 ? FormatUtil.shortCoins(pet.networth()) : "-",
 			cx,
 			cy,
 			contentW,

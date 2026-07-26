@@ -181,9 +181,6 @@ public final class NameStyler {
 		checkRegistryVersion();
 		if (candidatesForKind(kind).isEmpty()) return message;
 
-		Component identityCached = identityCache.get(message);
-		if (identityCached != null) return identityCached;
-
 		List<StyledRun> runs = collectRuns(message);
 		String plain = runsToPlain(runs);
 		if (plain.isEmpty()) {
@@ -191,18 +188,29 @@ public final class NameStyler {
 			return message;
 		}
 
-		long frame = hasAnimatedGradientMatch(plain, candidatesForKind(kind)) ? currentAnimationFrameIndex(currentAnimationTime()) : Long.MIN_VALUE;
+		// Identity cache pins one Component instance forever — that freezes animated gradients.
+		boolean animated = hasAnimatedGradientMatch(plain, candidatesForKind(kind));
+		if (!animated) {
+			Component identityCached = identityCache.get(message);
+			if (identityCached != null) return identityCached;
+		}
+
+		long frame = animated ? currentAnimationFrameIndex(currentAnimationTime()) : Long.MIN_VALUE;
 		TextCacheKey key = new TextCacheKey(PlayerCustomizationRegistry.version(), kind, plain, styleHash(runs), frame);
 		Component cached = TEXT_TRANSFORM_CACHE.getCached(key);
 		if (cached != null) {
-			identityCache.put(message, cached);
+			if (!animated) {
+				identityCache.put(message, cached);
+			}
 			return cached;
 		}
 
 		OrderedTextTransformPlan plan = buildTransformPlan(runs, plain, kind);
 		Component transformed = plan == null ? message : rebuildComponentFromPlan(new OrderedTextSourceData(plain, runs, styleHash(runs)), plan, currentAnimationTime(), kind);
 		TEXT_TRANSFORM_CACHE.putCached(key, transformed);
-		identityCache.put(message, transformed);
+		if (!animated) {
+			identityCache.put(message, transformed);
+		}
 		return transformed;
 	}
 
@@ -211,9 +219,6 @@ public final class NameStyler {
 		if (text == null) return null;
 		checkRegistryVersion();
 		if (candidatesForKind(kind).isEmpty()) return text;
-
-		FormattedCharSequence identityCached = identityCache.get(text);
-		if (identityCached != null) return identityCached;
 
 		OrderedTextSourceData source = orderedTextSource(text);
 		if (source.plain.isEmpty()) {
@@ -225,6 +230,12 @@ public final class NameStyler {
 		if (plan == null) {
 			identityCache.put(text, text);
 			return text;
+		}
+
+		// Same freeze issue as Component path — never identity-cache animated frames.
+		if (!plan.hasAnimatedGradient) {
+			FormattedCharSequence identityCached = identityCache.get(text);
+			if (identityCached != null) return identityCached;
 		}
 
 		FormattedCharSequence transformed;
@@ -245,9 +256,9 @@ public final class NameStyler {
 				transformed = rebuildComponentFromPlan(source, plan, 0.0D, kind).getVisualOrderText();
 				ORDERED_TEXT_STATIC_RESULT_CACHE.putCached(key, transformed);
 			}
+			identityCache.put(text, transformed);
 		}
 
-		identityCache.put(text, transformed);
 		return transformed;
 	}
 

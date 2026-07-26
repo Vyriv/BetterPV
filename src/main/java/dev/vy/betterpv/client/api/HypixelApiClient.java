@@ -16,6 +16,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -28,10 +29,12 @@ public final class HypixelApiClient {
 	private static final String WORKER_HYPIXEL_HEADER = "X-VyPV-Key";
 	private static final URI DIRECT_HYPIXEL = URI.create("https://api.hypixel.net/v2/");
 	private static final URI MOJANG_PROFILE = URI.create("https://api.mojang.com/users/profiles/minecraft/");
+	private static final URI MOJANG_SESSION = URI.create("https://sessionserver.mojang.com/session/minecraft/profile/");
 	private static final Duration TIMEOUT = Duration.ofSeconds(12);
 	private static final long SPACING_MS = 350L;
 
 	private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+	private static final ConcurrentHashMap<String, JsonObject> PLAYER_CACHE = new ConcurrentHashMap<>();
 	/** Small pool so museum + election (and other GETs) can overlap; rate limit still serializes spacing. */
 	private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(4, r -> {
 		Thread t = new Thread(r, "BetterPV-HypixelApi");
@@ -92,6 +95,35 @@ public final class HypixelApiClient {
 		}, EXECUTOR);
 	}
 
+	/** UUID → current Minecraft username (keyless Mojang session server). */
+	public static CompletableFuture<Optional<UuidName>> resolveName(UUID uuid) {
+		if (uuid == null) {
+			return CompletableFuture.completedFuture(Optional.empty());
+		}
+		String id = undashed(uuid);
+		return CompletableFuture.supplyAsync(() -> {
+			try {
+				HttpRequest request = HttpRequest.newBuilder(MOJANG_SESSION.resolve(id))
+					.timeout(TIMEOUT)
+					.GET()
+					.build();
+				HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
+				if (response.statusCode() < 200 || response.statusCode() >= 300 || response.body() == null || response.body().isBlank()) {
+					return Optional.<UuidName>empty();
+				}
+				JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
+				String resolved = root.has("name") ? root.get("name").getAsString() : null;
+				if (resolved == null || resolved.isBlank()) {
+					return Optional.empty();
+				}
+				return Optional.of(new UuidName(uuid, resolved));
+			} catch (Exception exception) {
+				BetterPV.LOGGER.debug("Mojang name lookup failed for {}", id, exception);
+				return Optional.empty();
+			}
+		}, EXECUTOR);
+	}
+
 	public static CompletableFuture<Optional<JsonObject>> skyblockProfiles(UUID uuid) {
 		String id = undashed(uuid);
 		return CompletableFuture.supplyAsync(
@@ -134,6 +166,61 @@ public final class HypixelApiClient {
 				"skyblock/auction",
 				"player=" + id
 			),
+			EXECUTOR
+		);
+	}
+
+	/** SkyBlock garden island by profile id (lazy; not on initial PV load). */
+	public static CompletableFuture<Optional<JsonObject>> skyblockGarden(String profileId) {
+		if (profileId == null || profileId.isBlank()) {
+			return CompletableFuture.completedFuture(Optional.empty());
+		}
+		String id = profileId.trim();
+		String encoded = URLEncoder.encode(id, StandardCharsets.UTF_8);
+		return CompletableFuture.supplyAsync(
+			() -> {
+				Optional<JsonObject> root = fetchPreferWorker(
+					WORKER_BASE + "/hypixel/skyblock/garden/" + encoded,
+					"skyblock/garden",
+					"profile=" + id
+				);
+				if (root.isEmpty()) {
+					return Optional.empty();
+				}
+				JsonObject body = root.get();
+				if (body.has("garden") && body.get("garden").isJsonObject()) {
+					return Optional.of(body.getAsJsonObject("garden"));
+				}
+				return Optional.of(body);
+			},
+			EXECUTOR
+		);
+	}
+
+	/** Hypixel player object (ranks, displayname, …). */
+	public static CompletableFuture<Optional<JsonObject>> player(UUID uuid) {
+		String id = undashed(uuid);
+		JsonObject cached = PLAYER_CACHE.get(id);
+		if (cached != null) {
+			return CompletableFuture.completedFuture(Optional.of(cached));
+		}
+		return CompletableFuture.supplyAsync(
+			() -> {
+				Optional<JsonObject> root = fetchPreferWorker(
+					WORKER_BASE + "/hypixel/player/" + id,
+					"player",
+					"uuid=" + id
+				);
+				if (root.isEmpty()) {
+					return Optional.empty();
+				}
+				JsonObject body = root.get();
+				JsonObject player = body.has("player") && body.get("player").isJsonObject()
+					? body.getAsJsonObject("player")
+					: body;
+				PLAYER_CACHE.put(id, player);
+				return Optional.of(player);
+			},
 			EXECUTOR
 		);
 	}

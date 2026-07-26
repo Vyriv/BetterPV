@@ -142,7 +142,7 @@ public final class DungeonCalcOverlay {
 					|| line.startsWith("Floor")
 					|| line.startsWith("Best ")
 					|| line.endsWith("XP")
-					|| line.contains(" — ");
+					|| line.contains(" - ");
 				boolean muted = header || line.isBlank();
 				PvDraw.text(
 					g, font, line,
@@ -184,7 +184,7 @@ public final class DungeonCalcOverlay {
 			if (view.modsLabel() != null && !view.modsLabel().isBlank()) {
 				lines.add(view.modsLabel());
 			}
-			String floor = view.floorLabel() == null || view.floorLabel().isBlank() ? "—" : view.floorLabel();
+			String floor = view.floorLabel() == null || view.floorLabel().isBlank() ? "-" : view.floorLabel();
 			lines.add("Total: " + FormatUtil.commas(view.totalRuns()) + " " + floor + " runs (S+ est.)");
 			if (view.timedOut()) {
 				lines.add("Timed out (hit run cap).");
@@ -193,7 +193,7 @@ public final class DungeonCalcOverlay {
 			lines.add("");
 			for (ClassBlock block : view.classBlocks()) {
 				if (block.selectedRuns() <= 0L) {
-					lines.add(block.name() + " — 0 (already covered)");
+					lines.add(block.name() + " - 0 (already covered)");
 				} else {
 					lines.add(block.name()
 						+ " ("

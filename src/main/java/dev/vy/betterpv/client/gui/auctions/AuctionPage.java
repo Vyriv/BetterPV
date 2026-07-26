@@ -29,6 +29,8 @@ public final class AuctionPage {
 	private static final int COL_GAP = 6;
 	private static final int LOAD_MORE_H = 16;
 	private static final int STAT_ROW = 12;
+	private static final float CREDIT_SCALE = 0.75F;
+	private static final int CREDIT_GAP = 5;
 
 	private AuctionSnapshot snapshot = AuctionSnapshot.empty();
 	private int scroll;
@@ -311,7 +313,8 @@ public final class AuctionPage {
 
 		boolean canMore = (bucket == AuctionSnapshot.Bucket.SOLD && this.snapshot.soldHasMore())
 			|| (bucket == AuctionSnapshot.Bucket.BOUGHT && this.snapshot.boughtHasMore());
-		int footerH = font.lineHeight + 4 + (canMore ? LOAD_MORE_H + 4 : 0);
+		int creditH = Math.max(1, Math.round(font.lineHeight * CREDIT_SCALE));
+		int footerH = creditH + CREDIT_GAP + (canMore ? LOAD_MORE_H + CREDIT_GAP : 0);
 		this.listX = cx;
 		this.listW = innerW;
 		this.listTop = cy;
@@ -339,10 +342,10 @@ public final class AuctionPage {
 		}
 		g.disableScissor();
 
-		int footerY = y + h - PAD - font.lineHeight;
+		int footerY = y + h - PAD - creditH;
 		if (canMore) {
 			this.loadMoreX = cx;
-			this.loadMoreY = footerY - LOAD_MORE_H - 2;
+			this.loadMoreY = footerY - CREDIT_GAP - LOAD_MORE_H;
 			this.loadMoreW = innerW;
 			this.loadMoreVisible = true;
 			boolean hover = mouseX >= this.loadMoreX && mouseX < this.loadMoreX + this.loadMoreW
@@ -364,7 +367,7 @@ public final class AuctionPage {
 		}
 
 		String credit = Component.translatable("betterpv.auctions.credit").getString();
-		PvDraw.text(g, font, credit, cx, footerY, PvDraw.COLOR_BORDER);
+		PvDraw.textScaled(g, font, credit, cx, footerY, PvDraw.COLOR_BORDER, CREDIT_SCALE);
 
 		if (listings.isEmpty()) {
 			String empty = Component.translatable("betterpv.auctions.empty").getString();

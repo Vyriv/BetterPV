@@ -16,6 +16,7 @@ public enum PvTab {
 	GARDEN(Items.IRON_HOE, "betterpv.tab.garden"),
 	MINING(Items.IRON_PICKAXE, "betterpv.tab.mining"),
 	FORAGING(Items.IRON_AXE, "betterpv.tab.foraging"),
+	FISHING(Items.FISHING_ROD, "betterpv.tab.fishing"),
 	CRIMSON(Items.NETHERRACK, "betterpv.tab.crimson"),
 	RIFT(Items.ENDER_EYE, "betterpv.tab.rift"),
 	MUSEUM(Items.EMERALD, "betterpv.tab.museum"),
@@ -44,7 +45,13 @@ public enum PvTab {
 			case DUNGEONS -> PvSubTab.NONE;
 			case AUCTIONS -> new PvSubTab[] { PvSubTab.AUCTION_STATS, PvSubTab.AUCTION_SOLD, PvSubTab.AUCTION_BOUGHT };
 			case COLLECTIONS -> new PvSubTab[] { PvSubTab.COLLECTIONS_LIST, PvSubTab.COLLECTIONS_MINIONS };
-			case GARDEN -> new PvSubTab[] { PvSubTab.GARDEN_VISITORS, PvSubTab.GARDEN_GREENHOUSE };
+			case GARDEN -> new PvSubTab[] {
+				PvSubTab.GARDEN_OVERVIEW,
+				PvSubTab.GARDEN_VISITORS,
+				PvSubTab.GARDEN_CROPS,
+				PvSubTab.GARDEN_GREENHOUSE,
+				PvSubTab.GARDEN_JACOB
+			};
 			case FORAGING -> new PvSubTab[] { PvSubTab.FORAGING_MAIN, PvSubTab.FORAGING_SHARDS };
 			case CRIMSON -> new PvSubTab[] { PvSubTab.CRIMSON_MAIN, PvSubTab.CRIMSON_TROPHY, PvSubTab.CRIMSON_ABIPHONE };
 			case RIFT -> new PvSubTab[] { PvSubTab.RIFT_OVERVIEW, PvSubTab.RIFT_INVENTORY };

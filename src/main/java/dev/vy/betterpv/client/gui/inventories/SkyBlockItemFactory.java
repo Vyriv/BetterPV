@@ -16,6 +16,7 @@ import dev.vy.betterpv.client.neu.NeuRepoCache;
 import dev.vy.betterpv.client.neu.SkyBlockPackCache;
 import dev.vy.betterpv.client.price.HypixelItemsCache;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -110,6 +111,17 @@ public final class SkyBlockItemFactory {
 		return SkyBlockItemIconCache.getOrRequest(model);
 	}
 
+	/** Force a known hypixel_skyblock item model path (e.g. greenhouse pack textures). */
+	public static Identifier customIconModel(String skyblockId, String itemModel) {
+		if (itemModel == null || itemModel.isBlank()) {
+			return customIcon(skyblockId);
+		}
+		if (skyblockId != null && !skyblockId.isBlank()) {
+			rememberItemModel(skyblockId.toUpperCase(Locale.ROOT), itemModel);
+		}
+		return SkyBlockItemIconCache.getOrRequest(itemModel);
+	}
+
 	public static int customIconSize(String skyblockId) {
 		if (skyblockId == null) {
 			return 16;
@@ -186,12 +198,20 @@ public final class SkyBlockItemFactory {
 				ids.add(pet.heldItem());
 			}
 		}
-		if (ids.isEmpty()) {
+		prefetchIds(ids);
+	}
+
+	/** Prefetch NEU defs for arbitrary SkyBlock item ids (collections / minions). */
+	public static void prefetchIds(Collection<String> ids) {
+		if (ids == null || ids.isEmpty()) {
 			return;
 		}
 		SkyBlockItemIconCache.ensurePack();
 		Set<String> neuIds = new HashSet<>();
 		for (String id : ids) {
+			if (id == null || id.isBlank()) {
+				continue;
+			}
 			neuIds.addAll(neuCandidates(id));
 		}
 		NeuRepoCache.prefetch(neuIds);
@@ -606,13 +626,15 @@ public final class SkyBlockItemFactory {
 				|| material.equalsIgnoreCase("SKULL")
 				|| material.equalsIgnoreCase("PLAYER_HEAD")
 		);
-		if (skinValue != null || skullMaterial) {
+		if (skinValue != null) {
 			ItemStack skull = new ItemStack(Items.PLAYER_HEAD);
-			if (skinValue != null) {
-				// Hypixel item skins often carry invalid signatures; unsigned Value still loads the texture URL.
-				applySkullTextureValue(skull, skinValue, null);
-			}
+			// Hypixel item skins often carry invalid signatures; unsigned Value still loads the texture URL.
+			applySkullTextureValue(skull, skinValue, null);
 			return skull;
+		}
+		if (skullMaterial) {
+			// Bare SKULL_ITEM without skin renders as Steve - prefer paper so callers can fall back.
+			return new ItemStack(Items.PAPER);
 		}
 		Item item = resolveMaterial(material, key, durability);
 		return new ItemStack(item);
@@ -1046,6 +1068,16 @@ public final class SkyBlockItemFactory {
 			case "minecraft:melon" -> "minecraft:melon_slice";
 			case "minecraft:reeds" -> "minecraft:sugar_cane";
 			case "minecraft:nether_stalk" -> "minecraft:nether_wart";
+			case "minecraft:double_plant" -> switch (damage) {
+				case 0 -> "minecraft:sunflower";
+				case 1 -> "minecraft:lilac";
+				case 2 -> "minecraft:tall_grass";
+				case 3 -> "minecraft:large_fern";
+				case 4 -> "minecraft:rose_bush";
+				case 5 -> "minecraft:peony";
+				default -> "minecraft:sunflower";
+			};
+			case "minecraft:red_flower" -> damage == 1 ? "minecraft:blue_orchid" : "minecraft:poppy";
 			case "minecraft:banner", "minecraft:white_banner" -> colorPrefixed("banner", damage);
 			case "minecraft:stained_glass_pane" -> colorPrefixed("stained_glass_pane", damage);
 			case "minecraft:stained_glass" -> colorPrefixed("stained_glass", damage);

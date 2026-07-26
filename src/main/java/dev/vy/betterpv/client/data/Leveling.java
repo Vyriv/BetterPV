@@ -45,11 +45,11 @@ public final class Leveling {
 			return name + " " + lvl + " - " + FormatUtil.oneDecimal(fill() * 100.0) + "% to Level " + next;
 		}
 
-		/** e.g. {@code Revenant 9 - 1,240,000 / 2,000,000 XP} */
+		/** e.g. {@code Revenant 9 - 1,240,000 / 2,000,000 XP} or overflow when maxed. */
 		public String slayerHover(String name) {
 			int tier = (int) Math.floor(level);
 			if (maxed) {
-				return name + " " + tier + " - MAX";
+				return name + " " + tier + " - Overflow: " + FormatUtil.shortXp(Math.max(0F, overflowXp));
 			}
 			long into = Math.round(xpIntoLevel);
 			long need = Math.round(maxXpForLevel);

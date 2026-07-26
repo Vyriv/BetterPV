@@ -98,7 +98,14 @@ public final class NeuRepoCache {
 		return SACKS;
 	}
 
+	/** Minion internal name (e.g. {@code WHEAT_GENERATOR}) → max tier from NEU {@code constants/misc.json}. */
+	public static Map<String, Integer> minionMaxTiers() {
+		ensureMinionsLoaded();
+		return MINIONS;
+	}
+
 	private static final Map<String, List<String>> SACKS = new java.util.LinkedHashMap<>();
+	private static final Map<String, Integer> MINIONS = new java.util.LinkedHashMap<>();
 
 	private static void ensureSacksLoaded() {
 		if (!SACKS.isEmpty()) {
@@ -112,14 +119,22 @@ public final class NeuRepoCache {
 		}
 	}
 
-	private static void loadSacksFromDisk() {
-		Path path = Path.of(System.getProperty("user.home"), ".betterpv", "neu-repo", "repo", "constants", "sacks.json");
-		if (!Files.isRegularFile(path)) {
-			start();
-			path = Path.of(System.getProperty("user.home"), ".betterpv", "neu-repo", "repo", "constants", "sacks.json");
-			if (!Files.isRegularFile(path)) {
+	private static void ensureMinionsLoaded() {
+		if (!MINIONS.isEmpty()) {
+			return;
+		}
+		synchronized (MINIONS) {
+			if (!MINIONS.isEmpty()) {
 				return;
 			}
+			loadMinionsFromDisk();
+		}
+	}
+
+	private static void loadSacksFromDisk() {
+		Path path = constantsPath("sacks.json");
+		if (path == null) {
+			return;
 		}
 		try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
 			JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
@@ -147,6 +162,43 @@ public final class NeuRepoCache {
 		} catch (Exception exception) {
 			BetterPV.LOGGER.debug("Failed loading NEU sacks.json", exception);
 		}
+	}
+
+	private static void loadMinionsFromDisk() {
+		Path path = constantsPath("misc.json");
+		if (path == null) {
+			return;
+		}
+		try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+			JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
+			if (!root.has("minions") || !root.get("minions").isJsonObject()) {
+				return;
+			}
+			for (var entry : root.getAsJsonObject("minions").entrySet()) {
+				if (!entry.getValue().isJsonPrimitive()) {
+					continue;
+				}
+				try {
+					int max = entry.getValue().getAsInt();
+					if (max > 0) {
+						MINIONS.put(entry.getKey().toUpperCase(Locale.ROOT), max);
+					}
+				} catch (Exception ignored) {
+				}
+			}
+		} catch (Exception exception) {
+			BetterPV.LOGGER.debug("Failed loading NEU misc.json minions", exception);
+		}
+	}
+
+	private static Path constantsPath(String fileName) {
+		Path path = Path.of(System.getProperty("user.home"), ".betterpv", "neu-repo", "repo", "constants", fileName);
+		if (Files.isRegularFile(path)) {
+			return path;
+		}
+		start();
+		path = Path.of(System.getProperty("user.home"), ".betterpv", "neu-repo", "repo", "constants", fileName);
+		return Files.isRegularFile(path) ? path : null;
 	}
 
 	public static JsonObject get(String internalName) {

@@ -36,7 +36,7 @@ public final class HomePage {
 	private static final int PAD = 6;
 	private static final int SKILL_ROWS = 5;
 	private static final int SLAYER_ROWS = 3;
-	private static final int FLIP_MS = 280;
+	private static final int FLIP_MS = 480;
 	private static final int PANEL_HOVER = 0x0AFFFFFF;
 
 	private ProfileSnapshot snapshot;
@@ -73,6 +73,9 @@ public final class HomePage {
 	};
 	private final List<HoverZone> zones = new ArrayList<>();
 	private int layoutCacheW = Integer.MIN_VALUE;
+	private float openScale = 1.0F;
+	private float openPivotX;
+	private float openPivotY;
 	private int layoutCacheH = -1;
 
 	public HomePage(ProfileSnapshot snapshot) {
@@ -103,6 +106,28 @@ public final class HomePage {
 			: armor;
 		this.playerStats = playerStats == null ? PlayerStatsSnapshot.empty() : playerStats;
 		this.loadError = error;
+		invalidateLayoutCache();
+	}
+
+	/** Applies newly available networth data without replacing the already-rendered profile. */
+	public void applyNetworth(
+		NetworthBreakdown normal,
+		NetworthBreakdown nonCosmetic,
+		NetworthBreakdown unsoulbound,
+		NetworthBreakdown unsoulboundNonCosmetic
+	) {
+		if (normal != null) {
+			this.networthNormal = normal;
+		}
+		if (nonCosmetic != null) {
+			this.networthNonCosmetic = nonCosmetic;
+		}
+		if (unsoulbound != null) {
+			this.networthUnsoulbound = unsoulbound;
+		}
+		if (unsoulboundNonCosmetic != null) {
+			this.networthUnsoulboundNonCosmetic = unsoulboundNonCosmetic;
+		}
 		invalidateLayoutCache();
 	}
 
@@ -155,7 +180,8 @@ public final class HomePage {
 	private boolean showingLeftStatsFace() {
 		if (this.leftFlipStartMs != 0L) {
 			float progress = Math.min(1F, (System.currentTimeMillis() - this.leftFlipStartMs) / (float) FLIP_MS);
-			return progress < 0.5F ? this.leftStatsFace : this.leftFlipTarget;
+			float angle = easeInOutCubic(progress) * (float) Math.PI;
+			return Math.cos(angle) < 0.0 ? this.leftFlipTarget : this.leftStatsFace;
 		}
 		return this.leftStatsFace;
 	}
@@ -183,7 +209,24 @@ public final class HomePage {
 		this.layoutCacheH = -1;
 	}
 
-	public void render(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, int mouseX, int mouseY, int screenW, int screenH) {
+	public void render(
+		GuiGraphicsExtractor g,
+		Font font,
+		int x,
+		int y,
+		int w,
+		int h,
+		int mouseX,
+		int mouseY,
+		int screenW,
+		int screenH,
+		float openScale,
+		float openPivotX,
+		float openPivotY
+	) {
+		this.openScale = openScale;
+		this.openPivotX = openPivotX;
+		this.openPivotY = openPivotY;
 		this.zones.clear();
 		Layout layout = measure(font, w);
 		int contentH = Math.min(h, layout.contentH);
@@ -224,6 +267,10 @@ public final class HomePage {
 		} else if (tip != null) {
 			PvTooltip.draw(g, font, tip, mouseX, mouseY, screenW, screenH);
 		}
+	}
+
+	public void render(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, int mouseX, int mouseY, int screenW, int screenH) {
+		render(g, font, x, y, w, h, mouseX, mouseY, screenW, screenH, 1.0F, x + w / 2F, y + h / 2F);
 	}
 
 	private WeightBreakdown activeWeight() {
@@ -289,40 +336,91 @@ public final class HomePage {
 				flipProgress = 0F;
 			}
 		}
+		// Ease the timeline, then cosine-scale for a soft card flip (1 → 0 → 1).
+		float eased = animating ? easeInOutCubic(flipProgress) : 0F;
+		float angle = eased * (float) Math.PI;
 		boolean showStats = animating
-			? (flipProgress < 0.5F ? this.leftStatsFace : this.leftFlipTarget)
+			? (Math.cos(angle) < 0.0 ? this.leftFlipTarget : this.leftStatsFace)
 			: this.leftStatsFace;
 		float scaleX = 1F;
+		float scaleY = 1F;
 		if (animating) {
-			scaleX = flipProgress < 0.5F
-				? 1F - flipProgress * 2F
-				: (flipProgress - 0.5F) * 2F;
-			scaleX = Math.max(0.02F, scaleX);
+			scaleX = Math.max(0.04F, Math.abs((float) Math.cos(angle)));
+			// Slight vertical squash near edge-on for a paper/card feel.
+			scaleY = 1F - (1F - scaleX) * 0.06F;
 		}
 
 		float cxFlip = x + w / 2F;
+		float cyFlip = y + h / 2F;
 		g.pose().pushMatrix();
-		g.pose().translate(cxFlip, y);
-		g.pose().scale(scaleX, 1F);
-		g.pose().translate(-cxFlip, -y);
+		g.pose().translate(cxFlip, cyFlip);
+		g.pose().scale(scaleX, scaleY);
+		g.pose().translate(-cxFlip, -cyFlip);
 
 		PvDraw.innerPanel(g, x, y, w, h);
 		if (hovered && !animating) {
 			PvDraw.fill(g, x + 1, y + 1, w - 2, h - 2, PANEL_HOVER);
 		}
 
+		boolean drawModelAfter = false;
+		int modelX0 = 0;
+		int modelY0 = 0;
+		int modelX1 = 0;
+		int modelY1 = 0;
 		if (showStats) {
 			this.networthHitW = 0;
 			this.weightHitW = 0;
 			drawStatsFace(g, font, x, y, w, h);
 		} else {
-			drawProfileFace(g, font, x, y, w, h, layout, mouseX, mouseY);
+			int[] modelBox = drawProfileFace(g, font, x, y, w, h, layout, mouseX, mouseY);
+			if (modelBox != null) {
+				drawModelAfter = true;
+				modelX0 = modelBox[0];
+				modelY0 = modelBox[1];
+				modelX1 = modelBox[2];
+				modelY1 = modelBox[3];
+			}
 		}
 
 		g.pose().popMatrix();
+
+		// Entity rendering ignores the GUI pose matrix - apply the same flip in screen space after pop.
+		if (drawModelAfter && this.snapshot.playerUuid() != null) {
+			this.playerModel.draw(
+				g,
+				this.snapshot.playerUuid(),
+				this.snapshot.playerName(),
+				modelX0,
+				modelY0,
+				modelX1,
+				modelY1,
+				mouseX,
+				mouseY,
+				this.armor.length > 3 ? this.armor[3] : ItemStack.EMPTY,
+				this.armor.length > 2 ? this.armor[2] : ItemStack.EMPTY,
+				this.armor.length > 1 ? this.armor[1] : ItemStack.EMPTY,
+				this.armor.length > 0 ? this.armor[0] : ItemStack.EMPTY,
+				scaleX,
+				scaleY,
+				cxFlip,
+				cyFlip,
+				this.openScale,
+				this.openPivotX,
+				this.openPivotY
+			);
+		}
 	}
 
-	private void drawProfileFace(
+	/** Smooth ease-in-out for flip timing (slow start / finish, faster mid). */
+	private static float easeInOutCubic(float t) {
+		t = Math.max(0F, Math.min(1F, t));
+		return t < 0.5F
+			? 4F * t * t * t
+			: 1F - (float) Math.pow(-2F * t + 2F, 3) / 2F;
+	}
+
+	/** @return mannequin box {@code [x0,y0,x1,y1]} if the model should be drawn, else null */
+	private int[] drawProfileFace(
 		GuiGraphicsExtractor g,
 		Font font,
 		int x,
@@ -337,12 +435,16 @@ public final class HomePage {
 		String nwLabel = Component.translatable("betterpv.home.networth_label").getString();
 		String weightLabel = Component.translatable("betterpv.home.weight_label").getString();
 		NetworthBreakdown activeNw = activeNetworth();
-		String nwValue = activeNw.total() > 0
-			? FormatUtil.shortCoins(activeNw.total())
-			: (this.snapshot.networthText() == null || this.snapshot.networthText().isBlank()
-				? "-"
-				: this.snapshot.networthText());
-		if (this.loadError != null && !this.loadError.isBlank() && activeNw.total() <= 0) {
+		String nwValue;
+		if (activeNw.total() > 0) {
+			nwValue = FormatUtil.shortCoins(activeNw.total());
+		} else if (activeNw.note() != null && activeNw.note().toLowerCase(java.util.Locale.ROOT).contains("loading")) {
+			nwValue = "…";
+		} else {
+			nwValue = "-";
+		}
+		if (this.loadError != null && !this.loadError.isBlank() && activeNw.total() <= 0
+			&& (activeNw.note() == null || !activeNw.note().toLowerCase(java.util.Locale.ROOT).contains("loading"))) {
 			nwValue = "-";
 		}
 		String weightValue = this.weightSystem == WeightSystem.SENITHER
@@ -388,22 +490,10 @@ public final class HomePage {
 
 		PvDraw.fill(g, boxX, boxTop, boxW, boxH, 0xFF15151E);
 		g.outline(boxX, boxTop, boxW, boxH, PvDraw.COLOR_BORDER);
+
+		int[] modelBox = null;
 		if (this.snapshot.playerUuid() != null) {
-			this.playerModel.draw(
-				g,
-				this.snapshot.playerUuid(),
-				this.snapshot.playerName(),
-				boxX + 2,
-				boxTop + 2,
-				boxX + boxW - 2,
-				boxTop + boxH - 2,
-				mouseX,
-				mouseY,
-				this.armor.length > 3 ? this.armor[3] : ItemStack.EMPTY,
-				this.armor.length > 2 ? this.armor[2] : ItemStack.EMPTY,
-				this.armor.length > 1 ? this.armor[1] : ItemStack.EMPTY,
-				this.armor.length > 0 ? this.armor[0] : ItemStack.EMPTY
-			);
+			modelBox = new int[] { boxX + 2, boxTop + 2, boxX + boxW - 2, boxTop + boxH - 2 };
 		} else {
 			PvDraw.textCentered(
 				g, font,
@@ -437,6 +527,7 @@ public final class HomePage {
 			cx, y + layout.profileY,
 			PvDraw.COLOR_MUTED
 		);
+		return modelBox;
 	}
 
 	private Component styledPlayerName() {

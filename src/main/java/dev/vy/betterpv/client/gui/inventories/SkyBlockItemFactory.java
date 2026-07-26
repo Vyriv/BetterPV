@@ -256,6 +256,7 @@ public final class SkyBlockItemFactory {
 		ids.add("POCKET_SACK_IN_A_SACK");
 		ids.add("LARGE_POTION_BAG");
 		ids.add("LARGE_TALISMAN_BAG");
+		ids.addAll(NeuRepoCache.sackItemIds());
 		SkyBlockItemIconCache.ensurePack();
 		Set<String> neuIds = new HashSet<>();
 		for (String id : ids) {
@@ -305,6 +306,67 @@ public final class SkyBlockItemFactory {
 		NeuRepoCache.prefetch(neuCandidates(skyblockId));
 		return baseStack(skyblockId).copy();
 	}
+
+	/**
+	 * Heart of the Mountain tab icon — SkyBlock mining skull (Deep Caverns / HotM menu style head).
+	 * Token of the Mountain is not in the items API; this is the closest NEU mining portal skull.
+	 */
+	public static ItemStack hotmTabIcon() {
+		ItemStack sky = iconStack("MINING_2_PORTAL");
+		if (sky != null && !sky.isEmpty() && sky.is(Items.PLAYER_HEAD)) {
+			return sky;
+		}
+		ItemStack head = new ItemStack(Items.PLAYER_HEAD);
+		applySkullTextureValue(head, HOTM_TAB_SKULL_VALUE, null);
+		return head;
+	}
+
+	/** NEU {@code MINING_2_PORTAL} skull Value (HotM / mining menu stand-in). */
+	private static final String HOTM_TAB_SKULL_VALUE =
+		"ewogICJ0aW1lc3RhbXAiIDogMTYxODk5OTIyNDk2OSwKICAicHJvZmlsZUlkIiA6ICI1NjY3NWIyMjMyZjA0ZWUwODkxNzllOWM5MjA2Y2ZlOCIsCiAgInByb2ZpbGVOYW1lIiA6ICJUaGVJbmRyYSIsCiAgInNpZ25hdHVyZVJlcXVpcmVkIiA6IHRydWUsCiAgInRleHR1cmVzIiA6IHsKICAgICJTS0lOIiA6IHsKICAgICAgInVybCIgOiAiaHR0cDovL3RleHR1cmVzLm1pbmVjcmFmdC5uZXQvdGV4dHVyZS83NDIxM2RjNmRjNGIxNjQxZGVmZDMzM2Y0YTQ3MzJjYzcxNGRkNjc3NzE4ZmExMGYxNDBhNjkzOWMxMmFhMzJiIgogICAgfQogIH0KfQ==";
+
+	/**
+	 * Classic Flawless gemstone player-head textures (pre–item-model NEU).
+	 * Modern gems are paper; these skull Values still render the familiar 3D cubes.
+	 */
+	private static final Map<String, String> FLAWLESS_GEM_SKULLS = Map.ofEntries(
+		Map.entry("JADE", "ewogICJ0aW1lc3RhbXAiIDogMTYxODA4NTY1NzA0NywKICAicHJvZmlsZUlkIiA6ICIxYWZhZjc2NWI1ZGY0NjA3YmY3ZjY1ZGYzYWIwODhhOCIsCiAgInByb2ZpbGVOYW1lIiA6ICJMb3lfQmxvb2RBbmdlbCIsCiAgInNpZ25hdHVyZVJlcXVpcmVkIiA6IHRydWUsCiAgInRleHR1cmVzIiA6IHsKICAgICJTS0lOIiA6IHsKICAgICAgInVybCIgOiAiaHR0cDovL3RleHR1cmVzLm1pbmVjcmFmdC5uZXQvdGV4dHVyZS9mODlmNzVlMGIwMDM3OGE1ODNkYmJhNzI4ZGNkYzZlOTM0NmYzMWRkNjAxZDQ0OGYzZDYwNjE1Yzc0NjVjYzNlIgogICAgfQogIH0KfQ=="),
+		Map.entry("AMBER", "ewogICJ0aW1lc3RhbXAiIDogMTYxODA4NTE3NjQ5NiwKICAicHJvZmlsZUlkIiA6ICJiNWRkZTVmODJlYjM0OTkzYmMwN2Q0MGFiNWY2ODYyMyIsCiAgInByb2ZpbGVOYW1lIiA6ICJsdXhlbWFuIiwKICAic2lnbmF0dXJlUmVxdWlyZWQiIDogdHJ1ZSwKICAidGV4dHVyZXMiIDogewogICAgIlNLSU4iIDogewogICAgICAidXJsIiA6ICJodHRwOi8vdGV4dHVyZXMubWluZWNyYWZ0Lm5ldC90ZXh0dXJlLzlkY2U2MmY3MGFjMDQ2Yjg4MTExM2M2Y2Y4NjI5ODc3Mjc3NzRlMjY1ODg1NTAxYzlhMjQ1YjE4MGRiMDhjMGQiCiAgICB9CiAgfQp9"),
+		Map.entry("AMETHYST", "ewogICJ0aW1lc3RhbXAiIDogMTYxODA4NTQ2NjY1MiwKICAicHJvZmlsZUlkIiA6ICI2MWVhMDkyM2FhNDQ0OTEwYmNlZjViZmQ2ZDNjMGQ1NyIsCiAgInByb2ZpbGVOYW1lIiA6ICJUaGVEYXJ0aEZhdGhlciIsCiAgInNpZ25hdHVyZVJlcXVpcmVkIiA6IHRydWUsCiAgInRleHR1cmVzIiA6IHsKICAgICJTS0lOIiA6IHsKICAgICAgInVybCIgOiAiaHR0cDovL3RleHR1cmVzLm1pbmVjcmFmdC5uZXQvdGV4dHVyZS9kMzYyMzUyMWM4MTExYWQyOWU5ZGNmN2FjYzU2MDg1YTlhYjA3ZGE3MzJkMTUxODk3NmFlZTYxZDBiM2UzYmQ2IgogICAgfQogIH0KfQ=="),
+		Map.entry("SAPPHIRE", "ewogICJ0aW1lc3RhbXAiIDogMTYxODA4NjIzMjc2OSwKICAicHJvZmlsZUlkIiA6ICI5MWZlMTk2ODdjOTA0NjU2YWExZmMwNTk4NmRkM2ZlNyIsCiAgInByb2ZpbGVOYW1lIiA6ICJoaGphYnJpcyIsCiAgInNpZ25hdHVyZVJlcXVpcmVkIiA6IHRydWUsCiAgInRleHR1cmVzIiA6IHsKICAgICJTS0lOIiA6IHsKICAgICAgInVybCIgOiAiaHR0cDovL3RleHR1cmVzLm1pbmVjcmFmdC5uZXQvdGV4dHVyZS85NTdjZmE5Yzc1YmE1ODQ2NDVlZTJhZjZkOTg2N2Q3NjdkZGVhNDY2N2NkZmM3MmRjMTA2MWRkMTk3NWNhN2QwIgogICAgfQogIH0KfQ=="),
+		Map.entry("TOPAZ", "ewogICJ0aW1lc3RhbXAiIDogMTYxODA4NjQxMjI5MSwKICAicHJvZmlsZUlkIiA6ICI1N2IzZGZiNWY4YTY0OWUyOGI1NDRlNGZmYzYzMjU2ZiIsCiAgInByb2ZpbGVOYW1lIiA6ICJYaWthcm8iLAogICJzaWduYXR1cmVSZXF1aXJlZCIgOiB0cnVlLAogICJ0ZXh0dXJlcyIgOiB7CiAgICAiU0tJTiIgOiB7CiAgICAgICJ1cmwiIDogImh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvZDEwOTY0ZjNjNDc5YWQ3ZDlhZmFmNjhhNDJjYWI3YzEwN2QyZDg4NGY1NzVjYWUyZjA3MGVjNmY5MzViM2JlIgogICAgfQogIH0KfQ=="),
+		Map.entry("JASPER", "ewogICJ0aW1lc3RhbXAiIDogMTYxODA4NjAzNDI0NywKICAicHJvZmlsZUlkIiA6ICJiMGQ3MzJmZTAwZjc0MDdlOWU3Zjc0NjMwMWNkOThjYSIsCiAgInByb2ZpbGVOYW1lIiA6ICJPUHBscyIsCiAgInNpZ25hdHVyZVJlcXVpcmVkIiA6IHRydWUsCiAgInRleHR1cmVzIiA6IHsKICAgICJTS0lOIiA6IHsKICAgICAgInVybCIgOiAiaHR0cDovL3RleHR1cmVzLm1pbmVjcmFmdC5uZXQvdGV4dHVyZS9mZjk5M2QzYTQzZDQwNTk3YjQ3NDQ4NTk3NjE2MGQwY2Y1MmFjNjRkMTU3MzA3ZDNiMWM5NDFkYjIyNGQwYWM2IgogICAgfQogIH0KfQ=="),
+		Map.entry("RUBY", "ewogICJ0aW1lc3RhbXAiIDogMTYxODA4MzU3MzU0NywKICAicHJvZmlsZUlkIiA6ICJmZDQ3Y2I4YjgzNjQ0YmY3YWIyYmUxODZkYjI1ZmMwZCIsCiAgInByb2ZpbGVOYW1lIiA6ICJDVUNGTDEyIiwKICAic2lnbmF0dXJlUmVxdWlyZWQiIDogdHJ1ZSwKICAidGV4dHVyZXMiIDogewogICAgIlNLSU4iIDogewogICAgICAidXJsIiA6ICJodHRwOi8vdGV4dHVyZXMubWluZWNyYWZ0Lm5ldC90ZXh0dXJlLzkyNmEyNDhmYmJjMDZjZjA2ZTJjOTIwZWNhMWNhYzhhMmM5NjE2NGQzMjYwNDk0YmVkMTQyZDU1MzAyNmNjNiIKICAgIH0KICB9Cn0="),
+		Map.entry("AQUAMARINE", "ewogICJ0aW1lc3RhbXAiIDogMTcwNzY0MDU2MjAxNiwKICAicHJvZmlsZUlkIiA6ICIyNjRkYzBlYjVlZGI0ZmI3OTgxNWIyZGY1NGY0OTgyNCIsCiAgInByb2ZpbGVOYW1lIiA6ICJNb2phbmdIYXNBU3R1ZGlvIiwKICAic2lnbmF0dXJlUmVxdWlyZWQiIDogdHJ1ZSwKICAidGV4dHVyZXMiIDogewogICAgIlNLSU4iIDogewogICAgICAidXJsIiA6ICJodHRwOi8vdGV4dHVyZXMubWluZWNyYWZ0Lm5ldC90ZXh0dXJlL2QzNzY5OWJkZjhjYjQzZWZmMTQ3ZDljZTE5YjE0ODAyZjliYzg4YTIxZTYzYWQyOGI2Njk1MzBlOGEzYzBiNTciCiAgICB9CiAgfQp9"),
+		Map.entry("CITRINE", "ewogICJ0aW1lc3RhbXAiIDogMTcwODQ3NzA2NTU2NywKICAicHJvZmlsZUlkIiA6ICJhYWZmMDUwYTExOTk0NzM1YjEyNDVlNDk0MGFlZjY4NCIsCiAgInByb2ZpbGVOYW1lIiA6ICJMYXN0SW1tb3J0YWwiLAogICJzaWduYXR1cmVSZXF1aXJlZCIgOiB0cnVlLAogICJ0ZXh0dXJlcyIgOiB7CiAgICAiU0tJTiIgOiB7CiAgICAgICJ1cmwiIDogImh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvZjA2YjRmNjNkM2QzYTM5Yzk4NTY1YWY0ODU4YTUxMzViZTc3NGFkNjcyZWIyMzZiYjY1YWRmYzhjYjM0MjVlOCIKICAgIH0KICB9Cn0="),
+		Map.entry("ONYX", "ewogICJ0aW1lc3RhbXAiIDogMTcwNzY0MTg1MDQxOSwKICAicHJvZmlsZUlkIiA6ICI0NmNhODkyZTY4ODA0YThmYjFkYzkwYjg0ZTY5ZjVmZSIsCiAgInByb2ZpbGVOYW1lIiA6ICJPbG8xNjA2IiwKICAic2lnbmF0dXJlUmVxdWlyZWQiIDogdHJ1ZSwKICAidGV4dHVyZXMiIDogewogICAgIlNLSU4iIDogewogICAgICAidXJsIiA6ICJodHRwOi8vdGV4dHVyZXMubWluZWNyYWZ0Lm5ldC90ZXh0dXJlLzFjYTliMjg0MWY3MWJhNmZjNGQ2ZDJlOTdlODBjMTgwMWYzNmNhMzk1OGU1YTlhODFhNGY4Nzg1ZjY0MzQzNjciCiAgICB9CiAgfQp9"),
+		Map.entry("OPAL", "ewogICJ0aW1lc3RhbXAiIDogMTcyMDA0MjA1OTQ4NywKICAicHJvZmlsZUlkIiA6ICI1ZTdmY2RjYTU5YzI0NjkwODAwNjg4OTNkODU1ODM3NCIsCiAgInByb2ZpbGVOYW1lIiA6ICJKYWVsbGFyaSIsCiAgInNpZ25hdHVyZVJlcXVpcmVkIiA6IHRydWUsCiAgInRleHR1cmVzIiA6IHsKICAgICJTS0lOIiA6IHsKICAgICAgInVybCIgOiAiaHR0cDovL3RleHR1cmVzLm1pbmVjcmFmdC5uZXQvdGV4dHVyZS81ZDE1ZWQ3MGU3MjAwNDBhZDczMTFlNjkzNTlkZmRmNWUxMTRlYWRkMmE0YzFmOTcxYTk1MDEzNDFhNDUyNjRiIiwKICAgICAgIm1ldGFkYXRhIiA6IHsKICAgICAgICAibW9kZWwiIDogInNsaW0iCiAgICAgIH0KICAgIH0KICB9Cn0="),
+		Map.entry("PERIDOT", "ewogICJ0aW1lc3RhbXAiIDogMTcwNzY0MjI2OTYzMSwKICAicHJvZmlsZUlkIiA6ICIxZDIyYmUxYmQ2YTM0NWQ0OTI0Nzc4YmM4YWFlMjYzMCIsCiAgInByb2ZpbGVOYW1lIiA6ICJNQVJTX0hYIiwKICAic2lnbmF0dXJlUmVxdWlyZWQiIDogdHJ1ZSwKICAidGV4dHVyZXMiIDogewogICAgIlNLSU4iIDogewogICAgICAidXJsIiA6ICJodHRwOi8vdGV4dHVyZXMubWluZWNyYWZ0Lm5ldC90ZXh0dXJlLzE4ODRhOGRjYjcxMjgzNDFjZTA5Y2IzNjE2YzExYzNlNDZmODBkMDgzYTZmMmRiYjRkYmUwYmI5MzIzMThiMDkiCiAgICB9CiAgfQp9")
+	);
+
+	/**
+	 * Classic Flawless gemstone player head (3D cube). {@code gem} is e.g. {@code JADE}, {@code RUBY}.
+	 */
+	public static ItemStack gemstoneHead(String gem) {
+		if (gem == null || gem.isBlank()) {
+			return ItemStack.EMPTY;
+		}
+		String key = gem.trim().toUpperCase(Locale.ROOT);
+		if (key.endsWith("_CRYSTAL")) {
+			key = key.substring(0, key.length() - "_CRYSTAL".length());
+		}
+		if (key.endsWith("_GEM")) {
+			key = key.substring(0, key.length() - "_GEM".length());
+		}
+		String value = FLAWLESS_GEM_SKULLS.get(key);
+		if (value == null) {
+			return ItemStack.EMPTY;
+		}
+		ItemStack head = new ItemStack(Items.PLAYER_HEAD);
+		applySkullTextureValue(head, value, null);
+		return head;
+	}
+
 
 	public static ItemStack toStack(InventorySnapshot.Slot slot) {
 		if (slot == null || slot.isEmpty()) {
@@ -769,7 +831,7 @@ public final class SkyBlockItemFactory {
 	}
 
 	/**
-	 * Resolve rarity from NEU, then Hypixel items definitions.
+	 * Resolve rarity from Hypixel items definitions, then NEU.
 	 * Cofl pet tags ({@code PET_JELLYFISH}) omit rarity — do not guess from {@code TYPE;n} NEU files.
 	 */
 	public static String resolveTier(String skyblockId) {
@@ -778,18 +840,21 @@ public final class SkyBlockItemFactory {
 		}
 		String key = skyblockId.toUpperCase(Locale.ROOT);
 		boolean petAuctionTag = key.startsWith("PET_") && !key.startsWith("PET_ITEM_");
-		if (!petAuctionTag) {
-			String neu = neuTier(skyblockId);
-			if (!neu.isBlank()) {
-				return neu;
-			}
-		}
 		JsonObject hypixel = HypixelItemsCache.get(key);
 		if (hypixel == null) {
 			hypixel = HypixelItemsCache.get(canonicalId(skyblockId));
 		}
 		if (hypixel != null && hypixel.has("tier") && hypixel.get("tier").isJsonPrimitive()) {
-			return normalizeTier(hypixel.get("tier").getAsString());
+			String hypixelTier = normalizeTier(hypixel.get("tier").getAsString());
+			if (!hypixelTier.isBlank()) {
+				return hypixelTier;
+			}
+		}
+		if (!petAuctionTag) {
+			String neu = neuTier(skyblockId);
+			if (!neu.isBlank()) {
+				return neu;
+			}
 		}
 		return "";
 	}
@@ -1226,6 +1291,11 @@ public final class SkyBlockItemFactory {
 			out.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1));
 		}
 		return out.toString();
+	}
+
+	/** Parse Hypixel/NEU §-legacy strings into styled components. */
+	public static Component legacyLine(String text) {
+		return legacyText(text);
 	}
 
 	/** Parse Hypixel/NEU §-legacy strings into styled components. */

@@ -165,20 +165,19 @@ public final class NetworthCalculator {
 	}
 
 	private static double purse(JsonObject member) {
-		Double direct = num(member.get("coin_purse"));
-		if (direct != null) {
-			return direct;
-		}
 		JsonObject currencies = obj(member.get("currencies"));
-		if (currencies == null) {
-			return 0;
+		if (currencies != null) {
+			Double purse = num(currencies.get("coin_purse"));
+			if (purse != null) {
+				return purse;
+			}
+			Double alt = num(currencies.get("purse"));
+			if (alt != null) {
+				return alt;
+			}
 		}
-		Double purse = num(currencies.get("coin_purse"));
-		if (purse != null) {
-			return purse;
-		}
-		Double alt = num(currencies.get("purse"));
-		return alt == null ? 0 : alt;
+		Double direct = num(member.get("coin_purse"));
+		return direct == null ? 0 : direct;
 	}
 
 	private static double bank(JsonObject profileRoot) {

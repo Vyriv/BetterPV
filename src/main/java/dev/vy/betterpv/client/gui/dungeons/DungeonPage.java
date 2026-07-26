@@ -7,11 +7,14 @@ import dev.vy.betterpv.client.dungeons.ClassLevelQuery;
 import dev.vy.betterpv.client.dungeons.ClassXpCalculator;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
+import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 public final class DungeonPage {
 	private enum FieldFocus {
@@ -34,6 +37,16 @@ public final class DungeonPage {
 	private static final int HELP_ICON_COLOR = 0xFF9A9AAC;
 	private static final int HELP_ICON_HOVER = 0xFF5B8CFF;
 	private static final String HELP_MARK = "(?)";
+	private static final int FLIP_MS = 480;
+	private static final int PANEL_HOVER = 0x0AFFFFFF;
+	/** Wither essence — dark gray (Hypixel §8). */
+	private static final int WITHER_COLOR = 0xFF555555;
+	/** Undead essence — pink. */
+	private static final int UNDEAD_COLOR = 0xFFFF8EC8;
+	/** Half-size perk icons (0.5×) stay crisp. */
+	private static final int ESSENCE_PERK_ICON = 8;
+	/** Full-size essence skulls for Wither / Undead headers only. */
+	private static final int ESSENCE_HEADER_ICON = 16;
 
 	private DungeonSnapshot data = DungeonSnapshot.empty();
 	private final List<HoverZone> zones = new ArrayList<>();
@@ -46,6 +59,14 @@ public final class DungeonPage {
 	private String classLevelText = "";
 	private FieldFocus focus = FieldFocus.NONE;
 	private boolean replaceOnType;
+
+	private boolean runsEssenceFace;
+	private long runsFlipStartMs;
+	private boolean runsFlipTarget;
+	private int runsHitX;
+	private int runsHitY;
+	private int runsHitW;
+	private int runsHitH;
 
 	public void apply(DungeonSnapshot data) {
 		this.data = data == null ? DungeonSnapshot.empty() : data;
@@ -116,7 +137,26 @@ public final class DungeonPage {
 			blurField();
 			return true;
 		}
+		if (clickRunsPanel(mx, my)) {
+			return true;
+		}
 		return false;
+	}
+
+	private boolean clickRunsPanel(double mouseX, double mouseY) {
+		if (this.runsHitW <= 0 || this.runsHitH <= 0) {
+			return false;
+		}
+		if (mouseX < this.runsHitX || mouseX >= this.runsHitX + this.runsHitW
+			|| mouseY < this.runsHitY || mouseY >= this.runsHitY + this.runsHitH) {
+			return false;
+		}
+		if (this.runsFlipStartMs != 0L) {
+			return true;
+		}
+		this.runsFlipTarget = !this.runsEssenceFace;
+		this.runsFlipStartMs = System.currentTimeMillis();
+		return true;
 	}
 
 	public boolean isCalcButton(double mx, double my) {
@@ -305,14 +345,16 @@ public final class DungeonPage {
 		int firstFloorY = runsY + PAD + headerH;
 		int totalY = firstFloorY + 7 * lineH + 6 * gap + totalGap;
 		FloorLayout floors = new FloorLayout(firstFloorY, lineH, gap, totalY);
-		drawRunsPanel(g, font, leftX, runsY, leftW, runsH, floors);
+		drawRunsPanel(g, font, leftX, runsY, leftW, runsH, floors, mouseX, mouseY);
 		drawRightColumn(g, font, rightX, y, rightW, h, floors.totalY());
 
 		List<PvTooltip.Line> tip = null;
-		for (HoverZone zone : this.zones) {
-			if (mouseX >= zone.x && mouseX < zone.x + zone.w && mouseY >= zone.y && mouseY < zone.y + zone.h) {
-				tip = zone.lines;
-				break;
+		if (this.runsFlipStartMs == 0L) {
+			for (HoverZone zone : this.zones) {
+				if (mouseX >= zone.x && mouseX < zone.x + zone.w && mouseY >= zone.y && mouseY < zone.y + zone.h) {
+					tip = zone.lines;
+					break;
+				}
 			}
 		}
 		if (tip != null && !tip.isEmpty()) {
@@ -600,9 +642,60 @@ public final class DungeonPage {
 		}
 	}
 
-	private void drawRunsPanel(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, FloorLayout floors) {
-		PvDraw.innerPanel(g, x, y, w, h);
+	private void drawRunsPanel(
+		GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, FloorLayout floors, int mouseX, int mouseY
+	) {
+		this.runsHitX = x;
+		this.runsHitY = y;
+		this.runsHitW = w;
+		this.runsHitH = h;
 
+		boolean hovered = mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + h;
+		float flipProgress = 0F;
+		boolean animating = this.runsFlipStartMs != 0L;
+		if (animating) {
+			flipProgress = Math.min(1F, (System.currentTimeMillis() - this.runsFlipStartMs) / (float) FLIP_MS);
+			if (flipProgress >= 1F) {
+				this.runsEssenceFace = this.runsFlipTarget;
+				this.runsFlipStartMs = 0L;
+				animating = false;
+				flipProgress = 0F;
+			}
+		}
+		float eased = animating ? easeInOutCubic(flipProgress) : 0F;
+		float angle = eased * (float) Math.PI;
+		boolean showEssence = animating
+			? (Math.cos(angle) < 0.0 ? this.runsFlipTarget : this.runsEssenceFace)
+			: this.runsEssenceFace;
+		float scaleX = 1F;
+		float scaleY = 1F;
+		if (animating) {
+			scaleX = Math.max(0.04F, Math.abs((float) Math.cos(angle)));
+			scaleY = 1F - (1F - scaleX) * 0.06F;
+		}
+
+		float cxFlip = x + w / 2F;
+		float cyFlip = y + h / 2F;
+		g.pose().pushMatrix();
+		g.pose().translate(cxFlip, cyFlip);
+		g.pose().scale(scaleX, scaleY);
+		g.pose().translate(-cxFlip, -cyFlip);
+
+		PvDraw.innerPanel(g, x, y, w, h);
+		if (hovered && !animating) {
+			PvDraw.fill(g, x + 1, y + 1, w - 2, h - 2, PANEL_HOVER);
+		}
+
+		if (showEssence) {
+			drawEssenceShopFace(g, font, x, y, w, h);
+		} else {
+			drawRunsFace(g, font, x, y, w, floors);
+		}
+
+		g.pose().popMatrix();
+	}
+
+	private void drawRunsFace(GuiGraphicsExtractor g, Font font, int x, int y, int w, FloorLayout floors) {
 		int cx = x + PAD;
 		int innerW = w - PAD * 2;
 		int colGap = 20;
@@ -636,6 +729,124 @@ public final class DungeonPage {
 
 		drawTotalLine(g, font, leftCol, floors.totalY(), colW, normalTotal, normalColor);
 		drawTotalLine(g, font, rightCol, floors.totalY(), colW, masterTotal, masterColor);
+	}
+
+	private void drawEssenceShopFace(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h) {
+		int cx = x + PAD;
+		int cy = y + PAD;
+		int innerW = w - PAD * 2;
+		int colGap = 14;
+		int colW = Math.max(40, (innerW - colGap) / 2);
+		int leftCol = cx;
+		int rightCol = cx + colW + colGap;
+		// Slightly airier than lineHeight-only so upgrades aren't cramped.
+		int rowH = Math.max(font.lineHeight + 3, ESSENCE_PERK_ICON + 3);
+		int bottom = y + h - PAD;
+
+		drawEssenceColumn(g, font, this.data.witherShop(), leftCol, cy, colW, rowH, bottom, WITHER_COLOR);
+		drawEssenceColumn(g, font, this.data.undeadShop(), rightCol, cy, colW, rowH, bottom, UNDEAD_COLOR);
+
+		// Vertical separator between Wither and Undead (rotated section rule).
+		int sepX = leftCol + colW + colGap / 2;
+		int sepH = Math.max(0, bottom - cy);
+		if (sepH > 0) {
+			PvDraw.fill(g, sepX, cy, 1, sepH, PvDraw.COLOR_BORDER);
+		}
+	}
+
+	private void drawEssenceColumn(
+		GuiGraphicsExtractor g,
+		Font font,
+		DungeonSnapshot.EssenceShop shop,
+		int x,
+		int y,
+		int w,
+		int rowH,
+		int bottom,
+		int headerColor
+	) {
+		int headerIcon = ESSENCE_HEADER_ICON;
+		int perkIcon = ESSENCE_PERK_ICON;
+		int gap = 3;
+		int headerH = Math.max(headerIcon, font.lineHeight + 2);
+		int headerLabelX = x + headerIcon + gap;
+		int headerTextMid = Math.max(0, (headerH - font.lineHeight) / 2);
+		int headerIconMid = Math.max(0, (headerH - headerIcon) / 2);
+
+		// Header: larger essence icon + name …… amount
+		drawItemIcon(g, essenceIcon(shop.iconId()), x, y + headerIconMid, headerIcon);
+		String name = shop.name();
+		String bal = FormatUtil.commas(shop.balance());
+		int balW = PvDraw.widthBold(font, bal);
+		int nameMax = Math.max(8, w - (headerLabelX - x) - balW - 4);
+		PvDraw.textBold(g, font, trimToWidth(font, name, nameMax), headerLabelX, y + headerTextMid, headerColor);
+		PvDraw.textBold(g, font, bal, x + w - balW, y + headerTextMid, headerColor);
+
+		int perkLabelX = x + perkIcon + gap;
+		int perkTextMid = Math.max(0, (rowH - font.lineHeight) / 2);
+		int perkIconMid = Math.max(0, (rowH - perkIcon) / 2);
+		int ly = y + headerH + 4;
+		for (DungeonSnapshot.EssencePerk perk : shop.perks()) {
+			if (ly + font.lineHeight > bottom) {
+				break;
+			}
+			drawItemIcon(g, essencePerkIcon(perk.id()), x, ly + perkIconMid, perkIcon);
+			String right = perk.level() + "/" + perk.maxLevel();
+			int rightW = font.width(right);
+			String left = trimToWidth(font, perk.name(), Math.max(8, w - (perkLabelX - x) - rightW - 4));
+			int valueColor = perk.maxed() ? COLOR_COMPLETIONS : PvDraw.COLOR_TEXT;
+			PvDraw.text(g, font, left, perkLabelX, ly + perkTextMid, PvDraw.COLOR_MUTED);
+			PvDraw.textRight(g, font, right, x + w, ly + perkTextMid, valueColor);
+			ly += rowH;
+		}
+	}
+
+	private static ItemStack essenceIcon(String skyblockId) {
+		ItemStack stack = SkyBlockItemFactory.iconStack(skyblockId == null ? "" : skyblockId);
+		return stack == null || stack.isEmpty() ? new ItemStack(Items.PLAYER_HEAD) : stack;
+	}
+
+	/** Malik essence-shop row icons (vanilla stand-ins matching the GUI). */
+	private static ItemStack essencePerkIcon(String perkId) {
+		if (perkId == null) {
+			return new ItemStack(Items.PAPER);
+		}
+		return switch (perkId) {
+			case "permanent_health", "catacombs_health" -> new ItemStack(Items.GOLDEN_APPLE);
+			case "permanent_defense", "catacombs_defense" -> new ItemStack(Items.IRON_CHESTPLATE);
+			case "permanent_speed" -> new ItemStack(Items.SUGAR);
+			case "permanent_intelligence", "catacombs_intelligence" -> new ItemStack(Items.ENCHANTED_BOOK);
+			case "permanent_strength", "catacombs_strength" -> new ItemStack(Items.BLAZE_POWDER);
+			case "forbidden_blessing" -> new ItemStack(Items.GOLD_INGOT);
+			case "catacombs_boss_luck" -> new ItemStack(Items.RABBIT_FOOT);
+			case "catacombs_looting" -> new ItemStack(Items.GOLDEN_SWORD);
+			case "revive_stone", "help_of_the_fairies" -> new ItemStack(Items.TOTEM_OF_UNDYING);
+			case "catacombs_crit_damage" -> new ItemStack(Items.DIAMOND_SWORD);
+			default -> new ItemStack(Items.PAPER);
+		};
+	}
+
+	/** Draw items at exact half-size (8px) so scaling stays crisp. */
+	private static void drawItemIcon(GuiGraphicsExtractor g, ItemStack icon, int x, int y, int size) {
+		if (icon == null || icon.isEmpty()) {
+			return;
+		}
+		if (size == 16) {
+			g.item(icon, x, y);
+			return;
+		}
+		float scale = size / 16f;
+		g.pose().pushMatrix();
+		g.pose().translate(x, y);
+		g.pose().scale(scale, scale);
+		g.item(icon, 0, 0);
+		g.pose().popMatrix();
+	}
+
+	private static float easeInOutCubic(float t) {
+		return t < 0.5F
+			? 4F * t * t * t
+			: 1F - (float) Math.pow(-2F * t + 2F, 3) / 2F;
 	}
 
 	private void drawTotalLine(

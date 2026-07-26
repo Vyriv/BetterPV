@@ -4,11 +4,14 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import dev.vy.betterpv.client.data.AuctionSnapshot;
+import dev.vy.betterpv.client.data.ColeWeight;
 import dev.vy.betterpv.client.data.CollectionSnapshot;
 import dev.vy.betterpv.client.data.DungeonSnapshot;
 import dev.vy.betterpv.client.data.FormatUtil;
 import dev.vy.betterpv.client.data.GardenData;
 import dev.vy.betterpv.client.data.GardenSnapshot;
+import dev.vy.betterpv.client.data.MiningHotmData;
+import dev.vy.betterpv.client.data.MiningSnapshot;
 import dev.vy.betterpv.client.data.InventorySnapshot;
 import dev.vy.betterpv.client.data.Leveling;
 import dev.vy.betterpv.client.data.PetSnapshot;
@@ -19,6 +22,7 @@ import dev.vy.betterpv.client.data.RepoData;
 import dev.vy.betterpv.client.dungeons.CataXpMath;
 import dev.vy.betterpv.client.dungeons.DungeonModifierScanner;
 import dev.vy.betterpv.client.dungeons.DungeonXpData;
+import dev.vy.betterpv.client.dungeons.EssenceShopData;
 import dev.vy.betterpv.client.gui.ArmorStacks;
 import dev.vy.betterpv.client.networth.InventoryDecoder;
 import dev.vy.betterpv.client.networth.NetworthBreakdown;
@@ -36,6 +40,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 import net.minecraft.world.item.ItemStack;
 
 public final class ProfileFetcher {
@@ -70,6 +75,7 @@ public final class ProfileFetcher {
 		AuctionSnapshot auctions,
 		CollectionSnapshot collections,
 		GardenSnapshot garden,
+		MiningSnapshot mining,
 		String profileId,
 		WeightBreakdown senither,
 		WeightBreakdown lily,
@@ -99,9 +105,17 @@ public final class ProfileFetcher {
 	}
 
 	public static CompletableFuture<LoadedProfile> fetch(String playerName) {
+		return fetch(playerName, null);
+	}
+
+	/**
+	 * Loads the home/core profile first, then publishes a fully enriched profile through {@code onUpdate}.
+	 */
+	public static CompletableFuture<LoadedProfile> fetch(String playerName, Consumer<LoadedProfile> onUpdate) {
 		RepoData.ensureLoaded();
 		DungeonXpData.ensureLoaded();
 		GardenData.ensureLoaded();
+		MiningHotmData.ensureLoaded();
 		if (!HypixelApiClient.canFetch()) {
 			return CompletableFuture.completedFuture(new LoadedProfile(
 				ProfileSnapshot.loading(playerName),
@@ -111,6 +125,7 @@ public final class ProfileFetcher {
 				AuctionSnapshot.empty(),
 				CollectionSnapshot.empty(),
 				GardenSnapshot.empty(),
+				MiningSnapshot.empty(),
 				null,
 				WeightBreakdown.empty(dev.vy.betterpv.client.weight.WeightSystem.SENITHER),
 				WeightBreakdown.empty(dev.vy.betterpv.client.weight.WeightSystem.LILY),
@@ -153,7 +168,14 @@ public final class ProfileFetcher {
 				CompletableFuture<Optional<JsonObject>> auctionFut = HypixelApiClient.skyblockAuction(id.uuid());
 				CompletableFuture<Optional<JsonArray>> soldFut = CoflnetApiClient.playerAuctions(id.uuid(), 0);
 				CompletableFuture<Optional<JsonArray>> bidsFut = CoflnetApiClient.playerBids(id.uuid(), 0);
-				return CompletableFuture.allOf(museumFut, electionFut, auctionFut, soldFut, bidsFut)
+
+				// The client can render the profile as soon as the local profile data is parsed.
+				// Keep the slower museum, election, auction, and Coflnet calls off this gate.
+				CompletableFuture<LoadedProfile> coreFuture = CompletableFuture.supplyAsync(
+					() -> parseHomeCore(id.name(), id.uuid(), root),
+					HypixelApiClient.parseExecutor()
+				);
+				coreFuture.thenCompose(core -> CompletableFuture.allOf(museumFut, electionFut, auctionFut, soldFut, bidsFut)
 					.thenApplyAsync(ignored -> {
 						LoadedProfile loaded = parse(
 							id.name(),
@@ -174,7 +196,15 @@ public final class ProfileFetcher {
 							putCache(nameKey(cleaned), loaded);
 						}
 						return loaded;
-					}, HypixelApiClient.parseExecutor());
+					}, HypixelApiClient.parseExecutor())
+				).whenComplete((loaded, error) -> {
+					if (error != null) {
+						BetterPV.LOGGER.warn("Background profile enrichment failed for {}", id.name(), error);
+					} else if (loaded != null && onUpdate != null) {
+						onUpdate.accept(loaded);
+					}
+				});
+				return coreFuture;
 			});
 		});
 	}
@@ -248,6 +278,7 @@ public final class ProfileFetcher {
 			AuctionSnapshot.empty(),
 			CollectionSnapshot.empty(),
 			GardenSnapshot.empty(),
+			MiningSnapshot.empty(),
 			null,
 			WeightBreakdown.empty(dev.vy.betterpv.client.weight.WeightSystem.SENITHER),
 			WeightBreakdown.empty(dev.vy.betterpv.client.weight.WeightSystem.LILY),
@@ -274,9 +305,26 @@ public final class ProfileFetcher {
 		AuctionSnapshot auctions
 	) {
 		try {
-			return parseUnsafe(name, uuid, root, museumRoot, electionRoot, auctions);
+			return parseUnsafe(name, uuid, root, museumRoot, electionRoot, auctions, true);
 		} catch (Exception exception) {
 			BetterPV.LOGGER.warn("Profile parse failed for {}", name, exception);
+			return fail(name, exception.getMessage() == null ? "Parse failed" : exception.getMessage());
+		}
+	}
+
+	private static LoadedProfile parseHomeCore(String name, UUID uuid, JsonObject root) {
+		try {
+			return parseUnsafe(
+				name,
+				uuid,
+				root,
+				null,
+				null,
+				AuctionSnapshot.empty(),
+				false
+			);
+		} catch (Exception exception) {
+			BetterPV.LOGGER.warn("Core profile parse failed for {}", name, exception);
 			return fail(name, exception.getMessage() == null ? "Parse failed" : exception.getMessage());
 		}
 	}
@@ -287,7 +335,8 @@ public final class ProfileFetcher {
 		JsonObject root,
 		JsonObject museumRoot,
 		JsonObject electionRoot,
-		AuctionSnapshot auctions
+		AuctionSnapshot auctions,
+		boolean includeNetworth
 	) {
 		JsonArray profiles = root.has("profiles") && root.get("profiles").isJsonArray()
 			? root.getAsJsonArray("profiles")
@@ -329,21 +378,25 @@ public final class ProfileFetcher {
 		WeightBreakdown senither = WeightCalculator.senither(member, weightLevels);
 		WeightBreakdown lily = WeightCalculator.lily(member, weightLevels);
 
-		if (!ItemPricer.isReady()) {
+		if (includeNetworth && !ItemPricer.isReady()) {
 			ItemPricer.awaitReady(12_000L);
 		}
-		JsonObject museumMember = findMuseumMember(museumRoot, profileId, undashed);
+		JsonObject museumMember = includeNetworth ? findMuseumMember(museumRoot, profileId, undashed) : null;
 		BetterPV.LOGGER.info("Parsing profile {} ({})", name, cuteName);
 		Map<String, List<InventoryDecoder.Stack>> inventoryCategories =
 			InventoryDecoder.parseCategories(member, museumMember);
-		NetworthBreakdown networthNormal =
-			NetworthCalculator.calculate(member, best, museumMember, inventoryCategories, NetworthMode.NORMAL);
-		NetworthBreakdown networthNonCosmetic =
-			NetworthCalculator.calculate(member, best, museumMember, inventoryCategories, NetworthMode.NON_COSMETIC);
-		NetworthBreakdown networthUnsoulbound =
-			NetworthCalculator.calculate(member, best, museumMember, inventoryCategories, NetworthMode.UNSOULBOUND);
-		NetworthBreakdown networthUnsoulboundNonCosmetic =
-			NetworthCalculator.calculate(member, best, museumMember, inventoryCategories, NetworthMode.UNSOULBOUND_NON_COSMETIC);
+		NetworthBreakdown networthNormal = includeNetworth
+			? NetworthCalculator.calculate(member, best, museumMember, inventoryCategories, NetworthMode.NORMAL)
+			: NetworthBreakdown.empty("Loading networth");
+		NetworthBreakdown networthNonCosmetic = includeNetworth
+			? NetworthCalculator.calculate(member, best, museumMember, inventoryCategories, NetworthMode.NON_COSMETIC)
+			: NetworthBreakdown.empty("Loading networth");
+		NetworthBreakdown networthUnsoulbound = includeNetworth
+			? NetworthCalculator.calculate(member, best, museumMember, inventoryCategories, NetworthMode.UNSOULBOUND)
+			: NetworthBreakdown.empty("Loading networth");
+		NetworthBreakdown networthUnsoulboundNonCosmetic = includeNetworth
+			? NetworthCalculator.calculate(member, best, museumMember, inventoryCategories, NetworthMode.UNSOULBOUND_NON_COSMETIC)
+			: NetworthBreakdown.empty("Loading networth");
 
 		List<ProfileSnapshot.SkillEntry> skills = new ArrayList<>();
 		for (String skill : HOME_SKILLS) {
@@ -375,7 +428,9 @@ public final class ProfileFetcher {
 		List<ProfileSnapshot.SlayerEntry> slayers = new ArrayList<>();
 		for (String[] pair : HOME_SLAYERS) {
 			float xp = Leveling.readSlayerXp(member, pair[0]);
-			Leveling.Progress progress = Leveling.getLevel(RepoData.slayerXp(pair[0]), xp, 9, true);
+			JsonArray slayerTable = RepoData.slayerXp(pair[0]);
+			int slayerCap = slayerTable == null || slayerTable.isEmpty() ? 9 : slayerTable.size();
+			Leveling.Progress progress = Leveling.getLevel(slayerTable, xp, slayerCap, true);
 			slayers.add(new ProfileSnapshot.SlayerEntry(
 				pair[0],
 				pair[1],
@@ -397,7 +452,9 @@ public final class ProfileFetcher {
 			}
 		}
 
-		String nwText = networthNormal.total() > 0
+		String nwText = !includeNetworth
+			? "…"
+			: networthNormal.total() > 0
 			? FormatUtil.shortCoins(networthNormal.total())
 			: "-";
 
@@ -445,6 +502,14 @@ public final class ProfileFetcher {
 			BetterPV.LOGGER.warn("Garden member parse failed for {}", name, exception);
 			garden = GardenSnapshot.empty();
 		}
+		MiningSnapshot mining;
+		try {
+			mining = MiningSnapshot.fromMember(member);
+			mining = mining.withColeWeight(ColeWeight.calculate(mining, collections, member));
+		} catch (Exception exception) {
+			BetterPV.LOGGER.warn("Mining member parse failed for {}", name, exception);
+			mining = MiningSnapshot.empty();
+		}
 		BetterPV.LOGGER.info("Profile ready for {} (nw={})", name, nwText);
 		AuctionSnapshot auctionSnapshot = auctions == null ? AuctionSnapshot.empty() : auctions;
 		auctionSnapshot = auctionSnapshot.withStats(AuctionSnapshot.Stats.fromMember(member));
@@ -457,6 +522,7 @@ public final class ProfileFetcher {
 			auctionSnapshot,
 			collections,
 			garden,
+			mining,
 			profileId,
 			senither,
 			lily,
@@ -583,7 +649,9 @@ public final class ProfileFetcher {
 			graduateBonus,
 			essenceBonuses,
 			mayorFactor,
-			mayorName
+			mayorName,
+			EssenceShopData.wither(member),
+			EssenceShopData.undead(member)
 		);
 	}
 

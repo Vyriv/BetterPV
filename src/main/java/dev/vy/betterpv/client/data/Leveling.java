@@ -187,6 +187,19 @@ public final class Leveling {
 				base += perks.get("farming_level_cap").getAsInt();
 			}
 		}
+		if ("taming".equals(skill)) {
+			// George pet sacrifices raise the taming cap by 1 each (50 → 60).
+			JsonObject petsData = obj(member.get("pets_data"));
+			JsonObject petCare = petsData == null ? null : obj(petsData.get("pet_care"));
+			if (petCare != null && petCare.get("pet_types_sacrificed") != null
+				&& petCare.get("pet_types_sacrificed").isJsonArray()) {
+				int sacrificed = petCare.getAsJsonArray("pet_types_sacrificed").size();
+				base = Math.min(60, base + Math.max(0, sacrificed));
+			}
+		}
+		if ("hunting".equals(skill)) {
+			return Math.min(base, 25);
+		}
 		if ("runecrafting".equals(skill) || "social".equals(skill)) {
 			return Math.min(base, 25);
 		}

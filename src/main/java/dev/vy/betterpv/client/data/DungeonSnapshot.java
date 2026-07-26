@@ -44,6 +44,25 @@ public final class DungeonSnapshot {
 		}
 	}
 
+	public record EssencePerk(String id, String name, int level, int maxLevel) {
+		public boolean maxed() {
+			return level >= maxLevel && maxLevel > 0;
+		}
+	}
+
+	public record EssenceShop(String id, String name, long balance, String iconId, List<EssencePerk> perks) {
+		public static EssenceShop empty(String id, String name) {
+			String icon = switch (id == null ? "" : id) {
+				case "wither" -> "ESSENCE_WITHER";
+				case "undead" -> "ESSENCE_UNDEAD";
+				case "gold" -> "ESSENCE_GOLD";
+				case "diamond" -> "ESSENCE_DIAMOND";
+				default -> "ESSENCE_WITHER";
+			};
+			return new EssenceShop(id, name, 0L, icon, List.of());
+		}
+	}
+
 	private final int cataLevel;
 	private final float cataXp;
 	private final float cataProgress;
@@ -65,6 +84,8 @@ public final class DungeonSnapshot {
 	private final Map<String, Double> classEssenceBonuses;
 	private final double mayorFactor;
 	private final String mayorName;
+	private final EssenceShop witherShop;
+	private final EssenceShop undeadShop;
 
 	public DungeonSnapshot(
 		int cataLevel,
@@ -87,7 +108,9 @@ public final class DungeonSnapshot {
 		double catacombsGraduateBonus,
 		Map<String, Double> classEssenceBonuses,
 		double mayorFactor,
-		String mayorName
+		String mayorName,
+		EssenceShop witherShop,
+		EssenceShop undeadShop
 	) {
 		this.cataLevel = cataLevel;
 		this.cataXp = cataXp;
@@ -112,6 +135,8 @@ public final class DungeonSnapshot {
 			: Collections.unmodifiableMap(Map.copyOf(classEssenceBonuses));
 		this.mayorFactor = mayorFactor;
 		this.mayorName = mayorName == null ? "" : mayorName;
+		this.witherShop = witherShop == null ? EssenceShop.empty("wither", "Wither") : witherShop;
+		this.undeadShop = undeadShop == null ? EssenceShop.empty("undead", "Undead") : undeadShop;
 	}
 
 	public int cataLevel() {
@@ -207,6 +232,14 @@ public final class DungeonSnapshot {
 		return this.mayorName;
 	}
 
+	public EssenceShop witherShop() {
+		return this.witherShop;
+	}
+
+	public EssenceShop undeadShop() {
+		return this.undeadShop;
+	}
+
 	public static DungeonSnapshot empty() {
 		return new DungeonSnapshot(
 			0, 0F, 0F, false, "Loading…",
@@ -215,7 +248,9 @@ public final class DungeonSnapshot {
 			List.of(),
 			ModeStats.empty(),
 			ModeStats.empty(),
-			false, 0, 0, 0, Map.of(), 1.0, ""
+			false, 0, 0, 0, Map.of(), 1.0, "",
+			EssenceShop.empty("wither", "Wither"),
+			EssenceShop.empty("undead", "Undead")
 		);
 	}
 }

@@ -52,6 +52,11 @@ public enum PvTab {
 				PvSubTab.GARDEN_GREENHOUSE,
 				PvSubTab.GARDEN_JACOB
 			};
+			case MINING -> new PvSubTab[] {
+				PvSubTab.MINING_OVERVIEW,
+				PvSubTab.MINING_HOTM,
+				PvSubTab.MINING_GLACITE
+			};
 			case FORAGING -> new PvSubTab[] { PvSubTab.FORAGING_MAIN, PvSubTab.FORAGING_SHARDS };
 			case CRIMSON -> new PvSubTab[] { PvSubTab.CRIMSON_MAIN, PvSubTab.CRIMSON_TROPHY, PvSubTab.CRIMSON_ABIPHONE };
 			case RIFT -> new PvSubTab[] { PvSubTab.RIFT_OVERVIEW, PvSubTab.RIFT_INVENTORY };

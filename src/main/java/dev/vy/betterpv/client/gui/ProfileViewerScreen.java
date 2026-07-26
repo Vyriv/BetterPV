@@ -12,15 +12,13 @@ import dev.vy.betterpv.client.gui.dungeons.DungeonPage;
 import dev.vy.betterpv.client.gui.garden.GardenPage;
 import dev.vy.betterpv.client.gui.home.HomePage;
 import dev.vy.betterpv.client.gui.inventories.InventoryPage;
+import dev.vy.betterpv.client.gui.mining.MiningPage;
 import dev.vy.betterpv.client.gui.nav.IconButtonBar;
 import dev.vy.betterpv.client.gui.nav.InventoryPane;
 import dev.vy.betterpv.client.gui.nav.MuseumSort;
 import dev.vy.betterpv.client.gui.nav.PvSubTab;
 import dev.vy.betterpv.client.gui.nav.PvTab;
 import dev.vy.betterpv.client.gui.pets.PetsPage;
-import dev.vy.betterpv.client.networth.NetworthBreakdown;
-import dev.vy.betterpv.client.weight.WeightBreakdown;
-import dev.vy.betterpv.client.weight.WeightSystem;
 import dev.vy.betterpv.BetterPV;
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -43,6 +41,9 @@ public final class ProfileViewerScreen extends Screen {
 	private static final int PAD = 8;
 	private static final int SEARCH_H = 16;
 	private static final int SEARCH_GAP = 4;
+	/** Open expand animation duration (ms). */
+	private static final long OPEN_ANIM_MS = 260L;
+	private static final float OPEN_SCALE_START = 0.12F;
 
 	private final String requestedName;
 	private final HomePage homePage;
@@ -52,14 +53,20 @@ public final class ProfileViewerScreen extends Screen {
 	private final AuctionPage auctionPage = new AuctionPage();
 	private final CollectionsPage collectionsPage = new CollectionsPage();
 	private final GardenPage gardenPage = new GardenPage();
+	private final MiningPage miningPage = new MiningPage();
 	private final IconButtonBar topBar = new IconButtonBar();
 	private final IconButtonBar sideBar = new IconButtonBar();
 	private final IconButtonBar inventoryBar = new IconButtonBar();
 	private final Map<PvTab, PvSubTab> subSelection = new EnumMap<>(PvTab.class);
+	private final long openAnimStartMs = System.currentTimeMillis();
+	private float openPivotX;
+	private float openPivotY;
 
 	private PvTab tab = PvTab.HOME;
 	private MuseumSort museumSort = MuseumSort.COMBAT;
 	private boolean fetchStarted;
+	private boolean dataReady;
+	private boolean breakScheduled;
 	private String profileId;
 	private UUID playerUuid;
 	private boolean gardenFetchStarted;
@@ -67,6 +74,9 @@ public final class ProfileViewerScreen extends Screen {
 	private boolean gardenWeightFetchStarted;
 	private EditBox inventorySearch;
 	private String inventorySearchQuery = "";
+	private Component inventoryPaneTip;
+	private int inventoryPaneTipX;
+	private int inventoryPaneTipY;
 
 	public ProfileViewerScreen(String playerName) {
 		super(Component.translatable("betterpv.screen.title"));
@@ -108,7 +118,7 @@ public final class ProfileViewerScreen extends Screen {
 			return;
 		}
 		this.fetchStarted = true;
-		ProfileFetcher.fetch(this.requestedName).whenComplete((loaded, error) -> {
+		ProfileFetcher.fetch(this.requestedName, updated -> {
 			Minecraft client = Minecraft.getInstance();
 			if (client == null) {
 				return;
@@ -117,47 +127,60 @@ public final class ProfileViewerScreen extends Screen {
 				if (client.screen != this) {
 					return;
 				}
-				if (error != null || loaded == null) {
-					BetterPV.LOGGER.warn("Profile fetch failed for {}", this.requestedName, error);
-					this.homePage.applyLoaded(
-						ProfileSnapshot.loading(this.requestedName),
-						WeightBreakdown.empty(WeightSystem.SENITHER),
-						WeightBreakdown.empty(WeightSystem.LILY),
-						NetworthBreakdown.empty("Fetch failed"),
-						NetworthBreakdown.empty("Fetch failed"),
-						NetworthBreakdown.empty("Fetch failed"),
-						NetworthBreakdown.empty("Fetch failed"),
-						new ItemStack[] { ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY },
-						PlayerStatsSnapshot.empty(),
-						error == null ? "Fetch failed" : (error.getMessage() == null ? error.toString() : error.getMessage())
-					);
+				applyLoadedProfile(updated);
+			});
+		}).whenComplete((loaded, error) -> {
+			Minecraft client = Minecraft.getInstance();
+			if (client == null) {
+				return;
+			}
+			client.execute(() -> {
+				if (client.screen != this) {
 					return;
 				}
-				this.homePage.applyLoaded(
-					loaded.snapshot(),
-					loaded.senither(),
-					loaded.lily(),
-					loaded.networthNormal(),
-					loaded.networthNonCosmetic(),
-					loaded.networthUnsoulbound(),
-					loaded.networthUnsoulboundNonCosmetic(),
-					loaded.armor(),
-					loaded.playerStats(),
-					loaded.error()
-				);
-				this.dungeonPage.apply(loaded.dungeons());
-				this.inventoryPage.apply(loaded.inventories());
-				this.petsPage.apply(loaded.pets());
-				this.auctionPage.apply(loaded.auctions());
-				this.collectionsPage.apply(loaded.collections());
-				this.gardenPage.apply(loaded.garden());
-				this.profileId = loaded.profileId();
-				this.playerUuid = loaded.snapshot() == null ? null : loaded.snapshot().playerUuid();
-				this.gardenFetchStarted = false;
-				this.gardenContestsFetchStarted = false;
-				this.gardenWeightFetchStarted = false;
+				if (error != null || loaded == null || !loaded.ok()) {
+					BetterPV.LOGGER.warn(
+						"Profile fetch failed for {} — staying on loading easter egg",
+						this.requestedName,
+						error
+					);
+					// Do not set dataReady; LoadingEgg escalates until finale or the user closes.
+					return;
+				}
+				applyLoadedProfile(loaded);
+				this.dataReady = true;
 			});
 		});
+	}
+
+	private void applyLoadedProfile(ProfileFetcher.LoadedProfile loaded) {
+		if (loaded == null) {
+			return;
+		}
+		this.homePage.applyLoaded(
+			loaded.snapshot(),
+			loaded.senither(),
+			loaded.lily(),
+			loaded.networthNormal(),
+			loaded.networthNonCosmetic(),
+			loaded.networthUnsoulbound(),
+			loaded.networthUnsoulboundNonCosmetic(),
+			loaded.armor(),
+			loaded.playerStats(),
+			loaded.error()
+		);
+		this.dungeonPage.apply(loaded.dungeons());
+		this.inventoryPage.apply(loaded.inventories());
+		this.petsPage.apply(loaded.pets());
+		this.auctionPage.apply(loaded.auctions());
+		this.collectionsPage.apply(loaded.collections());
+		this.gardenPage.apply(loaded.garden());
+		this.miningPage.apply(loaded.mining());
+		this.profileId = loaded.profileId();
+		this.playerUuid = loaded.snapshot() == null ? null : loaded.snapshot().playerUuid();
+		this.gardenFetchStarted = false;
+		this.gardenContestsFetchStarted = false;
+		this.gardenWeightFetchStarted = false;
 	}
 
 	@Override
@@ -181,49 +204,159 @@ public final class ProfileViewerScreen extends Screen {
 		int panelY = (this.height - panelH - topRoom) / 2 + topRoom;
 
 		PvDraw.fill(graphics, 0, 0, this.width, this.height, 0x99000000);
+
+		float scale = openScale();
+		this.openPivotX = panelX + panelW / 2.0F;
+		this.openPivotY = panelY + panelH / 2.0F;
+		boolean scaled = scale < 0.999F;
+		if (scaled) {
+			graphics.pose().pushMatrix();
+			graphics.pose().translate(this.openPivotX, this.openPivotY);
+			graphics.pose().scale(scale, scale);
+			graphics.pose().translate(-this.openPivotX, -this.openPivotY);
+		}
+
 		PvDraw.panel(graphics, panelX, panelY, panelW, panelH);
 
-		List<IconButtonBar.Entry> topEntries = new ArrayList<>();
-		for (PvTab t : PvTab.values()) {
-			topEntries.add(new IconButtonBar.Entry(t, t.icon(), t.label(), () -> {
-				if (t != PvTab.DUNGEONS) {
-					this.dungeonPage.blurField();
-				}
-				this.tab = t;
-			}));
-		}
-		this.topBar.drawTopFrameTabs(graphics, this.font, panelX, panelY, mouseX, mouseY, topEntries, this.tab);
-
-		Object[] left = this.tab.leftTabs();
-		if (left.length > 0) {
-			List<IconButtonBar.Entry> side = new ArrayList<>();
-			Object selectedLeft = selectedLeftKey();
-			for (Object entry : left) {
-				ItemStack icon;
-				Component label;
-				Runnable click;
-				if (entry instanceof PvSubTab sub) {
-					icon = sub.icon();
-					label = sub.label();
-					click = () -> this.subSelection.put(this.tab, sub);
-				} else if (entry instanceof MuseumSort sort) {
-					icon = sort.icon();
-					label = sort.label();
-					click = () -> this.museumSort = sort;
-				} else {
-					continue;
-				}
-				side.add(new IconButtonBar.Entry(entry, icon, label, click));
+		if (!this.dataReady) {
+			hideInventorySearch();
+			drawLoadingFace(graphics, panelX, panelY, panelW, panelH);
+		} else {
+			List<IconButtonBar.Entry> topEntries = new ArrayList<>();
+			for (PvTab t : PvTab.values()) {
+				topEntries.add(new IconButtonBar.Entry(t, t.icon(), t.label(), () -> {
+					if (t != PvTab.DUNGEONS) {
+						this.dungeonPage.blurField();
+					}
+					this.tab = t;
+				}));
 			}
-			this.sideBar.drawLeftFrameTabs(graphics, this.font, panelX, panelY, mouseX, mouseY, side, selectedLeft);
+			this.topBar.drawTopFrameTabs(graphics, this.font, panelX, panelY, mouseX, mouseY, topEntries, this.tab);
+
+			Object[] left = this.tab.leftTabs();
+			if (left.length > 0) {
+				List<IconButtonBar.Entry> side = new ArrayList<>();
+				Object selectedLeft = selectedLeftKey();
+				for (Object entry : left) {
+					ItemStack icon;
+					Component label;
+					Runnable click;
+					if (entry instanceof PvSubTab sub) {
+						icon = sub.icon();
+						label = sub.label();
+						click = () -> this.subSelection.put(this.tab, sub);
+						side.add(new IconButtonBar.Entry(entry, icon, label, click, sub.textureIcon(), sub.textureSize()));
+					} else if (entry instanceof MuseumSort sort) {
+						icon = sort.icon();
+						label = sort.label();
+						click = () -> this.museumSort = sort;
+						side.add(new IconButtonBar.Entry(entry, icon, label, click));
+					} else {
+						continue;
+					}
+				}
+				this.sideBar.drawLeftFrameTabs(graphics, this.font, panelX, panelY, mouseX, mouseY, side, selectedLeft);
+			}
+
+			// Content uses the full panel - nothing reserved inside for subtabs.
+			renderBody(graphics, panelX + PAD, panelY + PAD, panelW - PAD * 2, panelH - PAD * 2, mouseX, mouseY, delta);
+
+			if (this.tab == PvTab.DUNGEONS) {
+				this.dungeonPage.renderOverlay(graphics, this.font, this.width, this.height, mouseX, mouseY);
+			}
+
+			// Inventory tips last so they paint above pane buttons / frame tabs.
+			if (this.tab.isInventorySplit()) {
+				this.inventoryPage.renderTooltip(graphics, this.font, mouseX, mouseY, this.width, this.height);
+				if (this.inventoryPaneTip != null) {
+					this.inventoryBar.maybeTooltip(
+						graphics,
+						this.font,
+						this.inventoryPaneTip,
+						true,
+						this.inventoryPaneTipX,
+						this.inventoryPaneTipY
+					);
+				}
+			}
 		}
 
-		// Content uses the full panel - nothing reserved inside for subtabs.
-		renderBody(graphics, panelX + PAD, panelY + PAD, panelW - PAD * 2, panelH - PAD * 2, mouseX, mouseY, delta);
-
-		if (this.tab == PvTab.DUNGEONS) {
-			this.dungeonPage.renderOverlay(graphics, this.font, this.width, this.height, mouseX, mouseY);
+		if (scaled) {
+			graphics.pose().popMatrix();
 		}
+	}
+
+	private float openScale() {
+		long elapsed = System.currentTimeMillis() - this.openAnimStartMs;
+		if (elapsed >= OPEN_ANIM_MS) {
+			return 1.0F;
+		}
+		float t = Math.max(0.0F, Math.min(1.0F, elapsed / (float) OPEN_ANIM_MS));
+		// Cubic ease-out: snappy expand from center.
+		float eased = 1.0F - (1.0F - t) * (1.0F - t) * (1.0F - t);
+		return OPEN_SCALE_START + (1.0F - OPEN_SCALE_START) * eased;
+	}
+
+	private boolean uiInteractive() {
+		return this.dataReady && openScale() >= 0.98F;
+	}
+
+	private void drawLoadingFace(GuiGraphicsExtractor g, int panelX, int panelY, int panelW, int panelH) {
+		long elapsedMs = System.currentTimeMillis() - this.openAnimStartMs;
+		List<LoadingEgg.Stage> stages = LoadingEgg.stagesUnlocked(elapsedMs);
+		int cx = panelX + panelW / 2;
+		int maxW = panelW - 24;
+		int lineH = this.font.lineHeight + 3;
+
+		long phase = (System.currentTimeMillis() / 400L) % 4L;
+		String dots = switch ((int) phase) {
+			case 1 -> ".";
+			case 2 -> "..";
+			case 3 -> "...";
+			default -> "";
+		};
+		String loading = "Loading Data" + dots;
+
+		if (elapsedMs >= LoadingEgg.BREAK_AT_MS) {
+			scheduleBreakFinale();
+			PvDraw.fill(g, panelX + 2, panelY + 2, panelW - 4, panelH - 4, 0xCC330000);
+		} else if (!stages.isEmpty() && stages.get(stages.size() - 1).shout()) {
+			PvDraw.fill(g, panelX + 4, panelY + 4, panelW - 8, panelH - 8, 0x33AA0000);
+		}
+
+		// Loading Data + every unlocked threat, stacked oldest → newest.
+		int rows = 1 + stages.size();
+		int blockH = rows * lineH - 3;
+		int topY = panelY + Math.max(10, (panelH - blockH) / 2);
+		PvDraw.textCentered(g, this.font, loading, cx, topY, PvDraw.COLOR_MUTED);
+		int ty = topY + lineH;
+		for (LoadingEgg.Stage stage : stages) {
+			drawEggLine(g, stage.line(), cx, ty, maxW);
+			ty += lineH;
+		}
+	}
+
+	private void drawEggLine(GuiGraphicsExtractor g, Component line, int cx, int y, int maxW) {
+		int tw = this.font.width(line);
+		if (tw <= maxW || tw <= 0) {
+			PvDraw.textCentered(g, this.font, line, cx, y);
+			return;
+		}
+		float scale = maxW / (float) tw;
+		g.pose().pushMatrix();
+		g.pose().translate(cx, y);
+		g.pose().scale(scale, scale);
+		PvDraw.text(g, this.font, line, -tw / 2, 0);
+		g.pose().popMatrix();
+	}
+
+	private void scheduleBreakFinale() {
+		if (this.breakScheduled) {
+			return;
+		}
+		this.breakScheduled = true;
+		BetterPV.LOGGER.warn("Loading egg hit finale for {} — starting limbo + fake ban", this.requestedName);
+		LoadingEggFinale.start();
 	}
 
 	private Object selectedLeftKey() {
@@ -237,7 +370,10 @@ public final class ProfileViewerScreen extends Screen {
 		if (this.tab == PvTab.HOME) {
 			hideInventorySearch();
 			this.dungeonPage.blurField();
-			this.homePage.render(g, this.font, x, y, w, h, mouseX, mouseY, this.width, this.height);
+			this.homePage.render(
+				g, this.font, x, y, w, h, mouseX, mouseY, this.width, this.height,
+				openScale(), this.openPivotX, this.openPivotY
+			);
 			return;
 		}
 
@@ -286,6 +422,14 @@ public final class ProfileViewerScreen extends Screen {
 				ensureGardenContests();
 			}
 			this.gardenPage.render(g, this.font, sub, x, y, w, h, mouseX, mouseY, this.width, this.height);
+			return;
+		}
+
+		if (this.tab == PvTab.MINING) {
+			hideInventorySearch();
+			this.dungeonPage.blurField();
+			PvSubTab sub = this.subSelection.getOrDefault(this.tab, PvSubTab.MINING_OVERVIEW);
+			this.miningPage.render(g, this.font, sub, x, y, w, h, mouseX, mouseY, this.width, this.height);
 			return;
 		}
 
@@ -345,6 +489,7 @@ public final class ProfileViewerScreen extends Screen {
 		int startY = bodyY + pad;
 
 		int index = 0;
+		this.inventoryPaneTip = null;
 		for (int row = 0; row < rows && index < panes.length; row++) {
 			int width = rowWidths[row];
 			int rowW = width * btn + (width - 1) * btnGap;
@@ -377,7 +522,12 @@ public final class ProfileViewerScreen extends Screen {
 					g.item(pane.icon(), bx + (btn - 16) / 2, by + (btn - 16) / 2);
 				}
 				this.inventoryBar.addHit(bx, by, btn, btn, () -> this.inventoryPage.setPane(pane));
-				this.inventoryBar.maybeTooltip(g, this.font, pane.label(), hovered, bx - 4, by + btn / 2);
+				if (hovered) {
+					// Defer tip until after all buttons / search so later icons don't cover it.
+					this.inventoryPaneTip = pane.label();
+					this.inventoryPaneTipX = bx - 4;
+					this.inventoryPaneTipY = by + btn / 2;
+				}
 			}
 		}
 
@@ -408,8 +558,7 @@ public final class ProfileViewerScreen extends Screen {
 			);
 		}
 
-		// Item tips last so they paint above the button panel.
-		this.inventoryPage.renderTooltip(g, this.font, mouseX, mouseY, this.width, this.height);
+		// Item tips deferred to extractRenderState (after frame tabs) so they paint on top.
 	}
 
 	private void layoutInventorySearch(int x, int y, int w) {
@@ -440,9 +589,18 @@ public final class ProfileViewerScreen extends Screen {
 		if (click == null) {
 			return super.mouseClicked(click, doubled);
 		}
+		if (!uiInteractive()) {
+			return true;
+		}
 		double mx = click.x();
 		double my = click.y();
 		if (this.tab == PvTab.DUNGEONS && this.dungeonPage.mouseClicked(mx, my)) {
+			return true;
+		}
+		if (this.tab == PvTab.MINING && this.miningPage.mouseClicked(mx, my)) {
+			return true;
+		}
+		if (this.tab == PvTab.GARDEN && this.gardenPage.mouseClicked(mx, my)) {
 			return true;
 		}
 		if (this.tab == PvTab.PETS && this.petsPage.mouseClicked(mx, my)) {
@@ -476,6 +634,9 @@ public final class ProfileViewerScreen extends Screen {
 
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+		if (!uiInteractive()) {
+			return true;
+		}
 		if (this.tab == PvTab.DUNGEONS && this.dungeonPage.mouseScrolled(scrollY)) {
 			return true;
 		}
@@ -500,6 +661,15 @@ public final class ProfileViewerScreen extends Screen {
 				mouseY,
 				scrollY,
 				this.subSelection.getOrDefault(this.tab, PvSubTab.GARDEN_OVERVIEW)
+			)) {
+			return true;
+		}
+		if (this.tab == PvTab.MINING
+			&& this.miningPage.mouseScrolled(
+				mouseX,
+				mouseY,
+				scrollY,
+				this.subSelection.getOrDefault(this.tab, PvSubTab.MINING_OVERVIEW)
 			)) {
 			return true;
 		}
@@ -665,7 +835,7 @@ public final class ProfileViewerScreen extends Screen {
 			if (!typingSearch && MoulberryMode.keyPressed(event.key())) {
 				return true;
 			}
-			if (this.tab == PvTab.DUNGEONS && this.dungeonPage.keyPressed(event.key())) {
+			if (uiInteractive() && this.tab == PvTab.DUNGEONS && this.dungeonPage.keyPressed(event.key())) {
 				return true;
 			}
 		}
@@ -684,7 +854,7 @@ public final class ProfileViewerScreen extends Screen {
 					return true;
 				}
 			}
-			if (this.tab == PvTab.DUNGEONS) {
+			if (uiInteractive() && this.tab == PvTab.DUNGEONS) {
 				String text = event.codepointAsString();
 				if (text != null && !text.isEmpty() && this.dungeonPage.charTyped(text.charAt(0))) {
 					return true;

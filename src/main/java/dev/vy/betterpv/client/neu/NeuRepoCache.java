@@ -22,6 +22,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -98,6 +99,36 @@ public final class NeuRepoCache {
 		return SACKS;
 	}
 
+	/**
+	 * NEU skull / item id for a sack display name (e.g. {@code Agronomy} → {@code LARGE_AGRONOMY_SACK}).
+	 * Also accepts titles like {@code Rune Sack}.
+	 */
+	public static String sackItemId(String sackName) {
+		ensureSacksLoaded();
+		if (sackName == null || sackName.isBlank()) {
+			return null;
+		}
+		String direct = SACK_ITEMS.get(sackName);
+		if (direct != null) {
+			return direct;
+		}
+		if (sackName.regionMatches(true, sackName.length() - 5, " Sack", 0, 5)) {
+			return SACK_ITEMS.get(sackName.substring(0, sackName.length() - 5));
+		}
+		for (var entry : SACK_ITEMS.entrySet()) {
+			if (entry.getKey().equalsIgnoreCase(sackName)) {
+				return entry.getValue();
+			}
+		}
+		return null;
+	}
+
+	/** All NEU sack icon item ids (for prefetch). */
+	public static Set<String> sackItemIds() {
+		ensureSacksLoaded();
+		return Set.copyOf(SACK_ITEMS.values());
+	}
+
 	/** Minion internal name (e.g. {@code WHEAT_GENERATOR}) → max tier from NEU {@code constants/misc.json}. */
 	public static Map<String, Integer> minionMaxTiers() {
 		ensureMinionsLoaded();
@@ -105,14 +136,16 @@ public final class NeuRepoCache {
 	}
 
 	private static final Map<String, List<String>> SACKS = new java.util.LinkedHashMap<>();
+	/** Sack display name → NEU item id (player-head sack skins). */
+	private static final Map<String, String> SACK_ITEMS = new java.util.LinkedHashMap<>();
 	private static final Map<String, Integer> MINIONS = new java.util.LinkedHashMap<>();
 
 	private static void ensureSacksLoaded() {
-		if (!SACKS.isEmpty()) {
+		if (!SACKS.isEmpty() && !SACK_ITEMS.isEmpty()) {
 			return;
 		}
 		synchronized (SACKS) {
-			if (!SACKS.isEmpty()) {
+			if (!SACKS.isEmpty() && !SACK_ITEMS.isEmpty()) {
 				return;
 			}
 			loadSacksFromDisk();
@@ -146,17 +179,22 @@ public final class NeuRepoCache {
 					continue;
 				}
 				JsonObject def = entry.getValue().getAsJsonObject();
-				if (!def.has("contents") || !def.get("contents").isJsonArray()) {
-					continue;
-				}
-				List<String> contents = new java.util.ArrayList<>();
-				for (var el : def.getAsJsonArray("contents")) {
-					if (el.isJsonPrimitive()) {
-						contents.add(el.getAsString());
+				if (def.has("contents") && def.get("contents").isJsonArray()) {
+					List<String> contents = new java.util.ArrayList<>();
+					for (var el : def.getAsJsonArray("contents")) {
+						if (el.isJsonPrimitive()) {
+							contents.add(el.getAsString());
+						}
+					}
+					if (!contents.isEmpty()) {
+						SACKS.put(entry.getKey(), List.copyOf(contents));
 					}
 				}
-				if (!contents.isEmpty()) {
-					SACKS.put(entry.getKey(), List.copyOf(contents));
+				if (def.has("item") && def.get("item").isJsonPrimitive()) {
+					String item = def.get("item").getAsString();
+					if (item != null && !item.isBlank()) {
+						SACK_ITEMS.put(entry.getKey(), item);
+					}
 				}
 			}
 		} catch (Exception exception) {

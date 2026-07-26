@@ -74,7 +74,24 @@ public final class GardenSnapshot {
 		}
 	}
 
-	public record BracketCount(String bracket, int crops) {
+	public record BracketCount(String bracket, int crops, List<String> cropIds) {
+		public BracketCount(String bracket, int crops) {
+			this(bracket, crops, List.of());
+		}
+
+		public BracketCount {
+			cropIds = List.copyOf(cropIds == null ? List.of() : cropIds);
+		}
+	}
+
+	public record CropMedal(String id, String name, String iconId, int filled) {
+		/** Highest unique bracket: 0 none … 5 diamond. */
+		public CropMedal {
+			filled = Math.max(0, Math.min(5, filled));
+			id = id == null ? "" : id;
+			name = name == null ? "" : name;
+			iconId = iconId == null ? "" : iconId;
+		}
 	}
 
 	public record PersonalBest(String id, String name, long amount) {
@@ -685,23 +702,53 @@ public final class GardenSnapshot {
 		}
 		List<BracketCount> out = new ArrayList<>();
 		for (String key : List.of("BRONZE", "SILVER", "GOLD", "PLATINUM", "DIAMOND")) {
+			// Hypixel stores lowercase keys (bronze/silver/…).
 			JsonElement el = brackets.get(key);
-			int count = 0;
-			if (el != null && el.isJsonArray()) {
-				count = el.getAsJsonArray().size();
-			} else if (el != null && el.isJsonObject()) {
-				count = el.getAsJsonObject().size();
-			} else {
-				Float n = Leveling.num(el);
-				if (n != null) {
-					count = Math.round(n);
-				}
+			if (el == null) {
+				el = brackets.get(key.toLowerCase(Locale.ROOT));
 			}
+			List<String> cropIds = bracketCropIds(el);
+			int count = cropIds.isEmpty() ? bracketCountFallback(el) : cropIds.size();
 			if (count > 0) {
-				out.add(new BracketCount(title(key), count));
+				out.add(new BracketCount(title(key), count, cropIds));
 			}
 		}
 		return out;
+	}
+
+	private static List<String> bracketCropIds(JsonElement el) {
+		if (el == null) {
+			return List.of();
+		}
+		List<String> out = new ArrayList<>();
+		if (el.isJsonArray()) {
+			for (JsonElement item : el.getAsJsonArray()) {
+				if (item != null && item.isJsonPrimitive()) {
+					String id = item.getAsString();
+					if (id != null && !id.isBlank()) {
+						out.add(id);
+					}
+				}
+			}
+		} else if (el.isJsonObject()) {
+			out.addAll(el.getAsJsonObject().keySet());
+		}
+		out.sort(String.CASE_INSENSITIVE_ORDER);
+		return out;
+	}
+
+	private static int bracketCountFallback(JsonElement el) {
+		if (el == null) {
+			return 0;
+		}
+		if (el.isJsonArray()) {
+			return el.getAsJsonArray().size();
+		}
+		if (el.isJsonObject()) {
+			return el.getAsJsonObject().size();
+		}
+		Float n = Leveling.num(el);
+		return n == null ? 0 : Math.round(n);
 	}
 
 	private static List<PersonalBest> parsePersonalBests(JsonObject jacobs) {
@@ -1019,6 +1066,74 @@ public final class GardenSnapshot {
 	public Composter composter() { return composter; }
 	public MedalCounts medals() { return medals; }
 	public List<BracketCount> uniqueBrackets() { return uniqueBrackets; }
+
+	/** Crop ids that have earned a unique GOLD Jacob bracket. */
+	public List<String> uniqueGoldCrops() {
+		for (BracketCount b : uniqueBrackets) {
+			if (b != null && "Gold".equalsIgnoreCase(b.bracket()) && !b.cropIds().isEmpty()) {
+				return b.cropIds();
+			}
+		}
+		return List.of();
+	}
+
+	/**
+	 * Per-crop highest unique medal as filled orb count (bronze→silver→gold→platinum→diamond).
+	 */
+	public List<CropMedal> cropMedals() {
+		Map<String, Integer> filledByCrop = new LinkedHashMap<>();
+		for (BracketCount b : uniqueBrackets) {
+			if (b == null) {
+				continue;
+			}
+			int rank = bracketRank(b.bracket());
+			if (rank <= 0) {
+				continue;
+			}
+			for (String cropId : b.cropIds()) {
+				if (cropId == null || cropId.isBlank()) {
+					continue;
+				}
+				String key = GardenData.normalizeCropKey(cropId);
+				filledByCrop.merge(key.isBlank() ? cropId : key, rank, Math::max);
+			}
+		}
+		List<CropMedal> out = new ArrayList<>(filledByCrop.size());
+		for (Map.Entry<String, Integer> e : filledByCrop.entrySet()) {
+			String id = e.getKey();
+			out.add(new CropMedal(id, GardenData.prettyCrop(id), GardenData.cropIconId(id), e.getValue()));
+		}
+		out.sort(Comparator.comparing(CropMedal::name, String.CASE_INSENSITIVE_ORDER));
+		return out;
+	}
+
+	private static int bracketRank(String bracket) {
+		if (bracket == null || bracket.isBlank()) {
+			return 0;
+		}
+		return switch (bracket.trim().toLowerCase(Locale.ROOT)) {
+			case "bronze" -> 1;
+			case "silver" -> 2;
+			case "gold" -> 3;
+			case "platinum" -> 4;
+			case "diamond" -> 5;
+			default -> 0;
+		};
+	}
+
+	public boolean hasUniqueGold(String cropId) {
+		if (cropId == null || cropId.isBlank()) {
+			return false;
+		}
+		String key = GardenData.normalizeCropKey(cropId);
+		for (String id : uniqueGoldCrops()) {
+			if (key.equals(GardenData.normalizeCropKey(id))) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	public List<PersonalBest> personalBests() { return personalBests; }
 	public Map<String, Integer> perks() { return perks; }
 	public List<ContestEntry> contests() { return contests; }

@@ -1,10 +1,12 @@
 package dev.vy.betterpv.client.data;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.vy.betterpv.BetterPV;
 import dev.vy.betterpv.client.networth.InventoryDecoder;
+import dev.vy.betterpv.client.networth.PetWorth;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -22,8 +24,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Builds overview stats from Hypixel member data when inventories/constants are available.
- * Values come from base constants, skill/fairy/HOTM fields, and item lore on armor/equipment/accessories.
+ * Builds overview combat/skill stats from Hypixel member data.
+ * Hypixel does not expose final stats — values are reconstructed from NEU constants,
+ * skills/slayers, SkyBlock level, bestiary, essence permanents, Maxwell power, tuning,
+ * active pet, and item lore on armor / equipment / accessories.
  */
 public final class PlayerStatsCalculator {
 	private static final String STAT_END = ": ((?:\\+|-)([0-9]+(?:\\.[0-9]+)?))%?";
@@ -43,6 +47,8 @@ public final class PlayerStatsCalculator {
 		new StatDef("true_defense", "TD", Pattern.compile("^(?:True Defence|True Defense)" + STAT_END)),
 		new StatDef("health_regen", "Regen", Pattern.compile("^Health Regen" + STAT_END)),
 		new StatDef("vitality", "VIT", Pattern.compile("^Vitality" + STAT_END)),
+		new StatDef("mending", "Mend", Pattern.compile("^Mending" + STAT_END)),
+		new StatDef("swing_range", "Swing", Pattern.compile("^Swing Range" + STAT_END)),
 		new StatDef("mining_fortune", "MiF", Pattern.compile("^Mining Fortune" + STAT_END)),
 		new StatDef("farming_fortune", "FaF", Pattern.compile("^Farming Fortune" + STAT_END)),
 		new StatDef("foraging_fortune", "FoF", Pattern.compile("^Foraging Fortune" + STAT_END)),
@@ -52,8 +58,69 @@ public final class PlayerStatsCalculator {
 		new StatDef("fishing_speed", "FS", Pattern.compile("^Fishing Speed" + STAT_END))
 	);
 
+	/** Stats Hypixel always starts at these values; NEU misc.base_stats omits healing stats. */
+	private static final Map<String, Double> FALLBACK_BASE = Map.of(
+		"vitality", 100.0,
+		"health_regen", 100.0,
+		"mending", 100.0,
+		"swing_range", 3.0
+	);
+
+	/**
+	 * Unconditional Hunting attribute → flat player stats (per level).
+	 * {@code attributes.stacks.mending} is the Vitality shard (API id ≠ combat Mending).
+	 */
+	private static final List<AttributeFlat> ATTRIBUTE_FLAT = List.of(
+		new AttributeFlat("life_regeneration", "health_regen", 1.25),
+		new AttributeFlat("mending", "vitality", 2.0),
+		new AttributeFlat("magic_find", "magic_find", 0.5),
+		new AttributeFlat("speed", "speed", 1.0),
+		new AttributeFlat("attack_speed", "attack_speed", 1.0),
+		new AttributeFlat("veil", "true_defense", 1.0),
+		new AttributeFlat("fishing_speed", "fishing_speed", 3.0),
+		new AttributeFlat("rotten_pickaxe", "mining_speed", 3.0),
+		new AttributeFlat("earth_elemental", "health", 2.0),
+		new AttributeFlat("forest_elemental", "health", 2.0),
+		new AttributeFlat("nature_elemental", "health", 2.0),
+		new AttributeFlat("shadow_elemental", "health", 2.0),
+		new AttributeFlat("wood_elemental", "health", 2.0),
+		new AttributeFlat("light_elemental", "strength", 1.0),
+		new AttributeFlat("lightning_elemental", "strength", 1.0),
+		new AttributeFlat("stone_elemental", "strength", 1.0),
+		new AttributeFlat("storm_elemental", "strength", 1.0),
+		new AttributeFlat("wind_elemental", "strength", 1.0),
+		new AttributeFlat("fog_elemental", "intelligence", 1.0),
+		new AttributeFlat("frost_elemental", "intelligence", 1.0),
+		new AttributeFlat("snow_elemental", "intelligence", 1.0),
+		new AttributeFlat("torrent_elemental", "intelligence", 1.0),
+		new AttributeFlat("water_elemental", "intelligence", 1.0),
+		new AttributeFlat("ultimate_dna", "mining_fortune", 1.0),
+		new AttributeFlat("ultimate_dna", "farming_fortune", 1.0),
+		new AttributeFlat("ultimate_dna", "foraging_fortune", 1.0),
+		new AttributeFlat("rare_bird", "pet_luck", 1.0)
+	);
+
+	/** Wither Essence Forbidden perks — cumulative total at each level (wiki). */
+	private static final Map<String, int[]> FORBIDDEN = Map.of(
+		"permanent_health", new int[]{0, 2, 4, 6, 8, 10},
+		"permanent_defense", new int[]{0, 1, 2, 3, 4, 5},
+		"permanent_speed", new int[]{0, 1, 2},
+		"permanent_intelligence", new int[]{0, 1, 2, 3, 4, 5},
+		"permanent_strength", new int[]{0, 1, 2, 3, 4, 5}
+	);
+
+	private static final Map<String, String> FORBIDDEN_STAT = Map.of(
+		"permanent_health", "health",
+		"permanent_defense", "defense",
+		"permanent_speed", "speed",
+		"permanent_intelligence", "intelligence",
+		"permanent_strength", "strength"
+	);
+
 	private static volatile JsonObject miscCache;
 	private static volatile JsonObject bonusesCache;
+	private static volatile JsonObject petnumsCache;
+	private static volatile JsonObject attributeShardsCache;
 
 	private PlayerStatsCalculator() {
 	}
@@ -79,67 +146,32 @@ public final class PlayerStatsCalculator {
 				}
 			}
 		}
-
-		Map<String, Integer> skillLevels = skillLevels(member);
-		JsonObject bonuses = bonuses();
-		if (bonuses != null && bonuses.has("bonus_stats") && bonuses.get("bonus_stats").isJsonObject()) {
-			JsonObject bonusStats = bonuses.getAsJsonObject("bonus_stats");
-			for (var skillEntry : skillLevels.entrySet()) {
-				if (!bonusStats.has(skillEntry.getKey()) || !bonusStats.get(skillEntry.getKey()).isJsonObject()) {
-					continue;
-				}
-				JsonObject perLevel = bonusStats.getAsJsonObject(skillEntry.getKey());
-				Map<String, Double> current = Map.of();
-				for (int level = 1; level <= skillEntry.getValue(); level++) {
-					String key = String.valueOf(level);
-					if (perLevel.has(key) && perLevel.get(key).isJsonObject()) {
-						current = readStatMap(perLevel.getAsJsonObject(key));
-					}
-					for (var e : current.entrySet()) {
-						if (wanted(e.getKey())) {
-							add(totals, e.getKey(), e.getValue());
-							anySource = true;
-						}
-					}
-				}
-			}
-		}
-
-		int fairyExchanges = intPath(member, "fairy_soul", "fairy_exchanges");
-		if (fairyExchanges > 0) {
-			add(totals, "speed", fairyExchanges / 10.0);
-			for (int i = 0; i < fairyExchanges; i++) {
-				add(totals, "strength", (i + 1) % 5 == 0 ? 2 : 1);
-				add(totals, "defense", (i + 1) % 5 == 0 ? 2 : 1);
-				add(totals, "health", 3 + i / 2);
-			}
-			anySource = true;
-		}
-
-		int miningLevel = skillLevels.getOrDefault("mining", 0);
-		JsonObject miningCore = obj(member.get("mining_core"));
-		JsonObject nodes = miningCore == null ? null : obj(miningCore.get("nodes"));
-		if (nodes != null || miningLevel > 0) {
-			double fortune = 4.0 * miningLevel
-				+ 5.0 * intOr(nodes, "mining_fortune")
-				+ 5.0 * intOr(nodes, "mining_fortune_2");
-			if (fortune > 0) {
-				add(totals, "mining_fortune", fortune);
-				anySource = true;
-			}
-			double miningSpeed = 20.0 * intOr(nodes, "mining_speed")
-				+ 40.0 * intOr(nodes, "mining_speed_2");
-			if (miningSpeed > 0) {
-				add(totals, "mining_speed", miningSpeed);
+		for (var e : FALLBACK_BASE.entrySet()) {
+			if (!totals.containsKey(e.getKey())) {
+				add(totals, e.getKey(), e.getValue());
 				anySource = true;
 			}
 		}
+
+		anySource |= addBonusStats(totals, member);
+		anySource |= addZombieSlayerRegen(totals, member);
+		anySource |= addHuntingAttributes(totals, member);
+		anySource |= addSkyBlockLevel(totals, member);
+		anySource |= addBestiary(totals, member);
+		anySource |= addCatacombs(totals, member);
+		anySource |= addEssencePermanents(totals, member);
+		anySource |= addHotm(totals, member);
+		anySource |= addMaxwellAndTuning(totals, member);
+		anySource |= addPetScore(totals, member);
+		anySource |= addActivePet(totals, member);
 
 		if (categories != null) {
 			anySource |= addItemLore(totals, categories.get("armor"), false);
 			anySource |= addItemLore(totals, categories.get("equipment"), false);
 			anySource |= addItemLore(totals, categories.get("accessories"), true);
 		}
+
+		anySource |= applyDragonGreed(totals, member);
 
 		List<PlayerStatsSnapshot.Entry> entries = new ArrayList<>(DISPLAY.size());
 		for (StatDef def : DISPLAY) {
@@ -150,6 +182,616 @@ public final class PlayerStatsCalculator {
 			entries.add(new PlayerStatsSnapshot.Entry(def.id, def.label, value));
 		}
 		return new PlayerStatsSnapshot(entries);
+	}
+
+	/** Skill + slayer milestone bonuses from NEU {@code bonuses.json}. */
+	private static boolean addBonusStats(Map<String, Double> totals, JsonObject member) {
+		JsonObject bonuses = bonuses();
+		if (bonuses == null || !bonuses.has("bonus_stats") || !bonuses.get("bonus_stats").isJsonObject()) {
+			return false;
+		}
+		JsonObject bonusStats = bonuses.getAsJsonObject("bonus_stats");
+		boolean added = false;
+
+		for (var skillEntry : skillLevels(member).entrySet()) {
+			added |= applyMilestoneBonuses(totals, bonusStats, "skill_" + skillEntry.getKey(), skillEntry.getValue());
+		}
+		for (String slayer : List.of("zombie", "spider", "wolf", "enderman", "blaze", "vampire")) {
+			float xp = Leveling.readSlayerXp(member, slayer);
+			JsonArray table = RepoData.slayerXp(slayer);
+			int cap = table == null || table.isEmpty() ? 9 : table.size();
+			Leveling.Progress progress = Leveling.getLevel(table, xp, cap, true);
+			int level = progress == null ? 0 : (int) Math.floor(progress.level());
+			if (level > 0) {
+				added |= applyMilestoneBonuses(totals, bonusStats, "slayer_" + slayer, level);
+			}
+		}
+		return added;
+	}
+
+	/**
+	 * NEU milestone tables only list breakpoints; the last defined bonus sticks and is applied
+	 * once per level up to the player's level (combat CC is +0.5 each level, etc.).
+	 */
+	private static boolean applyMilestoneBonuses(
+		Map<String, Double> totals,
+		JsonObject bonusStats,
+		String key,
+		int level
+	) {
+		if (level <= 0 || !bonusStats.has(key) || !bonusStats.get(key).isJsonObject()) {
+			return false;
+		}
+		JsonObject perLevel = bonusStats.getAsJsonObject(key);
+		Map<String, Double> current = Map.of();
+		boolean added = false;
+		for (int lvl = 1; lvl <= level; lvl++) {
+			String k = String.valueOf(lvl);
+			if (perLevel.has(k) && perLevel.get(k).isJsonObject()) {
+				current = readStatMap(perLevel.getAsJsonObject(k));
+			}
+			for (var e : current.entrySet()) {
+				if (wanted(e.getKey())) {
+					add(totals, e.getKey(), e.getValue());
+					added = true;
+				}
+			}
+		}
+		return added;
+	}
+
+	/** Zombie Slayer VIII+ permanently grants +50 Health Regen (not in NEU bonuses.json). */
+	private static boolean addZombieSlayerRegen(Map<String, Double> totals, JsonObject member) {
+		float xp = Leveling.readSlayerXp(member, "zombie");
+		JsonArray table = RepoData.slayerXp("zombie");
+		int cap = table == null || table.isEmpty() ? 9 : table.size();
+		Leveling.Progress progress = Leveling.getLevel(table, xp, cap, true);
+		int level = progress == null ? 0 : (int) Math.floor(progress.level());
+		if (level < 8) {
+			return false;
+		}
+		add(totals, "health_regen", 50.0);
+		return true;
+	}
+
+	/**
+	 * Hunting Box attribute levels from {@code attributes.stacks} + NEU shard costs.
+	 * Only unconditional flat stat grants (no island/mob-conditional bonuses).
+	 */
+	private static boolean addHuntingAttributes(Map<String, Double> totals, JsonObject member) {
+		JsonObject attributes = obj(member.get("attributes"));
+		JsonObject stacks = attributes == null ? null : obj(attributes.get("stacks"));
+		if (stacks == null || stacks.entrySet().isEmpty()) {
+			return false;
+		}
+		JsonObject shardsFile = attributeShards();
+		if (shardsFile == null) {
+			return false;
+		}
+		Map<String, int[]> costsByRarity = readAttributeLevelling(shardsFile);
+		Map<String, String> rarityById = readAttributeRarities(shardsFile);
+		boolean added = false;
+		for (AttributeFlat flat : ATTRIBUTE_FLAT) {
+			int shards = intOr(stacks, flat.stackId());
+			if (shards <= 0) {
+				continue;
+			}
+			String rarity = rarityById.getOrDefault(flat.stackId(), "COMMON");
+			int level = attributeLevel(costsByRarity.get(rarity), shards);
+			if (level <= 0) {
+				continue;
+			}
+			add(totals, flat.statId(), flat.perLevel() * level);
+			added = true;
+		}
+		return added;
+	}
+
+	private static Map<String, int[]> readAttributeLevelling(JsonObject shardsFile) {
+		JsonObject levelling = obj(shardsFile.get("attribute_levelling"));
+		if (levelling == null) {
+			return Map.of();
+		}
+		Map<String, int[]> out = new HashMap<>();
+		for (var entry : levelling.entrySet()) {
+			if (!entry.getValue().isJsonArray()) {
+				continue;
+			}
+			JsonArray arr = entry.getValue().getAsJsonArray();
+			int[] costs = new int[arr.size()];
+			for (int i = 0; i < arr.size(); i++) {
+				try {
+					costs[i] = arr.get(i).getAsInt();
+				} catch (Exception ignored) {
+					costs[i] = 0;
+				}
+			}
+			out.put(entry.getKey().toUpperCase(Locale.ROOT), costs);
+		}
+		return out;
+	}
+
+	private static Map<String, String> readAttributeRarities(JsonObject shardsFile) {
+		if (!shardsFile.has("attributes") || !shardsFile.get("attributes").isJsonArray()) {
+			return Map.of();
+		}
+		Map<String, String> out = new HashMap<>();
+		for (JsonElement el : shardsFile.getAsJsonArray("attributes")) {
+			JsonObject row = obj(el);
+			if (row == null) {
+				continue;
+			}
+			String internal = row.has("internalName") && row.get("internalName").isJsonPrimitive()
+				? row.get("internalName").getAsString()
+				: "";
+			String rarity = row.has("rarity") && row.get("rarity").isJsonPrimitive()
+				? row.get("rarity").getAsString().toUpperCase(Locale.ROOT)
+				: "COMMON";
+			String id = attributeStackId(internal);
+			if (!id.isEmpty()) {
+				out.put(id, rarity);
+			}
+		}
+		return out;
+	}
+
+	private static String attributeStackId(String internalName) {
+		if (internalName == null || internalName.isBlank()) {
+			return "";
+		}
+		String id = internalName;
+		if (id.startsWith("ATTRIBUTE_SHARD_")) {
+			id = id.substring("ATTRIBUTE_SHARD_".length());
+		}
+		int semi = id.indexOf(';');
+		if (semi >= 0) {
+			id = id.substring(0, semi);
+		}
+		return id.toLowerCase(Locale.ROOT);
+	}
+
+	private static int attributeLevel(int[] costs, int shards) {
+		if (costs == null || costs.length == 0 || shards <= 0) {
+			return 0;
+		}
+		int level = 0;
+		int remaining = shards;
+		for (int cost : costs) {
+			if (cost <= 0 || remaining < cost) {
+				break;
+			}
+			remaining -= cost;
+			level++;
+		}
+		return level;
+	}
+
+	/** +5 HP per SB level, +5 extra every 10 levels (wiki → 2750 at 500). */
+	private static boolean addSkyBlockLevel(Map<String, Double> totals, JsonObject member) {
+		JsonObject leveling = obj(member.get("leveling"));
+		Float exp = leveling == null ? null : Leveling.num(leveling.get("experience"));
+		if (exp == null || exp <= 0F) {
+			return false;
+		}
+		int level = (int) Math.floor(exp / 100F);
+		if (level <= 0) {
+			return false;
+		}
+		add(totals, "health", 5.0 * level + 5.0 * (level / 10));
+		return true;
+	}
+
+	private static boolean addBestiary(Map<String, Double> totals, JsonObject member) {
+		JsonObject bestiary = obj(member.get("bestiary"));
+		JsonObject milestone = bestiary == null ? null : obj(bestiary.get("milestone"));
+		int claimed = intOr(milestone, "last_claimed_milestone");
+		if (claimed <= 0) {
+			return false;
+		}
+		add(totals, "health", 2.0 * claimed);
+		return true;
+	}
+
+	private static boolean addCatacombs(Map<String, Double> totals, JsonObject member) {
+		float xp = Leveling.readCatacombsXp(member);
+		if (xp <= 0F) {
+			return false;
+		}
+		JsonArray table = RepoData.catacombsXp();
+		int cap = table == null || table.isEmpty() ? 50 : table.size();
+		Leveling.Progress progress = Leveling.getLevel(table, xp, cap, false);
+		int level = progress == null ? 0 : (int) Math.floor(progress.level());
+		if (level <= 0) {
+			return false;
+		}
+		add(totals, "health", 2.0 * level);
+		return true;
+	}
+
+	private static boolean addEssencePermanents(Map<String, Double> totals, JsonObject member) {
+		JsonObject playerData = obj(member.get("player_data"));
+		JsonObject perks = playerData == null ? null : obj(playerData.get("perks"));
+		if (perks == null) {
+			JsonObject dungeons = obj(member.get("dungeons"));
+			perks = dungeons == null ? null : obj(dungeons.get("perks"));
+		}
+		if (perks == null) {
+			return false;
+		}
+		boolean added = false;
+		for (var entry : FORBIDDEN.entrySet()) {
+			int level = Math.max(0, Math.min(entry.getValue().length - 1, intOr(perks, entry.getKey())));
+			if (level <= 0) {
+				continue;
+			}
+			String stat = FORBIDDEN_STAT.get(entry.getKey());
+			add(totals, stat, entry.getValue()[level]);
+			added = true;
+		}
+		return added;
+	}
+
+	private static boolean addHotm(Map<String, Double> totals, JsonObject member) {
+		Map<String, Integer> skillLevels = skillLevels(member);
+		int miningLevel = skillLevels.getOrDefault("mining", 0);
+		JsonObject hotmNodes = hotmPerkNodes(member);
+		if (hotmNodes == null && miningLevel <= 0) {
+			return false;
+		}
+		boolean added = false;
+		double fortune = 4.0 * miningLevel
+			+ 5.0 * intOr(hotmNodes, "mining_fortune")
+			+ 5.0 * intOr(hotmNodes, "mining_fortune_2")
+			+ 5.0 * intOr(hotmNodes, "fortunate_mineman");
+		if (fortune > 0) {
+			add(totals, "mining_fortune", fortune);
+			added = true;
+		}
+		double miningSpeed = 20.0 * intOr(hotmNodes, "mining_speed")
+			+ 40.0 * intOr(hotmNodes, "mining_speed_2")
+			+ 40.0 * intOr(hotmNodes, "speedy_mineman");
+		if (miningSpeed > 0) {
+			add(totals, "mining_speed", miningSpeed);
+			added = true;
+		}
+		return added;
+	}
+
+	private static boolean addMaxwellAndTuning(Map<String, Double> totals, JsonObject member) {
+		JsonObject storage = obj(member.get("accessory_bag_storage"));
+		if (storage == null) {
+			return false;
+		}
+		boolean added = false;
+		int mp = intOr(storage, "highest_magical_power");
+		String power = storage.has("selected_power") && storage.get("selected_power").isJsonPrimitive()
+			? storage.get("selected_power").getAsString()
+			: "";
+		for (var e : MaxwellPowers.statsFor(power, mp).entrySet()) {
+			if (wanted(e.getKey())) {
+				add(totals, e.getKey(), e.getValue());
+				added = true;
+			}
+		}
+
+		JsonObject tuning = obj(storage.get("tuning"));
+		if (tuning != null) {
+			// Hypixel does not expose which template is equipped. Prefer the lowest
+			// slot index with points (slot_0 is the primary Maxwell template). Picking
+			// "most points" wrongly selects an alternate preset (e.g. CD instead of SPD).
+			JsonObject best = null;
+			int bestIndex = Integer.MAX_VALUE;
+			for (var entry : tuning.entrySet()) {
+				String key = entry.getKey();
+				if (key == null || !key.startsWith("slot_")) {
+					continue;
+				}
+				Integer index = tryParseInt(key.substring("slot_".length()));
+				if (index == null || index >= bestIndex) {
+					continue;
+				}
+				JsonObject slot = obj(entry.getValue());
+				if (slot == null) {
+					continue;
+				}
+				int points = 0;
+				for (var stat : slot.entrySet()) {
+					if (stat.getValue().isJsonPrimitive()) {
+						try {
+							points += Math.abs(stat.getValue().getAsInt());
+						} catch (Exception ignored) {
+						}
+					}
+				}
+				if (points > 0) {
+					bestIndex = index;
+					best = slot;
+				}
+			}
+			if (best != null) {
+				for (var e : readStatMap(best).entrySet()) {
+					add(totals, e.getKey(), e.getValue());
+					added = true;
+				}
+			}
+		}
+		return added;
+	}
+
+	private static boolean addPetScore(Map<String, Double> totals, JsonObject member) {
+		JsonObject bonuses = bonuses();
+		if (bonuses == null || !bonuses.has("pet_rewards") || !bonuses.get("pet_rewards").isJsonObject()) {
+			return false;
+		}
+		JsonObject leveling = obj(member.get("leveling"));
+		int score = intOr(leveling, "highest_pet_score");
+		if (score <= 0) {
+			return false;
+		}
+		JsonObject rewards = bonuses.getAsJsonObject("pet_rewards");
+		Map<String, Double> best = Map.of();
+		int bestKey = -1;
+		for (var entry : rewards.entrySet()) {
+			Integer key = tryParseInt(entry.getKey());
+			if (key == null || key > score || key < bestKey || !entry.getValue().isJsonObject()) {
+				continue;
+			}
+			bestKey = key;
+			best = readStatMap(entry.getValue().getAsJsonObject());
+		}
+		boolean added = false;
+		for (var e : best.entrySet()) {
+			if (wanted(e.getKey())) {
+				add(totals, e.getKey(), e.getValue());
+				added = true;
+			}
+		}
+		return added;
+	}
+
+	private static boolean addActivePet(Map<String, Double> totals, JsonObject member) {
+		JsonObject active = activePet(member);
+		if (active == null) {
+			return false;
+		}
+		Map<String, Double> stats = new HashMap<>(petStatNums(active));
+		String type = active.has("type") && active.get("type").isJsonPrimitive()
+			? active.get("type").getAsString()
+			: "";
+		PetWorth.LevelInfo info = PetWorth.levelInfo(active);
+		int level = Math.max(1, info.level());
+
+		if ("GOLDEN_DRAGON".equals(type)) {
+			applyGoldenDragonAbilities(stats, member, level);
+		}
+
+		applyPetHeldItem(stats, active);
+
+		boolean added = false;
+		for (var e : stats.entrySet()) {
+			if (wanted(e.getKey())) {
+				add(totals, e.getKey(), e.getValue());
+				added = true;
+			}
+		}
+		return added;
+	}
+
+	private static JsonObject activePet(JsonObject member) {
+		JsonArray pets = null;
+		JsonObject petsData = obj(member.get("pets_data"));
+		if (petsData != null && petsData.has("pets") && petsData.get("pets").isJsonArray()) {
+			pets = petsData.getAsJsonArray("pets");
+		} else if (member.has("pets") && member.get("pets").isJsonArray()) {
+			pets = member.getAsJsonArray("pets");
+		}
+		if (pets == null) {
+			return null;
+		}
+		for (JsonElement el : pets) {
+			if (el == null || !el.isJsonObject()) {
+				continue;
+			}
+			JsonObject pet = el.getAsJsonObject();
+			if (pet.has("active") && pet.get("active").isJsonPrimitive() && pet.get("active").getAsBoolean()) {
+				return pet;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * GDRAG Shining Scales: +11.1 STR / +2.2 MF per digit of personal Gold collection (cap 100M).
+	 * Dragon's Greed is applied later once total Magic Find is known.
+	 */
+	private static void applyGoldenDragonAbilities(Map<String, Double> stats, JsonObject member, int level) {
+		if (level < 100) {
+			return;
+		}
+		long gold = goldCollection(member);
+		long capped = Math.min(Math.max(0L, gold), 100_000_000L);
+		int digits = capped <= 0L ? 1 : String.valueOf(capped).length();
+		digits = Math.min(digits, 9);
+		addMap(stats, "strength", digits * 11.1);
+		addMap(stats, "magic_find", digits * 2.2);
+	}
+
+	/** Percent Strength from GDRAG Dragon's Greed using final Magic Find. */
+	private static boolean applyDragonGreed(Map<String, Double> totals, JsonObject member) {
+		JsonObject active = activePet(member);
+		if (active == null) {
+			return false;
+		}
+		String type = active.has("type") && active.get("type").isJsonPrimitive()
+			? active.get("type").getAsString()
+			: "";
+		if (!"GOLDEN_DRAGON".equals(type)) {
+			return false;
+		}
+		PetWorth.LevelInfo info = PetWorth.levelInfo(active);
+		int level = Math.max(1, info.level());
+		if (level < 100) {
+			return false;
+		}
+		double t = Math.min(1.0, Math.max(0.0, (level - 100) / 100.0));
+		double perFive = 0.25 + 0.25 * t;
+		double maxPct = 2.5 + 2.5 * t;
+		double mf = totals.getOrDefault("magic_find", 0.0);
+		double pct = Math.min(maxPct, (mf / 5.0) * perFive);
+		if (pct <= 0) {
+			return false;
+		}
+		double strength = totals.getOrDefault("strength", 0.0);
+		if (strength <= 0) {
+			return false;
+		}
+		add(totals, "strength", strength * (pct / 100.0));
+		return true;
+	}
+
+	private static void applyPetHeldItem(Map<String, Double> stats, JsonObject pet) {
+		if (!pet.has("heldItem") || !pet.get("heldItem").isJsonPrimitive()) {
+			return;
+		}
+		String held = pet.get("heldItem").getAsString();
+		if (held == null || held.isBlank()) {
+			return;
+		}
+		switch (held) {
+			case "MINOS_RELIC" -> {
+				for (String key : List.copyOf(stats.keySet())) {
+					stats.put(key, stats.get(key) * 1.333);
+				}
+			}
+			case "HEPHAESTUS_REMEDIES" -> {
+				if (stats.containsKey("strength")) {
+					stats.put("strength", stats.get("strength") * 2.0);
+				}
+			}
+			case "ANTIQUE_REMEDIES" -> {
+				if (stats.containsKey("strength")) {
+					stats.put("strength", stats.get("strength") * 1.8);
+				}
+			}
+			default -> {
+			}
+		}
+	}
+
+	private static long goldCollection(JsonObject member) {
+		JsonObject collection = obj(member.get("collection"));
+		if (collection == null || !collection.has("GOLD_INGOT") || !collection.get("GOLD_INGOT").isJsonPrimitive()) {
+			return 0L;
+		}
+		try {
+			return Math.max(0L, collection.get("GOLD_INGOT").getAsLong());
+		} catch (Exception ignored) {
+			return 0L;
+		}
+	}
+
+	private static void addMap(Map<String, Double> map, String id, double value) {
+		map.merge(id, value, Double::sum);
+	}
+
+	private static Map<String, Double> petStatNums(JsonObject pet) {
+		JsonObject petnums = petnums();
+		if (petnums == null || !pet.has("type") || !pet.get("type").isJsonPrimitive()) {
+			return Map.of();
+		}
+		String type = pet.get("type").getAsString();
+		if (!petnums.has(type) || !petnums.get(type).isJsonObject()) {
+			return Map.of();
+		}
+		JsonObject byTier = petnums.getAsJsonObject(type);
+		String tier = pet.has("tier") && pet.get("tier").isJsonPrimitive()
+			? pet.get("tier").getAsString().toUpperCase(Locale.ROOT)
+			: "COMMON";
+		if (!byTier.has(tier) || !byTier.get(tier).isJsonObject()) {
+			return Map.of();
+		}
+		JsonObject tierObj = byTier.getAsJsonObject(tier);
+		PetWorth.LevelInfo info = PetWorth.levelInfo(pet);
+		int level = Math.max(1, info.level());
+
+		List<Integer> keys = new ArrayList<>();
+		for (var entry : tierObj.entrySet()) {
+			Integer key = tryParseInt(entry.getKey());
+			if (key != null && entry.getValue().isJsonObject()) {
+				JsonObject node = entry.getValue().getAsJsonObject();
+				if (node.has("statNums") && node.get("statNums").isJsonObject()) {
+					keys.add(key);
+				}
+			}
+		}
+		if (keys.isEmpty()) {
+			return Map.of();
+		}
+		keys.sort(Integer::compareTo);
+		int lo = keys.get(0);
+		int hi = keys.get(keys.size() - 1);
+		for (int i = 0; i < keys.size(); i++) {
+			if (keys.get(i) <= level) {
+				lo = keys.get(i);
+			}
+			if (keys.get(i) >= level) {
+				hi = keys.get(i);
+				break;
+			}
+		}
+		Map<String, Double> lowStats = readPetStatNums(tierObj.getAsJsonObject(String.valueOf(lo)));
+		if (lo == hi || level <= lo) {
+			return lowStats;
+		}
+		if (level >= hi) {
+			Map<String, Double> highStats = readPetStatNums(tierObj.getAsJsonObject(String.valueOf(hi)));
+			if (level <= hi) {
+				return highStats;
+			}
+			// Extrapolate past the last key using the gain from first→last (GDRAG 101–200).
+			int first = keys.get(0);
+			int last = keys.get(keys.size() - 1);
+			if (last <= first) {
+				return highStats;
+			}
+			Map<String, Double> firstStats = readPetStatNums(tierObj.getAsJsonObject(String.valueOf(first)));
+			Map<String, Double> out = new HashMap<>(highStats);
+			double t = (level - last) / (double) (last - first);
+			for (var e : highStats.entrySet()) {
+				double gain = e.getValue() - firstStats.getOrDefault(e.getKey(), 0.0);
+				out.put(e.getKey(), e.getValue() + gain * t);
+			}
+			return out;
+		}
+		Map<String, Double> highStats = readPetStatNums(tierObj.getAsJsonObject(String.valueOf(hi)));
+		double t = (level - lo) / (double) (hi - lo);
+		Map<String, Double> out = new HashMap<>();
+		Set<String> ids = new HashSet<>();
+		ids.addAll(lowStats.keySet());
+		ids.addAll(highStats.keySet());
+		for (String id : ids) {
+			double a = lowStats.getOrDefault(id, 0.0);
+			double b = highStats.getOrDefault(id, 0.0);
+			out.put(id, a + (b - a) * t);
+		}
+		return out;
+	}
+
+	private static Map<String, Double> readPetStatNums(JsonObject node) {
+		if (node == null || !node.has("statNums") || !node.get("statNums").isJsonObject()) {
+			return Map.of();
+		}
+		Map<String, Double> out = new HashMap<>();
+		for (var entry : node.getAsJsonObject("statNums").entrySet()) {
+			if (!entry.getValue().isJsonPrimitive()) {
+				continue;
+			}
+			String key = normalizeStatKey(entry.getKey());
+			if (wanted(key)) {
+				out.put(key, entry.getValue().getAsDouble());
+			}
+		}
+		return out;
 	}
 
 	private static boolean addItemLore(
@@ -196,7 +838,8 @@ public final class PlayerStatsCalculator {
 	private static Map<String, Integer> skillLevels(JsonObject member) {
 		Map<String, Integer> out = new HashMap<>();
 		for (String skill : List.of(
-			"combat", "mining", "farming", "foraging", "fishing", "enchanting", "alchemy", "taming", "carpentry"
+			"combat", "mining", "farming", "foraging", "fishing", "enchanting", "alchemy", "taming", "carpentry",
+			"runecrafting", "social"
 		)) {
 			float xp = Leveling.readSkillXp(member, skill);
 			if (xp <= 0F) {
@@ -220,7 +863,10 @@ public final class PlayerStatsCalculator {
 			}
 			String key = normalizeStatKey(entry.getKey());
 			if (wanted(key)) {
-				out.put(key, entry.getValue().getAsDouble());
+				try {
+					out.put(key, entry.getValue().getAsDouble());
+				} catch (Exception ignored) {
+				}
 			}
 		}
 		return out;
@@ -234,8 +880,8 @@ public final class PlayerStatsCalculator {
 		return switch (k) {
 			case "defence" -> "defense";
 			case "walk_speed" -> "speed";
-			case "crit_chance", "critchance" -> "critical_chance";
-			case "crit_damage", "critdamage" -> "critical_damage";
+			case "crit_chance", "critchance", "criticalchance" -> "critical_chance";
+			case "crit_damage", "critdamage", "criticaldamage" -> "critical_damage";
 			case "true_defence" -> "true_defense";
 			case "bonus_attack_speed" -> "attack_speed";
 			default -> k;
@@ -316,6 +962,24 @@ public final class PlayerStatsCalculator {
 		return bonusesCache;
 	}
 
+	private static JsonObject petnums() {
+		JsonObject cached = petnumsCache;
+		if (cached != null) {
+			return cached;
+		}
+		petnumsCache = loadConstant("petnums.json");
+		return petnumsCache;
+	}
+
+	private static JsonObject attributeShards() {
+		JsonObject cached = attributeShardsCache;
+		if (cached != null) {
+			return cached;
+		}
+		attributeShardsCache = loadConstant("attribute_shards.json");
+		return attributeShardsCache;
+	}
+
 	private static JsonObject loadConstant(String fileName) {
 		Path path = Path.of(System.getProperty("user.home"), ".betterpv", "neu-repo", "repo", "constants", fileName);
 		if (!Files.isRegularFile(path)) {
@@ -333,13 +997,41 @@ public final class PlayerStatsCalculator {
 		}
 	}
 
-	private static JsonObject obj(JsonElement element) {
-		return element != null && element.isJsonObject() ? element.getAsJsonObject() : null;
+	/**
+	 * HOTM perk levels: modern {@code skill_tree.nodes.mining*} merged, else legacy {@code mining_core.nodes}.
+	 */
+	private static JsonObject hotmPerkNodes(JsonObject member) {
+		JsonObject skillTree = obj(member.get("skill_tree"));
+		JsonObject treeNodes = skillTree == null ? null : obj(skillTree.get("nodes"));
+		if (treeNodes != null) {
+			JsonObject merged = new JsonObject();
+			for (var entry : treeNodes.entrySet()) {
+				String key = entry.getKey();
+				if (key == null || (!key.equals("mining") && !key.startsWith("mining_"))) {
+					continue;
+				}
+				JsonObject cat = obj(entry.getValue());
+				if (cat == null) {
+					continue;
+				}
+				for (var perk : cat.entrySet()) {
+					String id = perk.getKey();
+					if (id == null || id.startsWith("toggle_")) {
+						continue;
+					}
+					merged.add(id, perk.getValue());
+				}
+			}
+			if (!merged.entrySet().isEmpty()) {
+				return merged;
+			}
+		}
+		JsonObject miningCore = obj(member.get("mining_core"));
+		return miningCore == null ? null : obj(miningCore.get("nodes"));
 	}
 
-	private static int intPath(JsonObject root, String a, String b) {
-		JsonObject nested = obj(root.get(a));
-		return intOr(nested, b);
+	private static JsonObject obj(JsonElement element) {
+		return element != null && element.isJsonObject() ? element.getAsJsonObject() : null;
 	}
 
 	private static int intOr(JsonObject object, String key) {
@@ -353,6 +1045,20 @@ public final class PlayerStatsCalculator {
 		}
 	}
 
+	private static Integer tryParseInt(String text) {
+		if (text == null || text.isBlank()) {
+			return null;
+		}
+		try {
+			return Integer.parseInt(text.trim());
+		} catch (NumberFormatException ignored) {
+			return null;
+		}
+	}
+
 	private record StatDef(String id, String label, Pattern pattern) {
+	}
+
+	private record AttributeFlat(String stackId, String statId, double perLevel) {
 	}
 }

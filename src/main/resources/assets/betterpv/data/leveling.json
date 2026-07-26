@@ -74,7 +74,8 @@
     "runecrafting": 25,
     "catacombs": 50,
     "HOTM": 10,
-    "social": 25
+    "social": 25,
+    "hunting": 25
   },
   "runecrafting_xp": [
     50,

@@ -4,6 +4,7 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import dev.vy.betterpv.BetterPV;
 import dev.vy.betterpv.client.api.BetterPVConfig;
 import dev.vy.betterpv.client.cosmetics.BetterPvCosmetics;
+import dev.vy.betterpv.client.gui.LoadingEggFinale;
 import dev.vy.betterpv.client.neu.NeuRepoCache;
 import dev.vy.betterpv.client.neu.SkyBlockPackCache;
 import dev.vy.betterpv.client.price.ItemPricer;
@@ -55,6 +56,7 @@ public final class BetterPVClient implements ClientModInitializer {
 		});
 
 		ClientTickEvents.END_CLIENT_TICK.register(ProfileViewerOpener::tick);
+		ClientTickEvents.END_CLIENT_TICK.register(LoadingEggFinale::tick);
 		BetterPV.LOGGER.info("BetterPV client ready - /pv");
 	}
 }

@@ -266,17 +266,6 @@ public final class PetsPage {
 		}
 		cy += PvDraw.BAR_HEIGHT + 8;
 
-		cy += row(
-			g,
-			font,
-			"Active",
-			pet.active() ? "Yes" : "No",
-			cx,
-			cy,
-			contentW,
-			pet.active() ? ACTIVE_BORDER : PvDraw.COLOR_MUTED
-		);
-
 		if (pet.candyUsed() > 0) {
 			cy += row(g, font, "Candy", String.valueOf(pet.candyUsed()), cx, cy, contentW, PvDraw.COLOR_TEXT);
 		}

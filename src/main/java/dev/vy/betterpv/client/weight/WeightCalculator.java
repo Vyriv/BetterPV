@@ -432,7 +432,9 @@ public final class WeightCalculator {
 		}
 		for (String slayer : SLAYER_NAMES) {
 			float xp = Leveling.readSlayerXp(member, slayer);
-			out.put(slayer, Leveling.getLevel(RepoData.slayerXp(slayer), xp, 9, true));
+			JsonArray slayerTable = RepoData.slayerXp(slayer);
+			int slayerCap = slayerTable == null || slayerTable.isEmpty() ? 9 : slayerTable.size();
+			out.put(slayer, Leveling.getLevel(slayerTable, xp, slayerCap, true));
 		}
 		return out;
 	}

@@ -38,8 +38,27 @@ public final class AuctionSnapshot {
 		long startingBid,
 		long highestBid,
 		long endMs,
-		InventorySnapshot.Slot slot
+		InventorySnapshot.Slot slot,
+		List<String> detailLines
 	) {
+		public Listing {
+			detailLines = List.copyOf(detailLines == null ? List.of() : detailLines);
+		}
+
+		public Listing(
+			String auctionId,
+			String tag,
+			String itemName,
+			String tier,
+			boolean bin,
+			long startingBid,
+			long highestBid,
+			long endMs,
+			InventorySnapshot.Slot slot
+		) {
+			this(auctionId, tag, itemName, tier, bin, startingBid, highestBid, endMs, slot, List.of());
+		}
+
 		public long price() {
 			return this.highestBid > 0L ? this.highestBid : this.startingBid;
 		}
@@ -62,7 +81,28 @@ public final class AuctionSnapshot {
 				this.startingBid,
 				this.highestBid,
 				this.endMs,
-				this.slot
+				this.slot,
+				this.detailLines
+			);
+		}
+
+		/** Apply Cofl auction-detail fields (tier, stars/reforge name, upgrade lore). */
+		public Listing withEnrichment(String name, String tier, InventorySnapshot.Slot slot, List<String> details) {
+			String n = name == null || name.isBlank() ? this.itemName : name;
+			String t = tier == null || tier.isBlank() ? (this.tier == null ? "" : this.tier) : tier;
+			InventorySnapshot.Slot s = slot == null ? this.slot : slot;
+			List<String> d = details == null ? List.of() : details;
+			return new Listing(
+				this.auctionId,
+				this.tag,
+				n,
+				t,
+				this.bin,
+				this.startingBid,
+				this.highestBid,
+				this.endMs,
+				s,
+				d
 			);
 		}
 	}
@@ -287,6 +327,14 @@ public final class AuctionSnapshot {
 
 	/** Patch rarity on listings keyed by auction id (Cofl summaries omit {@code tier}). */
 	public AuctionSnapshot withTiers(Map<String, String> tiersByAuctionId) {
+		return withTiers(tiersByAuctionId, false);
+	}
+
+	/**
+	 * Patch rarity on listings keyed by auction id.
+	 * @param overwrite when true, replace an existing (e.g. wrong NEU) tier with Cofl's.
+	 */
+	public AuctionSnapshot withTiers(Map<String, String> tiersByAuctionId, boolean overwrite) {
 		if (tiersByAuctionId == null || tiersByAuctionId.isEmpty()) {
 			return this;
 		}
@@ -304,9 +352,9 @@ public final class AuctionSnapshot {
 		if (normalized.isEmpty()) {
 			return this;
 		}
-		List<Listing> nextActive = applyTiers(this.active, normalized);
-		List<Listing> nextSold = applyTiers(this.sold, normalized);
-		List<Listing> nextBought = applyTiers(this.bought, normalized);
+		List<Listing> nextActive = applyTiers(this.active, normalized, overwrite);
+		List<Listing> nextSold = applyTiers(this.sold, normalized, overwrite);
+		List<Listing> nextBought = applyTiers(this.bought, normalized, overwrite);
 		if (nextActive == this.active && nextSold == this.sold && nextBought == this.bought) {
 			return this;
 		}
@@ -323,7 +371,41 @@ public final class AuctionSnapshot {
 		);
 	}
 
-	private static List<Listing> applyTiers(List<Listing> listings, Map<String, String> tiersByAuctionId) {
+	/** Apply Cofl auction-detail enrichments (name/tier/slot/upgrade lines) by auction id. */
+	public AuctionSnapshot withEnrichments(Map<String, Listing> byAuctionId) {
+		if (byAuctionId == null || byAuctionId.isEmpty()) {
+			return this;
+		}
+		Map<String, Listing> normalized = new LinkedHashMap<>();
+		for (Map.Entry<String, Listing> entry : byAuctionId.entrySet()) {
+			if (entry.getKey() == null || entry.getKey().isBlank() || entry.getValue() == null) {
+				continue;
+			}
+			normalized.put(entry.getKey().replace("-", "").toLowerCase(Locale.ROOT), entry.getValue());
+		}
+		if (normalized.isEmpty()) {
+			return this;
+		}
+		List<Listing> nextActive = applyEnrichments(this.active, normalized);
+		List<Listing> nextSold = applyEnrichments(this.sold, normalized);
+		List<Listing> nextBought = applyEnrichments(this.bought, normalized);
+		if (nextActive == this.active && nextSold == this.sold && nextBought == this.bought) {
+			return this;
+		}
+		return new AuctionSnapshot(
+			this.playerUuid,
+			nextActive,
+			nextSold,
+			nextBought,
+			this.stats,
+			this.soldPage,
+			this.boughtPage,
+			this.soldHasMore,
+			this.boughtHasMore
+		);
+	}
+
+	private static List<Listing> applyTiers(List<Listing> listings, Map<String, String> tiersByAuctionId, boolean overwrite) {
 		if (listings == null || listings.isEmpty()) {
 			return listings == null ? List.of() : listings;
 		}
@@ -332,7 +414,10 @@ public final class AuctionSnapshot {
 		for (Listing listing : listings) {
 			String id = listing.auctionId() == null ? "" : listing.auctionId().replace("-", "").toLowerCase(Locale.ROOT);
 			String tier = id.isEmpty() ? null : tiersByAuctionId.get(id);
-			if (tier != null && !tier.isBlank() && (listing.tier() == null || listing.tier().isBlank())) {
+			boolean missing = listing.tier() == null || listing.tier().isBlank();
+			boolean differs = tier != null && !tier.isBlank()
+				&& !tier.equalsIgnoreCase(listing.tier() == null ? "" : listing.tier());
+			if (tier != null && !tier.isBlank() && (missing || (overwrite && differs))) {
 				out.add(listing.withTier(tier));
 				changed = true;
 			} else {
@@ -340,6 +425,169 @@ public final class AuctionSnapshot {
 			}
 		}
 		return changed ? out : listings;
+	}
+
+	private static List<Listing> applyEnrichments(List<Listing> listings, Map<String, Listing> byAuctionId) {
+		if (listings == null || listings.isEmpty()) {
+			return listings == null ? List.of() : listings;
+		}
+		boolean changed = false;
+		List<Listing> out = new ArrayList<>(listings.size());
+		for (Listing listing : listings) {
+			String id = listing.auctionId() == null ? "" : listing.auctionId().replace("-", "").toLowerCase(Locale.ROOT);
+			Listing enriched = id.isEmpty() ? null : byAuctionId.get(id);
+			if (enriched != null) {
+				out.add(enriched);
+				changed = true;
+			} else {
+				out.add(listing);
+			}
+		}
+		return changed ? out : listings;
+	}
+
+	/** Build an enriched listing from a Cofl {@code /auction/{id}} payload. */
+	public static Listing enrichFromCoflDetail(Listing base, JsonObject detail) {
+		if (base == null || detail == null) {
+			return base;
+		}
+		String tag = str(detail, "tag");
+		if (tag.isBlank()) {
+			tag = base.tag();
+		}
+		String tier = SkyBlockItemFactory.normalizeTier(str(detail, "tier"));
+		String name = formatCoflItemName(detail);
+		if (name.isBlank()) {
+			name = base.itemName();
+		}
+		List<String> details = coflDetailLines(detail);
+		InventorySnapshot.Slot slot = InventoryDecoder.slotFromTag(tag, name);
+		return base.withEnrichment(name, tier, slot, details);
+	}
+
+	private static String formatCoflItemName(JsonObject detail) {
+		String name = str(detail, "itemName");
+		if (name.isBlank()) {
+			return "";
+		}
+		// Cofl often mangles ✪ stars to '?'.
+		name = name.replace('\uFFFD', '?');
+		int stars = coflUpgradeLevel(detail);
+		String starSuffix = stars <= 0 ? "" : " " + "✪".repeat(Math.min(10, stars));
+		if (name.indexOf('?') >= 0) {
+			name = name.replaceAll("\\s*\\?+", starSuffix).trim();
+		} else if (stars > 0 && !name.contains("✪")) {
+			name = name.trim() + starSuffix;
+		}
+		return name;
+	}
+
+	private static int coflUpgradeLevel(JsonObject detail) {
+		JsonObject flat = obj(detail, "flatNbt");
+		if (flat == null) {
+			flat = obj(detail, "flattenedNbt");
+		}
+		if (flat == null) {
+			JsonObject nbt = obj(detail, "nbtData");
+			flat = nbt == null ? null : obj(nbt, "data");
+		}
+		int level = intVal(flat, "upgrade_level");
+		if (level <= 0) {
+			level = intVal(flat, "dungeon_item_level");
+		}
+		return Math.max(0, level);
+	}
+
+	private static List<String> coflDetailLines(JsonObject detail) {
+		List<String> lines = new ArrayList<>();
+		String reforge = str(detail, "reforge");
+		if (!reforge.isBlank() && !"none".equalsIgnoreCase(reforge)) {
+			lines.add("§7Reforge: §f" + InventoryDecoder.prettyWords(reforge));
+		}
+		int stars = coflUpgradeLevel(detail);
+		if (stars > 0) {
+			lines.add("§6Stars: §e" + stars + " " + "✪".repeat(Math.min(10, stars)));
+		}
+		JsonObject flat = obj(detail, "flatNbt");
+		if (flat == null) {
+			flat = obj(detail, "flattenedNbt");
+		}
+		int hpb = intVal(flat, "hot_potato_count");
+		if (hpb > 0) {
+			lines.add("§7Hot Potato Books: §e" + hpb);
+		}
+		int aow = intVal(flat, "art_of_war_count");
+		if (aow > 0) {
+			lines.add("§7Art of War: §e" + aow);
+		}
+		int aop = intVal(flat, "art_of_peace_count");
+		if (aop > 0) {
+			lines.add("§7Art of Peace: §e" + aop);
+		}
+		if (detail.has("enchantments") && detail.get("enchantments").isJsonArray()) {
+			JsonArray enchants = detail.getAsJsonArray("enchantments");
+			if (!enchants.isEmpty()) {
+				if (!lines.isEmpty()) {
+					lines.add("");
+				}
+				lines.add("§9Enchantments");
+				for (JsonElement el : enchants) {
+					if (el == null || !el.isJsonObject()) {
+						continue;
+					}
+					JsonObject ench = el.getAsJsonObject();
+					String type = str(ench, "type");
+					if (type.isBlank()) {
+						continue;
+					}
+					int level = intVal(ench, "level");
+					String color = str(ench, "color");
+					if (color.isBlank()) {
+						color = type.toLowerCase(Locale.ROOT).startsWith("ultimate_") ? "§d" : "§9";
+					}
+					lines.add(color + InventoryDecoder.prettyWords(type) + (level > 0 ? " " + roman(level) : ""));
+				}
+			}
+		}
+		return lines;
+	}
+
+	private static String roman(int n) {
+		return switch (Math.max(0, Math.min(10, n))) {
+			case 1 -> "I";
+			case 2 -> "II";
+			case 3 -> "III";
+			case 4 -> "IV";
+			case 5 -> "V";
+			case 6 -> "VI";
+			case 7 -> "VII";
+			case 8 -> "VIII";
+			case 9 -> "IX";
+			case 10 -> "X";
+			default -> String.valueOf(n);
+		};
+	}
+
+	private static JsonObject obj(JsonObject root, String key) {
+		if (root == null || key == null || !root.has(key) || !root.get(key).isJsonObject()) {
+			return null;
+		}
+		return root.getAsJsonObject(key);
+	}
+
+	private static int intVal(JsonObject obj, String key) {
+		if (obj == null || key == null || !obj.has(key) || obj.get(key).isJsonNull()) {
+			return 0;
+		}
+		try {
+			return obj.get(key).getAsInt();
+		} catch (Exception ignored) {
+			try {
+				return (int) obj.get(key).getAsDouble();
+			} catch (Exception ignored2) {
+				return 0;
+			}
+		}
 	}
 
 	public static AuctionSnapshot build(
@@ -459,12 +707,16 @@ public final class AuctionSnapshot {
 		}
 		long end = parseCoflTime(str(obj, "end"));
 		InventorySnapshot.Slot slot = InventoryDecoder.slotFromTag(tag, name);
-		String tier = SkyBlockItemFactory.resolveTier(tag);
+		// Prefer Cofl's auction tier when present — NEU rarity is often wrong for AH rows.
+		String tier = SkyBlockItemFactory.normalizeTier(str(obj, "tier"));
+		if (tier.isBlank()) {
+			tier = SkyBlockItemFactory.normalizeTier(SkyBlockItemFactory.resolveTier(tag));
+		}
 		return new Listing(
 			id,
 			tag,
 			name.isBlank() ? (tag.isBlank() ? "Unknown" : tag) : name,
-			SkyBlockItemFactory.normalizeTier(tier),
+			tier,
 			bin,
 			startBid,
 			high,

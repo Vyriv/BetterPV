@@ -1,6 +1,8 @@
 package dev.vy.betterpv.client.gui.nav;
 
+import dev.vy.betterpv.BetterPV;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -20,6 +22,9 @@ public enum PvSubTab {
 	GARDEN_COMPOSTER(Items.COMPOSTER, "betterpv.sub.composter"),
 	GARDEN_GREENHOUSE(Items.GLASS, "betterpv.sub.greenhouse"),
 	GARDEN_JACOB(Items.GOLDEN_CARROT, "betterpv.sub.jacob"),
+	MINING_OVERVIEW(Items.IRON_PICKAXE, "betterpv.sub.mining_overview"),
+	MINING_HOTM(Items.PLAYER_HEAD, "betterpv.sub.mining_hotm", "textures/gui/nav/hotm.png", 64),
+	MINING_GLACITE(Items.BLUE_ICE, "betterpv.sub.mining_glacite"),
 	FORAGING_MAIN(Items.IRON_AXE, "betterpv.sub.foraging"),
 	FORAGING_SHARDS(Items.AMETHYST_SHARD, "betterpv.sub.shards"),
 	CRIMSON_MAIN(Items.NETHERRACK, "betterpv.sub.crimson"),
@@ -32,14 +37,34 @@ public enum PvSubTab {
 
 	private final ItemStack icon;
 	private final String langKey;
+	private final Identifier textureIcon;
+	private final int textureSize;
 
 	PvSubTab(Item item, String langKey) {
+		this(item, langKey, null, 16);
+	}
+
+	PvSubTab(Item item, String langKey, String texturePath, int textureSize) {
 		this.icon = new ItemStack(item);
 		this.langKey = langKey;
+		this.textureIcon = texturePath == null
+			? null
+			: Identifier.fromNamespaceAndPath(BetterPV.MOD_ID, texturePath);
+		this.textureSize = Math.max(1, textureSize);
 	}
 
 	public ItemStack icon() {
 		return this.icon;
+	}
+
+	/** Bundled GUI texture when set (e.g. HotM skull icon). */
+	public Identifier textureIcon() {
+		return this.textureIcon;
+	}
+
+	/** Pixel size of {@link #textureIcon()} (square). */
+	public int textureSize() {
+		return this.textureSize;
 	}
 
 	public Component label() {

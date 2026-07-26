@@ -49,14 +49,17 @@ public final class AuctionPage {
 	private int loadMoreW;
 	private boolean loadMoreVisible;
 	private final AtomicBoolean loadingMore = new AtomicBoolean(false);
+	private final java.util.Set<String> enrichedAuctionIds = java.util.concurrent.ConcurrentHashMap.newKeySet();
 	private InventorySnapshot.Slot hoveredSlot;
 	private ItemStack hoveredStack = ItemStack.EMPTY;
+	private AuctionSnapshot.Listing hoveredListing;
 
 	public void apply(AuctionSnapshot snapshot) {
 		this.snapshot = snapshot == null ? AuctionSnapshot.empty() : snapshot;
 		this.scroll = 0;
 		this.statsScroll = 0;
 		this.loadingMore.set(false);
+		this.enrichedAuctionIds.clear();
 		prefetchAndEnrich(this.snapshot);
 	}
 
@@ -79,6 +82,7 @@ public final class AuctionPage {
 	) {
 		this.hoveredSlot = null;
 		this.hoveredStack = ItemStack.EMPTY;
+		this.hoveredListing = null;
 		this.loadMoreVisible = false;
 
 		AuctionSnapshot.Bucket bucket = bucketFor(sub);
@@ -402,11 +406,27 @@ public final class AuctionPage {
 	}
 
 	private void drawTooltip(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH) {
-		if (this.hoveredSlot != null && !this.hoveredStack.isEmpty()) {
-			List<Component> tip = SkyBlockItemFactory.tooltipLines(this.hoveredSlot, this.hoveredStack);
-			if (tip != null && !tip.isEmpty()) {
-				dev.vy.betterpv.client.gui.PvTooltip.drawComponents(g, font, tip, mouseX, mouseY, screenW, screenH);
+		if (this.hoveredSlot == null || this.hoveredStack.isEmpty()) {
+			return;
+		}
+		List<Component> tip = new java.util.ArrayList<>(
+			SkyBlockItemFactory.tooltipLines(this.hoveredSlot, this.hoveredStack)
+		);
+		if (this.hoveredListing != null && this.hoveredListing.detailLines() != null
+			&& !this.hoveredListing.detailLines().isEmpty()) {
+			if (!tip.isEmpty()) {
+				tip.add(Component.empty());
 			}
+			for (String line : this.hoveredListing.detailLines()) {
+				if (line == null || line.isBlank()) {
+					tip.add(Component.empty());
+				} else {
+					tip.add(SkyBlockItemFactory.legacyLine(line));
+				}
+			}
+		}
+		if (!tip.isEmpty()) {
+			dev.vy.betterpv.client.gui.PvTooltip.drawComponents(g, font, tip, mouseX, mouseY, screenW, screenH);
 		}
 	}
 
@@ -445,6 +465,7 @@ public final class AuctionPage {
 			if (hover) {
 				this.hoveredSlot = slot;
 				this.hoveredStack = stack;
+				this.hoveredListing = listing;
 			}
 		}
 
@@ -459,7 +480,7 @@ public final class AuctionPage {
 		String rest = time.isEmpty() ? "" : " - " + time;
 		int restW = font.width(rest);
 		String shownName = trim(font, name, Math.max(8, textMax - restW));
-		int nameColor = nameColor(listing, hover);
+		int nameColor = nameColor(listing);
 
 		PvDraw.text(g, font, shownName, textX, textY, nameColor);
 		if (!rest.isEmpty()) {
@@ -468,10 +489,7 @@ public final class AuctionPage {
 		PvDraw.textRight(g, font, price, x + w - 2, textY, 0xFFFFD36A);
 	}
 
-	private static int nameColor(AuctionSnapshot.Listing listing, boolean hover) {
-		if (hover) {
-			return PvDraw.COLOR_ACCENT;
-		}
+	private static int nameColor(AuctionSnapshot.Listing listing) {
 		String tier = listing.tier();
 		if (tier == null || tier.isBlank()) {
 			String id = listing.tag();
@@ -586,15 +604,15 @@ public final class AuctionPage {
 	}
 
 	/**
-	 * Warm icons (incl. {@code PET_*} → NEU pet skulls) and fill missing rarities.
-	 * Cofl player history omits {@code tier}; pets need a detail fetch for accurate colour.
+	 * Warm icons (incl. {@code PET_*} → NEU pet skulls) and enrich Cofl history rows.
+	 * Player auction/bid summaries omit tier + upgrades; {@code /auction/{id}} has them.
 	 */
 	private void prefetchAndEnrich(AuctionSnapshot snapshot) {
 		if (snapshot == null) {
 			return;
 		}
 		java.util.Set<String> ids = new java.util.HashSet<>();
-		java.util.List<AuctionSnapshot.Listing> needTier = new java.util.ArrayList<>();
+		java.util.List<AuctionSnapshot.Listing> needDetail = new java.util.ArrayList<>();
 		for (AuctionSnapshot.Bucket bucket : AuctionSnapshot.Bucket.values()) {
 			for (AuctionSnapshot.Listing listing : snapshot.forBucket(bucket)) {
 				String id = listing.tag();
@@ -604,54 +622,59 @@ public final class AuctionPage {
 				if (id != null && !id.isBlank()) {
 					ids.add(id);
 				}
-				if ((listing.tier() == null || listing.tier().isBlank())
-					&& listing.auctionId() != null
-					&& !listing.auctionId().isBlank()) {
-					needTier.add(listing);
+				if (listing.auctionId() == null || listing.auctionId().isBlank()) {
+					continue;
+				}
+				String aid = listing.auctionId().replace("-", "").toLowerCase(java.util.Locale.ROOT);
+				if (this.enrichedAuctionIds.contains(aid)) {
+					continue;
+				}
+				boolean missingTier = listing.tier() == null || listing.tier().isBlank();
+				boolean mangledStars = listing.itemName() != null && listing.itemName().indexOf('?') >= 0;
+				// Player summaries omit upgrades; fetch detail once per auction id.
+				if (missingTier || mangledStars || listing.detailLines() == null || listing.detailLines().isEmpty()) {
+					needDetail.add(listing);
 				}
 			}
 		}
 		for (String id : ids) {
 			SkyBlockItemFactory.iconStack(id);
 		}
-		if (needTier.isEmpty()) {
+		if (needDetail.isEmpty()) {
 			return;
 		}
 		dev.vy.betterpv.client.api.HypixelApiClient.parseExecutor().execute(() -> {
 			try {
 				java.util.Map<String, String> resolved = new java.util.LinkedHashMap<>();
-				java.util.List<String> needCofl = new java.util.ArrayList<>();
-				for (AuctionSnapshot.Listing listing : needTier) {
+				java.util.List<AuctionSnapshot.Listing> needCofl = new java.util.ArrayList<>();
+				for (AuctionSnapshot.Listing listing : needDetail) {
 					String tag = listing.tag();
 					if ((tag == null || tag.isBlank()) && listing.slot() != null) {
 						tag = listing.slot().id();
 					}
 					String tier = SkyBlockItemFactory.resolveTier(tag);
-					if (!tier.isBlank()) {
+					boolean missingTier = listing.tier() == null || listing.tier().isBlank();
+					if (missingTier && !tier.isBlank()) {
 						resolved.put(listing.auctionId(), tier);
-					} else {
-						needCofl.add(listing.auctionId());
 					}
+					// Always pull Cofl detail for upgrade/reforge/stars when we can.
+					needCofl.add(listing);
 				}
 				if (!resolved.isEmpty()) {
-					applyTiersOnClient(snapshot, resolved);
+					applyTiersOnClient(snapshot, resolved, false);
 				}
-				int budget = Math.min(24, needCofl.size());
+				int budget = Math.min(36, needCofl.size());
 				for (int i = 0; i < budget; i++) {
-					String auctionId = needCofl.get(i);
+					AuctionSnapshot.Listing listing = needCofl.get(i);
+					String auctionId = listing.auctionId();
+					String aid = auctionId.replace("-", "").toLowerCase(java.util.Locale.ROOT);
+					this.enrichedAuctionIds.add(aid);
 					CoflnetApiClient.auction(auctionId).thenAccept(opt -> {
 						if (opt.isEmpty()) {
 							return;
 						}
-						com.google.gson.JsonObject obj = opt.get();
-						String tier = "";
-						if (obj.has("tier") && obj.get("tier").isJsonPrimitive()) {
-							tier = SkyBlockItemFactory.normalizeTier(obj.get("tier").getAsString());
-						}
-						if (tier.isBlank()) {
-							return;
-						}
-						applyTiersOnClient(snapshot, java.util.Map.of(auctionId, tier));
+						AuctionSnapshot.Listing enriched = AuctionSnapshot.enrichFromCoflDetail(listing, opt.get());
+						applyEnrichmentOnClient(snapshot, auctionId, enriched);
 					});
 				}
 			} catch (Exception ignored) {
@@ -659,7 +682,7 @@ public final class AuctionPage {
 		});
 	}
 
-	private void applyTiersOnClient(AuctionSnapshot expectedBase, java.util.Map<String, String> tiers) {
+	private void applyTiersOnClient(AuctionSnapshot expectedBase, java.util.Map<String, String> tiers, boolean overwrite) {
 		Minecraft mc = Minecraft.getInstance();
 		mc.execute(() -> {
 			if (this.snapshot != expectedBase && this.snapshot.playerUuid() != null
@@ -667,8 +690,33 @@ public final class AuctionPage {
 				&& !this.snapshot.playerUuid().equals(expectedBase.playerUuid())) {
 				return;
 			}
-			this.snapshot = this.snapshot.withTiers(tiers);
+			this.snapshot = this.snapshot.withTiers(tiers, overwrite);
 		});
+	}
+
+	private void applyEnrichmentOnClient(
+		AuctionSnapshot expectedBase,
+		String auctionId,
+		AuctionSnapshot.Listing enriched
+	) {
+		Minecraft mc = Minecraft.getInstance();
+		mc.execute(() -> {
+			if (enriched == null || auctionId == null || auctionId.isBlank()) {
+				return;
+			}
+			String aid = auctionId.replace("-", "").toLowerCase(java.util.Locale.ROOT);
+			this.enrichedAuctionIds.add(aid);
+			if (this.snapshot.playerUuid() != null
+				&& expectedBase.playerUuid() != null
+				&& !this.snapshot.playerUuid().equals(expectedBase.playerUuid())) {
+				return;
+			}
+			this.snapshot = this.snapshot.withEnrichments(java.util.Map.of(auctionId, enriched));
+		});
+	}
+
+	private void applyTiersOnClient(AuctionSnapshot expectedBase, java.util.Map<String, String> tiers) {
+		applyTiersOnClient(expectedBase, tiers, false);
 	}
 
 	private static AuctionSnapshot.Bucket bucketFor(PvSubTab sub) {

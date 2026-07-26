@@ -50,14 +50,19 @@ public final class GardenPage {
 	private static final int BRONZE = 0xFFCD7F32;
 	private static final int SILVER = 0xFFC0C0C0;
 	private static final int GOLD = 0xFFFFD700;
-	private static final int PLATINUM = 0xFFE5E4E2;
-	private static final int DIAMOND = 0xFF5B8CFF;
+	private static final int PLATINUM = 0xFF55FFFF; // aqua / cyan
+	private static final int DIAMOND = 0xFFAAFFFF; // light blue
+	private static final int MEDAL_ORB_EMPTY = 0xFF2A2A35;
 	private static final int GHOST = 0xFF9A9AAC;
 	private static final int COPPER = 0xFFE07A3D;
 	private static final int VISITS_C = 0xFFE8E8F0;
 	private static final int COMPLETED_C = 0xFF55FF55;
 	private static final int REJECTED_C = 0xFFFF5555;
 	private static final float CREDIT_SCALE = 0.75F;
+	private static final int FLIP_MS = 480;
+	private static final int PANEL_HOVER = 0x0AFFFFFF;
+	private static final int ORB = 6;
+	private static final int ORB_GAP = 3;
 
 	private GardenSnapshot snapshot = GardenSnapshot.empty();
 	private PvSubTab lastSub;
@@ -72,11 +77,21 @@ public final class GardenPage {
 	private int leftScrollX;
 	private int leftScrollW;
 	private final List<HoverZone> zones = new ArrayList<>();
+	private boolean jacobExtrasFace;
+	private boolean jacobFlipTarget;
+	private long jacobFlipStartMs;
+	private int jacobHitX;
+	private int jacobHitY;
+	private int jacobHitW;
+	private int jacobHitH;
 
 	public void apply(GardenSnapshot snapshot) {
 		this.snapshot = snapshot == null ? GardenSnapshot.empty() : snapshot;
 		this.scroll = 0;
 		this.leftScroll = 0;
+		this.jacobExtrasFace = false;
+		this.jacobFlipTarget = false;
+		this.jacobFlipStartMs = 0L;
 		this.zones.clear();
 		prefetch();
 	}
@@ -159,6 +174,22 @@ public final class GardenPage {
 		return true;
 	}
 
+	public boolean mouseClicked(double mx, double my) {
+		if (this.lastSub != PvSubTab.GARDEN_JACOB) {
+			return false;
+		}
+		if (mx < this.jacobHitX || mx >= this.jacobHitX + this.jacobHitW
+			|| my < this.jacobHitY || my >= this.jacobHitY + this.jacobHitH) {
+			return false;
+		}
+		if (this.jacobFlipStartMs != 0L) {
+			return true;
+		}
+		this.jacobFlipTarget = !this.jacobExtrasFace;
+		this.jacobFlipStartMs = System.currentTimeMillis();
+		return true;
+	}
+
 	private void renderOverview(
 		GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, int mx, int my, boolean partial
 	) {
@@ -207,6 +238,7 @@ public final class GardenPage {
 
 		List<GardenSnapshot.ChipEntry> chips = this.snapshot.gardenChips();
 		if (!chips.isEmpty()) {
+			ly += 8;
 			PvDraw.text(g, font, "Garden chips", lx, ly, PvDraw.COLOR_MUTED);
 			ly += font.lineHeight + 3;
 			int cols = Math.min(5, Math.max(4, (lw + CHIP_GAP) / (CHIP_CELL + CHIP_GAP)));
@@ -625,7 +657,6 @@ public final class GardenPage {
 		int rightW = Math.max(200, w * 52 / 100);
 		int leftW = w - rightW - GAP;
 		PvDraw.innerPanel(g, x, y, leftW, h);
-		PvDraw.innerPanel(g, x + leftW + GAP, y, rightW, h);
 
 		int lx = x + PAD;
 		int ly = y + PAD;
@@ -660,6 +691,42 @@ public final class GardenPage {
 			cy += 3;
 		}
 
+		List<GardenSnapshot.CropMedal> cropMedals = this.snapshot.cropMedals();
+		PvDraw.text(g, font, "Crop medals", lx, cy, PvDraw.COLOR_MUTED);
+		cy += font.lineHeight + 3;
+		if (cropMedals.isEmpty()) {
+			PvDraw.text(g, font, "None yet", lx, cy, PvDraw.COLOR_MUTED);
+			cy += font.lineHeight + 4;
+		} else {
+			int rowH = Math.max(STAT_ROW, ICON + 2);
+			int orbsW = 5 * ORB + 4 * ORB_GAP;
+			for (GardenSnapshot.CropMedal medal : cropMedals) {
+				drawIcon(g, medal.iconId(), lx, cy + (rowH - ICON) / 2, ICON, GardenData.cropPackModel(medal.id()));
+				int textX = lx + ICON + 4;
+				int nameMax = Math.max(8, lw - ICON - 8 - orbsW);
+				String shown = trim(font, medal.name(), nameMax);
+				PvDraw.text(g, font, shown, textX, cy + (rowH - font.lineHeight) / 2, PvDraw.COLOR_TEXT);
+				drawMedalOrbs(g, lx + lw - orbsW, cy + (rowH - ORB) / 2, medal.filled());
+				String tipMedal = switch (medal.filled()) {
+					case 1 -> "Bronze";
+					case 2 -> "Silver";
+					case 3 -> "Gold";
+					case 4 -> "Platinum";
+					case 5 -> "Diamond";
+					default -> "None";
+				};
+				this.zones.add(new HoverZone(lx, cy, lw, rowH, List.of(
+					PvTooltip.Line.of(medal.name(), PvDraw.COLOR_TEXT),
+					PvTooltip.Line.of(
+						"Highest unique: " + tipMedal,
+						medal.filled() <= 0 ? PvDraw.COLOR_MUTED : medalOrbColor(medal.filled() - 1)
+					)
+				)));
+				cy += rowH + 1;
+			}
+			cy += 3;
+		}
+
 		if (!this.snapshot.perks().isEmpty()) {
 			PvDraw.text(g, font, "Perks", lx, cy, PvDraw.COLOR_MUTED);
 			cy += font.lineHeight + 2;
@@ -667,19 +734,67 @@ public final class GardenPage {
 				cy = statLine(g, font, perkName(e.getKey()), String.valueOf(e.getValue()),
 					lx, cy, lw, PvDraw.COLOR_ACCENT) + 1;
 			}
-			cy += 3;
-		}
-
-		PvDraw.text(g, font, "Personal bests", lx, cy, PvDraw.COLOR_MUTED);
-		cy += font.lineHeight + 2;
-		for (GardenSnapshot.PersonalBest pb : this.snapshot.personalBests()) {
-			cy = statLine(g, font, pb.name(), FormatUtil.commas(pb.amount()), lx, cy, lw, PvDraw.COLOR_TEXT) + 1;
 		}
 		g.disableScissor();
 
-		int rx = x + leftW + GAP + PAD;
+		drawJacobContestPanel(g, font, x + leftW + GAP, y, rightW, h, mx, my);
+	}
+
+	private void drawJacobContestPanel(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, int mx, int my) {
+		this.jacobHitX = x;
+		this.jacobHitY = y;
+		this.jacobHitW = w;
+		this.jacobHitH = h;
+
+		boolean hovered = mx >= x && mx < x + w && my >= y && my < y + h;
+		float flipProgress = 0F;
+		boolean animating = this.jacobFlipStartMs != 0L;
+		if (animating) {
+			flipProgress = Math.min(1F, (System.currentTimeMillis() - this.jacobFlipStartMs) / (float) FLIP_MS);
+			if (flipProgress >= 1F) {
+				this.jacobExtrasFace = this.jacobFlipTarget;
+				this.jacobFlipStartMs = 0L;
+				animating = false;
+				flipProgress = 0F;
+			}
+		}
+		float eased = animating ? easeInOutCubic(flipProgress) : 0F;
+		float angle = eased * (float) Math.PI;
+		boolean showExtras = animating
+			? (Math.cos(angle) < 0.0 ? this.jacobFlipTarget : this.jacobExtrasFace)
+			: this.jacobExtrasFace;
+		float scaleX = 1F;
+		float scaleY = 1F;
+		if (animating) {
+			scaleX = Math.max(0.04F, Math.abs((float) Math.cos(angle)));
+			scaleY = 1F - (1F - scaleX) * 0.06F;
+		}
+
+		float cxFlip = x + w / 2F;
+		float cyFlip = y + h / 2F;
+		g.pose().pushMatrix();
+		g.pose().translate(cxFlip, cyFlip);
+		g.pose().scale(scaleX, scaleY);
+		g.pose().translate(-cxFlip, -cyFlip);
+
+		PvDraw.innerPanel(g, x, y, w, h);
+		if (hovered && !animating) {
+			PvDraw.fill(g, x + 1, y + 1, w - 2, h - 2, PANEL_HOVER);
+		}
+
+		if (showExtras) {
+			drawJacobExtrasFace(g, font, x, y, w, h);
+		} else {
+			drawJacobContestsFace(g, font, x, y, w, h);
+		}
+
+		g.pose().popMatrix();
+	}
+
+	private void drawJacobContestsFace(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h) {
+		int rx = x + PAD;
 		int ry = y + PAD;
-		int rw = rightW - PAD * 2;
+		int rw = w - PAD * 2;
 		PvDraw.text(g, font, "Contest history", rx, ry, PvDraw.COLOR_MUTED);
 		ry += font.lineHeight + 3;
 
@@ -738,7 +853,74 @@ public final class GardenPage {
 				if (c.timestampSeconds() > 0L) {
 					tip.add(PvTooltip.Line.of(contestWhen(c.timestampSeconds()), PvDraw.COLOR_MUTED));
 				}
+				tip.add(PvTooltip.Line.of("Click to flip", PvDraw.COLOR_MUTED));
 				this.zones.add(new HoverZone(rx, yy, rw, rowH, tip));
+			}
+			yy += rowH;
+		}
+		g.disableScissor();
+	}
+
+	private void drawJacobExtrasFace(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h) {
+		int rx = x + PAD;
+		int ry = y + PAD;
+		int rw = w - PAD * 2;
+		int bottom = y + h - PAD;
+
+		PvDraw.text(g, font, "Unique golds", rx, ry, PvDraw.COLOR_MUTED);
+		ry += font.lineHeight + 3;
+
+		List<String> uniqueGolds = this.snapshot.uniqueGoldCrops();
+		int goldBlockH;
+		if (uniqueGolds.isEmpty()) {
+			PvDraw.text(g, font, "None yet", rx, ry, PvDraw.COLOR_MUTED);
+			goldBlockH = font.lineHeight + 4;
+		} else {
+			int cols = Math.max(4, Math.min(8, (rw + 2) / (ICON + 2)));
+			int cell = ICON + 2;
+			for (int i = 0; i < uniqueGolds.size(); i++) {
+				String cropId = uniqueGolds.get(i);
+				int col = i % cols;
+				int row = i / cols;
+				int bx = rx + col * cell;
+				int by = ry + row * cell;
+				String iconId = GardenData.cropIconId(cropId);
+				drawIcon(g, iconId, bx, by, ICON, GardenData.cropPackModel(cropId));
+				this.zones.add(new HoverZone(bx, by, ICON, ICON, List.of(
+					PvTooltip.Line.of(GardenData.prettyCrop(cropId), GOLD),
+					PvTooltip.Line.of("Unique gold medal", PvDraw.COLOR_MUTED)
+				)));
+			}
+			int rows = (uniqueGolds.size() + cols - 1) / cols;
+			goldBlockH = rows * cell + 4;
+		}
+		ry += goldBlockH;
+
+		PvDraw.text(g, font, "Personal bests", rx, ry, PvDraw.COLOR_MUTED);
+		ry += font.lineHeight + 3;
+
+		List<GardenSnapshot.PersonalBest> pbs = this.snapshot.personalBests();
+		int rowH = Math.max(STAT_ROW, ICON + 2);
+		this.scrollTop = ry;
+		this.scrollH = Math.max(0, bottom - ry);
+		this.maxScroll = Math.max(0, pbs.size() * rowH - this.scrollH);
+		this.scroll = Math.min(this.scroll, this.maxScroll);
+
+		g.enableScissor(rx, this.scrollTop, rx + rw, this.scrollTop + this.scrollH);
+		int yy = this.scrollTop - this.scroll;
+		for (GardenSnapshot.PersonalBest pb : pbs) {
+			if (yy + rowH >= this.scrollTop && yy < this.scrollTop + this.scrollH) {
+				String iconId = GardenData.cropIconId(pb.id());
+				drawIcon(g, iconId, rx, yy + (rowH - ICON) / 2, ICON, GardenData.cropPackModel(pb.id()));
+				int textX = rx + ICON + 4;
+				int textW = rw - ICON - 4;
+				drawPair(g, font, pb.name(), FormatUtil.commas(pb.amount()), textX,
+					yy + (rowH - font.lineHeight) / 2, textW, PvDraw.COLOR_TEXT, PvDraw.COLOR_ACCENT);
+				this.zones.add(new HoverZone(rx, yy, rw, rowH, List.of(
+					PvTooltip.Line.of(pb.name(), PvDraw.COLOR_TEXT),
+					PvTooltip.Line.of(FormatUtil.commas(pb.amount()) + " collected", PvDraw.COLOR_MUTED),
+					PvTooltip.Line.of("Click to flip", PvDraw.COLOR_MUTED)
+				)));
 			}
 			yy += rowH;
 		}
@@ -750,11 +932,55 @@ public final class GardenPage {
 		if (!this.snapshot.uniqueBrackets().isEmpty()) {
 			h += font.lineHeight + 2 + this.snapshot.uniqueBrackets().size() * (STAT_ROW + 1) + 3;
 		}
-		if (!this.snapshot.perks().isEmpty()) {
-			h += font.lineHeight + 2 + this.snapshot.perks().size() * (STAT_ROW + 1) + 3;
+		h += font.lineHeight + 3;
+		List<GardenSnapshot.CropMedal> medals = this.snapshot.cropMedals();
+		if (medals.isEmpty()) {
+			h += font.lineHeight + 4;
+		} else {
+			int rowH = Math.max(STAT_ROW, ICON + 2);
+			h += medals.size() * (rowH + 1) + 3;
 		}
-		h += font.lineHeight + 2 + this.snapshot.personalBests().size() * (STAT_ROW + 1);
+		if (!this.snapshot.perks().isEmpty()) {
+			h += font.lineHeight + 2 + this.snapshot.perks().size() * (STAT_ROW + 1);
+		}
 		return h;
+	}
+
+	private static void drawMedalOrbs(GuiGraphicsExtractor g, int x, int y, int filled) {
+		for (int i = 0; i < 5; i++) {
+			int ox = x + i * (ORB + ORB_GAP);
+			int color = i < filled ? medalOrbColor(i) : MEDAL_ORB_EMPTY;
+			drawOrb(g, ox, y, ORB, color);
+		}
+	}
+
+	private static int medalOrbColor(int index) {
+		return switch (index) {
+			case 0 -> BRONZE;
+			case 1 -> SILVER;
+			case 2 -> GOLD;
+			case 3 -> PLATINUM;
+			case 4 -> DIAMOND;
+			default -> MEDAL_ORB_EMPTY;
+		};
+	}
+
+	private static void drawOrb(GuiGraphicsExtractor g, int x, int y, int size, int argb) {
+		int r = size / 2;
+		int r2 = r * r;
+		for (int dy = 0; dy < size; dy++) {
+			for (int dx = 0; dx < size; dx++) {
+				int cx = dx - r;
+				int cy = dy - r;
+				if (cx * cx + cy * cy <= r2) {
+					PvDraw.fill(g, x + dx, y + dy, 1, 1, argb);
+				}
+			}
+		}
+	}
+
+	private static float easeInOutCubic(float t) {
+		return t < 0.5F ? 4F * t * t * t : 1F - (float) Math.pow(-2F * t + 2F, 3) / 2F;
 	}
 
 	private void prefetch() {
@@ -785,6 +1011,17 @@ public final class GardenPage {
 			if (c.iconId() != null && !c.iconId().isBlank()) {
 				ids.add(c.iconId());
 			}
+		}
+		for (GardenSnapshot.CropMedal medal : this.snapshot.cropMedals()) {
+			if (medal.iconId() != null && !medal.iconId().isBlank()) {
+				ids.add(medal.iconId());
+			}
+		}
+		for (String cropId : this.snapshot.uniqueGoldCrops()) {
+			ids.add(GardenData.cropIconId(cropId));
+		}
+		for (GardenSnapshot.PersonalBest pb : this.snapshot.personalBests()) {
+			ids.add(GardenData.cropIconId(pb.id()));
 		}
 		if (!ids.isEmpty()) {
 			SkyBlockItemFactory.prefetchIds(ids);
@@ -936,7 +1173,7 @@ public final class GardenPage {
 		return "hypixel_skyblock:item/island_relevant/garden/chips/" + file;
 	}
 
-	private static List<PvTooltip.Line> cropMilestoneTip(GardenSnapshot.CropRow crop) {
+	private List<PvTooltip.Line> cropMilestoneTip(GardenSnapshot.CropRow crop) {
 		List<PvTooltip.Line> tip = new ArrayList<>();
 		tip.add(PvTooltip.Line.of(crop.name(), PvDraw.COLOR_TEXT));
 		tip.add(PvTooltip.Line.of(
@@ -953,6 +1190,9 @@ public final class GardenPage {
 			));
 		}
 		tip.add(PvTooltip.Line.of("Upgrade: +" + crop.upgradeLevel(), PvDraw.COLOR_MUTED));
+		if (this.snapshot.hasUniqueGold(crop.id())) {
+			tip.add(PvTooltip.Line.of("Unique gold", GOLD));
+		}
 		return tip;
 	}
 
@@ -962,9 +1202,15 @@ public final class GardenPage {
 		tip.add(PvTooltip.Line.of("Total: " + FormatUtil.oneDecimal(weight.displayTotal()), PvDraw.COLOR_TEXT));
 		List<Map.Entry<String, Double>> bonuses = new ArrayList<>(weight.bonusWeight().entrySet());
 		bonuses.sort((a, b) -> Double.compare(b.getValue(), a.getValue()));
-		if (!bonuses.isEmpty()) {
+		List<Map.Entry<String, Double>> shownBonus = new ArrayList<>();
+		for (Map.Entry<String, Double> e : bonuses) {
+			if (e.getValue() != null && e.getValue() > 0) {
+				shownBonus.add(e);
+			}
+		}
+		if (!shownBonus.isEmpty()) {
 			tip.add(PvTooltip.Line.of("Bonus", PvDraw.COLOR_ACCENT));
-			for (Map.Entry<String, Double> e : bonuses) {
+			for (Map.Entry<String, Double> e : shownBonus) {
 				tip.add(PvTooltip.Line.of(
 					prettyBonusWeight(e.getKey()) + ": " + FormatUtil.oneDecimal(e.getValue()),
 					PvDraw.COLOR_MUTED
@@ -973,11 +1219,17 @@ public final class GardenPage {
 		}
 		List<Map.Entry<String, Double>> crops = new ArrayList<>(weight.cropWeight().entrySet());
 		crops.sort((a, b) -> Double.compare(b.getValue(), a.getValue()));
-		if (!crops.isEmpty()) {
+		List<Map.Entry<String, Double>> shownCrops = new ArrayList<>();
+		for (Map.Entry<String, Double> e : crops) {
+			if (e.getValue() != null && e.getValue() > 0) {
+				shownCrops.add(e);
+			}
+		}
+		if (!shownCrops.isEmpty()) {
 			tip.add(PvTooltip.Line.of("Crops", PvDraw.COLOR_ACCENT));
 			int shown = 0;
-			for (Map.Entry<String, Double> e : crops) {
-				if (shown++ >= 10) {
+			for (Map.Entry<String, Double> e : shownCrops) {
+				if (shown++ >= 12) {
 					break;
 				}
 				tip.add(PvTooltip.Line.of(

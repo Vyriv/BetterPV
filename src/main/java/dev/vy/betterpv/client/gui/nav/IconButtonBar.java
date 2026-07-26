@@ -7,7 +7,9 @@ import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 
 /**
@@ -101,7 +103,7 @@ public final class IconButtonBar {
 		for (Entry entry : entries) {
 			boolean selected = entry.key.equals(selectedKey);
 			boolean hovered = mouseX >= tabX && mouseX < panelX + 1 && mouseY >= cy && mouseY < cy + TAB;
-			drawLeftTab(g, font, tabX, cy, panelX, entry.icon, entry.label, selected, hovered, entry.onClick);
+			drawLeftTab(g, font, tabX, cy, panelX, entry.icon, entry.texture, entry.textureSize, entry.label, selected, hovered, entry.onClick);
 			cy += TAB + GAP;
 		}
 	}
@@ -152,6 +154,8 @@ public final class IconButtonBar {
 		int y,
 		int panelX,
 		ItemStack icon,
+		Identifier texture,
+		int textureSize,
 		Component label,
 		boolean selected,
 		boolean hovered,
@@ -174,7 +178,14 @@ public final class IconButtonBar {
 			PvDraw.fill(g, panelX, y + 1, 2, TAB - 2, PvDraw.COLOR_PANEL);
 		}
 
-		g.item(icon, x + 4, y + 5);
+		int ix = x + 5;
+		int iy = y + 5;
+		if (texture != null) {
+			int tex = Math.max(1, textureSize);
+			g.blit(RenderPipelines.GUI_TEXTURED, texture, ix, iy, 0, 0, 16, 16, tex, tex, tex, tex);
+		} else {
+			g.item(icon, ix, iy);
+		}
 		this.hits.add(new Hit(x, y, Math.max(w, TAB - SEAM), TAB, onClick));
 		if (hovered) {
 			tooltipLeft(g, font, label, x, y + TAB / 2);
@@ -208,7 +219,14 @@ public final class IconButtonBar {
 		return new int[] { window.getGuiScaledWidth(), window.getGuiScaledHeight() };
 	}
 
-	public record Entry(Object key, ItemStack icon, Component label, Runnable onClick) {
+	public record Entry(Object key, ItemStack icon, Component label, Runnable onClick, Identifier texture, int textureSize) {
+		public Entry(Object key, ItemStack icon, Component label, Runnable onClick) {
+			this(key, icon, label, onClick, null, 16);
+		}
+
+		public Entry(Object key, ItemStack icon, Component label, Runnable onClick, Identifier texture) {
+			this(key, icon, label, onClick, texture, 16);
+		}
 	}
 
 	private record Hit(int x, int y, int w, int h, Runnable onClick) {

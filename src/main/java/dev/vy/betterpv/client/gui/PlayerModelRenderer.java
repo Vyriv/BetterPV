@@ -35,6 +35,122 @@ public final class PlayerModelRenderer {
 		ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY, ItemStack.EMPTY
 	};
 
+	/**
+	 * @param flipScaleX horizontal squash for left-panel flip (1 = normal)
+	 * @param flipScaleY vertical squash for left-panel flip (1 = normal)
+	 * @param flipPivotX pivot matching the Home panel flip (entity draws ignore GUI pose)
+	 * @param flipPivotY pivot matching the Home panel flip
+	 * @param openScale PV open expand scale (entity draws ignore GUI pose)
+	 * @param openPivotX panel-center pivot for the open expand
+	 * @param openPivotY panel-center pivot for the open expand
+	 */
+	public void draw(
+		GuiGraphicsExtractor graphics,
+		UUID uuid,
+		String name,
+		int x0,
+		int y0,
+		int x1,
+		int y1,
+		int mouseX,
+		int mouseY,
+		ItemStack helmet,
+		ItemStack chest,
+		ItemStack legs,
+		ItemStack boots,
+		float flipScaleX,
+		float flipScaleY,
+		float flipPivotX,
+		float flipPivotY,
+		float openScale,
+		float openPivotX,
+		float openPivotY
+	) {
+		Minecraft mc = Minecraft.getInstance();
+		ClientLevel level = mc.level;
+		if (uuid == null || level == null) {
+			return;
+		}
+		float open = Math.max(0F, Math.min(1F, openScale));
+		float sx = Math.max(0F, Math.min(1F, flipScaleX));
+		float sy = Math.max(0F, Math.min(1F, flipScaleY));
+		if (open < 0.05F || sx < 0.05F) {
+			return;
+		}
+		LivingEntity entity = resolveEntity(mc, level, uuid, name);
+		if (entity == null) {
+			return;
+		}
+		equipIfChanged(entity, EquipmentSlot.HEAD, 0, helmet);
+		equipIfChanged(entity, EquipmentSlot.CHEST, 1, chest);
+		equipIfChanged(entity, EquipmentSlot.LEGS, 2, legs);
+		equipIfChanged(entity, EquipmentSlot.FEET, 3, boots);
+		applyDinnerboneFlip(entity);
+
+		// Entity path ignores GUI pose matrices — mirror open expand then card flip in screen space.
+		float[] box = {x0, y0, x1, y1};
+		scaleBox(box, openPivotX, openPivotY, open, open);
+		scaleBox(box, flipPivotX, flipPivotY, sx, sy);
+		int sx0 = Math.round(box[0]);
+		int sy0 = Math.round(box[1]);
+		int sx1 = Math.round(box[2]);
+		int sy1 = Math.round(box[3]);
+		if (sx1 - sx0 < 2 || sy1 - sy0 < 2) {
+			return;
+		}
+
+		graphics.enableScissor(sx0, sy0, sx1, sy1);
+		try {
+			int baseScale = Math.max(16, Math.round(Math.min(x1 - x0, y1 - y0) / 2f * 0.8f));
+			int scale = Math.max(4, Math.round(baseScale * open * sx));
+			if (MoulberryMode.isActive()) {
+				extractSpinning(graphics, sx0, sy0, sx1, sy1, scale, entity);
+			} else {
+				InventoryScreen.extractEntityInInventoryFollowsMouse(
+					graphics,
+					sx0,
+					sy0,
+					sx1,
+					sy1,
+					scale,
+					OFFSET_Y,
+					mouseX,
+					mouseY,
+					entity
+				);
+			}
+		} finally {
+			graphics.disableScissor();
+		}
+	}
+
+	public void draw(
+		GuiGraphicsExtractor graphics,
+		UUID uuid,
+		String name,
+		int x0,
+		int y0,
+		int x1,
+		int y1,
+		int mouseX,
+		int mouseY,
+		ItemStack helmet,
+		ItemStack chest,
+		ItemStack legs,
+		ItemStack boots,
+		float flipScaleX,
+		float flipScaleY,
+		float flipPivotX,
+		float flipPivotY
+	) {
+		float midX = (x0 + x1) / 2f;
+		float midY = (y0 + y1) / 2f;
+		draw(
+			graphics, uuid, name, x0, y0, x1, y1, mouseX, mouseY, helmet, chest, legs, boots,
+			flipScaleX, flipScaleY, flipPivotX, flipPivotY, 1.0F, midX, midY
+		);
+	}
+
 	public void draw(
 		GuiGraphicsExtractor graphics,
 		UUID uuid,
@@ -50,42 +166,16 @@ public final class PlayerModelRenderer {
 		ItemStack legs,
 		ItemStack boots
 	) {
-		Minecraft mc = Minecraft.getInstance();
-		ClientLevel level = mc.level;
-		if (uuid == null || level == null) {
-			return;
-		}
-		LivingEntity entity = resolveEntity(mc, level, uuid, name);
-		if (entity == null) {
-			return;
-		}
-		equipIfChanged(entity, EquipmentSlot.HEAD, 0, helmet);
-		equipIfChanged(entity, EquipmentSlot.CHEST, 1, chest);
-		equipIfChanged(entity, EquipmentSlot.LEGS, 2, legs);
-		equipIfChanged(entity, EquipmentSlot.FEET, 3, boots);
-		applyDinnerboneFlip(entity);
-		graphics.enableScissor(x0, y0, x1, y1);
-		try {
-			int scale = Math.max(16, Math.round(Math.min(x1 - x0, y1 - y0) / 2f * 0.8f));
-			if (MoulberryMode.isActive()) {
-				extractSpinning(graphics, x0, y0, x1, y1, scale, entity);
-			} else {
-				InventoryScreen.extractEntityInInventoryFollowsMouse(
-					graphics,
-					x0,
-					y0,
-					x1,
-					y1,
-					scale,
-					OFFSET_Y,
-					mouseX,
-					mouseY,
-					entity
-				);
-			}
-		} finally {
-			graphics.disableScissor();
-		}
+		float midX = (x0 + x1) / 2f;
+		float midY = (y0 + y1) / 2f;
+		draw(graphics, uuid, name, x0, y0, x1, y1, mouseX, mouseY, helmet, chest, legs, boots, 1.0F, 1.0F, midX, midY, 1.0F, midX, midY);
+	}
+
+	private static void scaleBox(float[] box, float pivotX, float pivotY, float scaleX, float scaleY) {
+		box[0] = pivotX + (box[0] - pivotX) * scaleX;
+		box[1] = pivotY + (box[1] - pivotY) * scaleY;
+		box[2] = pivotX + (box[2] - pivotX) * scaleX;
+		box[3] = pivotY + (box[3] - pivotY) * scaleY;
 	}
 
 	/**

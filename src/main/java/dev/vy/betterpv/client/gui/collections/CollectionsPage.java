@@ -221,7 +221,7 @@ public final class CollectionsPage {
 				PvDraw.fill(g, sx, sy, slot, slot, selected ? 0xFF2A3A55 : hover ? 0xFF222230 : 0xFF101018);
 				g.outline(sx, sy, slot, slot, selected ? PvDraw.COLOR_ACCENT : hover ? 0xFF4A4A5A : 0xFF2A2A35);
 				drawIcon(g, resolveIconId(item.id()), sx + (slot - icon) / 2, sy + (slot - icon) / 2, icon);
-				String label = "T" + tier;
+				String label = String.valueOf(tier);
 				int labelColor = tier > 0 ? PvDraw.COLOR_TEXT : PvDraw.COLOR_MUTED;
 				int labelY = sy + slot + layout.labelGap;
 				if (labelScale >= 0.99f) {
@@ -649,12 +649,12 @@ public final class CollectionsPage {
 			PvDraw.fill(g, sx, sy, slot, slot, selected ? 0xFF2A3A55 : hover ? 0xFF222230 : 0xFF101018);
 			g.outline(sx, sy, slot, slot, selected ? PvDraw.COLOR_ACCENT : hover ? 0xFF4A4A5A : 0xFF2A2A35);
 			drawIcon(g, minion.iconId(), sx + (slot - ITEM_ICON) / 2, sy + (slot - ITEM_ICON) / 2 - 1);
-			boolean unlocked = minion.maxCrafted() > 0;
+			boolean maxed = minion.maxCrafted() >= minion.tierCap() && minion.tierCap() > 0;
 			PvDraw.textRight(
 				g, font,
 				String.valueOf(minion.maxCrafted()),
 				sx + slot - 1, sy + slot - font.lineHeight + 1,
-				unlocked ? MINION_UNLOCKED : MINION_LOCKED
+				maxed ? MINION_UNLOCKED : MINION_LOCKED
 			);
 			this.minionHits.add(new SlotHit(sx, sy, slot, slot, i));
 		}
@@ -696,13 +696,12 @@ public final class CollectionsPage {
 			PvDraw.COLOR_TEXT
 		);
 		cy += ITEM_ICON + 4;
-		boolean anyUnlocked = minion.maxCrafted() > 0;
 		boolean maxed = minion.maxCrafted() >= minion.tierCap() && minion.tierCap() > 0;
 		PvDraw.text(
 			g, font,
 			"T" + minion.maxCrafted() + " / " + minion.tierCap(),
 			cx, cy,
-			maxed ? MINION_UNLOCKED : anyUnlocked ? MINION_UNLOCKED : MINION_LOCKED
+			maxed ? MINION_UNLOCKED : MINION_LOCKED
 		);
 		cy += font.lineHeight + 2;
 		PvDraw.text(

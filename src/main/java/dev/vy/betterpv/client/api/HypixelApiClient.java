@@ -31,10 +31,12 @@ public final class HypixelApiClient {
 	private static final URI MOJANG_PROFILE = URI.create("https://api.mojang.com/users/profiles/minecraft/");
 	private static final URI MOJANG_SESSION = URI.create("https://sessionserver.mojang.com/session/minecraft/profile/");
 	private static final Duration TIMEOUT = Duration.ofSeconds(12);
-	private static final long SPACING_MS = 350L;
+	private static final long SPACING_MS = 80L;
 
 	private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 	private static final ConcurrentHashMap<String, JsonObject> PLAYER_CACHE = new ConcurrentHashMap<>();
+	/** Mojang names do not change during this client session often enough to justify repeat lookups. */
+	private static final ConcurrentHashMap<String, UuidName> UUID_NAME_CACHE = new ConcurrentHashMap<>();
 	/** Small pool so museum + election (and other GETs) can overlap; rate limit still serializes spacing. */
 	private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(4, r -> {
 		Thread t = new Thread(r, "BetterPV-HypixelApi");
@@ -75,6 +77,10 @@ public final class HypixelApiClient {
 		if (cleaned.isBlank()) {
 			return CompletableFuture.completedFuture(Optional.empty());
 		}
+		UuidName cached = UUID_NAME_CACHE.get(cleaned.toLowerCase(Locale.ROOT));
+		if (cached != null) {
+			return CompletableFuture.completedFuture(Optional.of(cached));
+		}
 		return CompletableFuture.supplyAsync(() -> {
 			try {
 				HttpRequest request = HttpRequest.newBuilder(
@@ -87,7 +93,13 @@ public final class HypixelApiClient {
 				JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
 				UUID uuid = parseUndashedUuid(root.has("id") ? root.get("id").getAsString() : null);
 				String resolved = root.has("name") ? root.get("name").getAsString() : cleaned;
-				return uuid == null ? Optional.empty() : Optional.of(new UuidName(uuid, resolved));
+				if (uuid == null) {
+					return Optional.empty();
+				}
+				UuidName uuidName = new UuidName(uuid, resolved);
+				UUID_NAME_CACHE.put(cleaned.toLowerCase(Locale.ROOT), uuidName);
+				UUID_NAME_CACHE.put(resolved.toLowerCase(Locale.ROOT), uuidName);
+				return Optional.of(uuidName);
 			} catch (Exception exception) {
 				BetterPV.LOGGER.warn("Mojang UUID lookup failed for {}", cleaned, exception);
 				return Optional.empty();
@@ -116,7 +128,9 @@ public final class HypixelApiClient {
 				if (resolved == null || resolved.isBlank()) {
 					return Optional.empty();
 				}
-				return Optional.of(new UuidName(uuid, resolved));
+				UuidName uuidName = new UuidName(uuid, resolved);
+				UUID_NAME_CACHE.put(resolved.toLowerCase(Locale.ROOT), uuidName);
+				return Optional.of(uuidName);
 			} catch (Exception exception) {
 				BetterPV.LOGGER.debug("Mojang name lookup failed for {}", id, exception);
 				return Optional.empty();

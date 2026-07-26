@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -24,6 +25,12 @@ import net.minecraft.nbt.Tag;
 
 /** Decodes Hypixel inventory base64 → SkyBlock item stacks for networth. */
 public final class InventoryDecoder {
+	/** Rank max (18) + Community Center wardrobe/loadout upgrades (9). */
+	private static final int WARDROBE_SLOT_COUNT = 27;
+	/** Hypixel wardrobe UI shows 9 set columns per page. */
+	private static final int WARDROBE_SETS_PER_PAGE = 9;
+	private static final int LOADOUT_SLOT_COUNT = 27;
+
 	public record Stack(
 		String id,
 		int count,
@@ -266,43 +273,44 @@ public final class InventoryDecoder {
 	}
 
 	private static List<InventorySnapshot.Page> parseWardrobePages(JsonObject inventory, JsonObject loadout) {
-		List<WardrobeSet> sets = new ArrayList<>();
+		Map<Integer, WardrobeSet> byId = new LinkedHashMap<>();
 		JsonObject armorLayouts = loadout == null ? null : obj(loadout.get("armor"));
 		Integer equippedId = armorLayouts == null ? null : jsonInt(armorLayouts, "equipped_set");
 		if (armorLayouts != null && !armorLayouts.entrySet().isEmpty()) {
-			List<String> keys = new ArrayList<>(armorLayouts.keySet());
-			keys.sort(InventoryDecoder::compareKeys);
-			for (String key : keys) {
+			for (String key : armorLayouts.keySet()) {
 				if ("equipped_set".equals(key)) {
 					continue;
 				}
 				Integer setId = layoutSetId(armorLayouts.get(key), key);
+				if (setId == null) {
+					continue;
+				}
 				List<InventorySnapshot.Slot> slots = readArmorSet(inventory, armorLayouts, setId, key);
-				boolean equipped = equippedId != null && setId != null && equippedId.equals(setId);
-				sets.add(new WardrobeSet(slots, equipped));
+				boolean equipped = equippedId != null && equippedId.equals(setId);
+				byId.put(setId, new WardrobeSet(slots, equipped));
 			}
 		}
-		if (sets.isEmpty()) {
+		if (byId.isEmpty()) {
 			List<InventorySnapshot.Slot> flat = toUiSlots(decodeFieldKeepingEmpty(inventory, "wardrobe_contents", 72));
-			for (int i = 0; i + 3 < flat.size(); i += 4) {
+			for (int i = 0, setId = 0; i + 3 < flat.size(); i += 4, setId++) {
 				List<InventorySnapshot.Slot> set = new ArrayList<>(4);
 				set.add(flat.get(i));
 				set.add(flat.get(i + 1));
 				set.add(flat.get(i + 2));
 				set.add(flat.get(i + 3));
-				sets.add(new WardrobeSet(set, false));
+				byId.put(setId, new WardrobeSet(set, false));
 			}
 		}
-		return packWardrobeSetPages(sets, "Wardrobe");
+		return packWardrobeSetPages(padWardrobeSets(byId), "Wardrobe");
 	}
 
 	/** Armor/equipment sets per page, each set a vertical column. */
 	private static List<InventorySnapshot.Page> packWardrobeSetPages(List<WardrobeSet> sets, String titlePrefix) {
 		if (sets.isEmpty()) {
-			return List.of(InventorySnapshot.emptyPage(titlePrefix, 10));
+			sets = padWardrobeSets(Map.of());
 		}
 		List<InventorySnapshot.Page> pages = new ArrayList<>();
-		final int perPage = 10;
+		final int perPage = WARDROBE_SETS_PER_PAGE;
 		for (int start = 0; start < sets.size(); start += perPage) {
 			int end = Math.min(sets.size(), start + perPage);
 			int count = end - start;
@@ -327,30 +335,51 @@ public final class InventoryDecoder {
 	}
 
 	private static List<InventorySnapshot.Page> parseEquipmentWardrobePages(JsonObject inventory, JsonObject loadout) {
-		List<WardrobeSet> sets = new ArrayList<>();
+		Map<Integer, WardrobeSet> byId = new LinkedHashMap<>();
 		JsonObject equipLayouts = loadout == null ? null : obj(loadout.get("equipment"));
 		Integer equippedId = equipLayouts == null ? null : jsonInt(equipLayouts, "equipped_set");
 		if (equipLayouts != null) {
-			List<String> keys = new ArrayList<>(equipLayouts.keySet());
-			keys.sort(InventoryDecoder::compareKeys);
-			for (String key : keys) {
+			for (String key : equipLayouts.keySet()) {
 				if ("equipped_set".equals(key)) {
 					continue;
 				}
 				Integer setId = layoutSetId(equipLayouts.get(key), key);
+				if (setId == null) {
+					continue;
+				}
 				List<InventorySnapshot.Slot> slots = readEquipSet(inventory, equipLayouts, setId, key);
-				boolean equipped = equippedId != null && setId != null && equippedId.equals(setId);
-				sets.add(new WardrobeSet(slots, equipped));
+				boolean equipped = equippedId != null && equippedId.equals(setId);
+				byId.put(setId, new WardrobeSet(slots, equipped));
 			}
 		}
-		if (sets.isEmpty()) {
+		if (byId.isEmpty()) {
 			List<InventorySnapshot.Slot> equipped = toUiSlots(decodeFieldKeepingEmpty(inventory, "equipment_contents", 4));
 			while (equipped.size() < 4) {
 				equipped.add(null);
 			}
-			sets.add(new WardrobeSet(new ArrayList<>(equipped.subList(0, 4)), true));
+			int idx = equippedId != null ? Math.max(0, Math.min(WARDROBE_SLOT_COUNT - 1, equippedId)) : 0;
+			byId.put(idx, new WardrobeSet(new ArrayList<>(equipped.subList(0, 4)), true));
 		}
-		return packWardrobeSetPages(sets, "Equipment");
+		return packWardrobeSetPages(padWardrobeSets(byId), "Equipment");
+	}
+
+	/** Fill every wardrobe slot index (including empty / locked) so page totals stay fixed. */
+	private static List<WardrobeSet> padWardrobeSets(Map<Integer, WardrobeSet> byId) {
+		List<WardrobeSet> out = new ArrayList<>(WARDROBE_SLOT_COUNT);
+		for (int i = 0; i < WARDROBE_SLOT_COUNT; i++) {
+			WardrobeSet set = byId == null ? null : byId.get(i);
+			out.add(set != null ? set : emptyWardrobeSet());
+		}
+		return out;
+	}
+
+	private static WardrobeSet emptyWardrobeSet() {
+		List<InventorySnapshot.Slot> empty = new ArrayList<>(4);
+		empty.add(null);
+		empty.add(null);
+		empty.add(null);
+		empty.add(null);
+		return new WardrobeSet(empty, false);
 	}
 
 	private record WardrobeSet(List<InventorySnapshot.Slot> slots, boolean equipped) {
@@ -427,8 +456,9 @@ public final class InventoryDecoder {
 		JsonObject loadout,
 		InventorySnapshot.AccessoryInfo accessoryInfo
 	) {
+		Map<Integer, InventorySnapshot.Loadout> byIndex = new LinkedHashMap<>();
 		if (loadout == null) {
-			return List.of();
+			return padLoadouts(byIndex);
 		}
 		JsonObject inventory = obj(member.get("inventory"));
 		if (inventory == null) {
@@ -439,18 +469,19 @@ public final class InventoryDecoder {
 		JsonObject equipLayouts = obj(loadout.get("equipment"));
 		Map<String, JsonObject> petsByUuid = indexPets(member);
 
-		List<InventorySnapshot.Loadout> out = new ArrayList<>();
 		if (named != null && !named.entrySet().isEmpty()) {
-			List<String> keys = new ArrayList<>(named.keySet());
-			keys.sort(InventoryDecoder::compareKeys);
-			for (String key : keys) {
+			for (String key : named.keySet()) {
 				JsonObject entry = obj(named.get(key));
 				if (entry == null) {
 					continue;
 				}
+				Integer index = tryParseInt(key);
+				if (index == null) {
+					index = byIndex.size();
+				}
 				String name = entry.has("name") && entry.get("name").isJsonPrimitive()
 					? entry.get("name").getAsString()
-					: (key.matches("\\d+") ? "Loadout " + (Integer.parseInt(key) + 1) : key);
+					: "Loadout " + (index + 1);
 				Integer armorId = jsonInt(entry, "armor_set_id");
 				Integer equipId = jsonInt(entry, "equipment_set_id");
 				List<InventorySnapshot.Slot> armor = readArmorSet(inventory, armorLayouts, armorId, null);
@@ -466,15 +497,14 @@ public final class InventoryDecoder {
 				JsonObject petJson = petUuid.isBlank() ? null : petsByUuid.get(normalizeUuid(petUuid));
 				InventorySnapshot.Slot petSlot = petSlot(petJson);
 				String petLabel = petLabel(petJson);
-				out.add(new InventorySnapshot.Loadout(
+				byIndex.put(index, new InventorySnapshot.Loadout(
 					name, equip, armor, power, tuneSlot, tuning, petSlot, petLabel
 				));
 			}
-			out.removeIf(InventoryDecoder::isBlankLoadout);
 		}
 
 		// Fallback: wardrobe set keys if named presets are empty.
-		if (out.isEmpty()) {
+		if (byIndex.isEmpty()) {
 			LinkedHashMap<String, Boolean> keys = new LinkedHashMap<>();
 			if (armorLayouts != null) {
 				for (String key : armorLayouts.keySet()) {
@@ -490,13 +520,13 @@ public final class InventoryDecoder {
 					}
 				}
 			}
-			List<String> sorted = new ArrayList<>(keys.keySet());
-			sorted.sort(InventoryDecoder::compareKeys);
-			for (String key : sorted) {
+			for (String key : keys.keySet()) {
 				Integer id = tryParseInt(key);
-				String title = id != null ? "Loadout " + (id + 1) : key;
-				out.add(new InventorySnapshot.Loadout(
-					title,
+				if (id == null) {
+					continue;
+				}
+				byIndex.put(id, new InventorySnapshot.Loadout(
+					"Loadout " + (id + 1),
 					readEquipSet(inventory, equipLayouts, id, key),
 					readArmorSet(inventory, armorLayouts, id, key),
 					"",
@@ -507,19 +537,36 @@ public final class InventoryDecoder {
 				));
 			}
 		}
+		return padLoadouts(byIndex);
+	}
+
+	/** Keep empty / locked loadout slots so the pager shows the full page total. */
+	private static List<InventorySnapshot.Loadout> padLoadouts(Map<Integer, InventorySnapshot.Loadout> byIndex) {
+		List<InventorySnapshot.Loadout> out = new ArrayList<>(LOADOUT_SLOT_COUNT);
+		for (int i = 0; i < LOADOUT_SLOT_COUNT; i++) {
+			InventorySnapshot.Loadout loadout = byIndex == null ? null : byIndex.get(i);
+			out.add(loadout != null ? loadout : emptyLoadout(i));
+		}
 		return out;
 	}
 
-	private static boolean isBlankLoadout(InventorySnapshot.Loadout loadout) {
-		if (loadout == null) {
-			return true;
+	private static InventorySnapshot.Loadout emptyLoadout(int index) {
+		List<InventorySnapshot.Slot> emptyEquip = new ArrayList<>(4);
+		List<InventorySnapshot.Slot> emptyArmor = new ArrayList<>(4);
+		for (int i = 0; i < 4; i++) {
+			emptyEquip.add(null);
+			emptyArmor.add(null);
 		}
-		boolean gear = loadout.equipment().stream().anyMatch(s -> s != null && !s.isEmpty())
-			|| loadout.armor().stream().anyMatch(s -> s != null && !s.isEmpty());
-		return !gear
-			&& loadout.powerStone().isBlank()
-			&& loadout.tuningSlot() == null
-			&& (loadout.pet() == null || loadout.pet().isEmpty());
+		return new InventorySnapshot.Loadout(
+			"Loadout " + (index + 1),
+			emptyEquip,
+			emptyArmor,
+			"",
+			null,
+			List.of(),
+			null,
+			""
+		);
 	}
 
 	private static List<InventorySnapshot.StatPoint> resolveTuning(InventorySnapshot.AccessoryInfo info, Integer slot) {
@@ -891,7 +938,8 @@ public final class InventoryDecoder {
 
 	/**
 	 * One page per NEU sack type with every holdable item (count may be 0).
-	 * NEU's Rune sack has an empty contents list - unmatched ids (runes) go on {@code Rune Sack}.
+	 * NEU's Rune sack has an empty contents list — real runes go on {@code Rune Sack}.
+	 * Gemstone sack is expanded with Flawless/Perfect (NEU only lists Rough–Fine).
 	 */
 	private static List<InventorySnapshot.Page> parseSackPages(JsonObject member, JsonObject inventory) {
 		JsonObject countsJson = sackCountsObject(member, inventory);
@@ -905,12 +953,16 @@ public final class InventoryDecoder {
 		}
 		List<InventorySnapshot.Page> pages = new ArrayList<>();
 		Set<String> claimed = new HashSet<>();
+		int gemstonePageIndex = -1;
 		for (var sack : NeuRepoCache.sackDefinitions().entrySet()) {
 			String sackName = sack.getKey();
 			List<String> contents = sack.getValue();
 			// NEU leaves Rune.contents empty - filled from leftovers below.
 			if (contents.isEmpty() || "Rune".equalsIgnoreCase(sackName)) {
 				continue;
+			}
+			if ("Gemstone".equalsIgnoreCase(sackName)) {
+				contents = expandGemstoneContents(contents);
 			}
 			List<InventorySnapshot.Slot> slots = new ArrayList<>(contents.size());
 			for (String itemId : contents) {
@@ -919,19 +971,98 @@ public final class InventoryDecoder {
 				slots.add(toUiSlot(new Stack(itemId, amount, new CompoundTag(), List.of(), false)));
 				claimSackId(claimed, key);
 			}
+			if ("Gemstone".equalsIgnoreCase(sackName)) {
+				gemstonePageIndex = pages.size();
+			}
 			pages.add(new InventorySnapshot.Page(sackName, slots, 9));
 		}
+
+		List<InventorySnapshot.Slot> gemExtras = new ArrayList<>();
 		List<InventorySnapshot.Slot> runes = new ArrayList<>();
+		List<InventorySnapshot.Slot> other = new ArrayList<>();
 		for (var entry : counts.entrySet()) {
 			String id = entry.getKey();
 			if (isClaimedSackId(claimed, id)) {
 				continue;
 			}
-			runes.add(toUiSlot(new Stack(id, entry.getValue(), new CompoundTag(), List.of(), false)));
+			InventorySnapshot.Slot slot = toUiSlot(new Stack(id, entry.getValue(), new CompoundTag(), List.of(), false));
+			if (isGemstoneSackId(id)) {
+				gemExtras.add(slot);
+				claimSackId(claimed, id);
+			} else if (isRuneSackId(id)) {
+				runes.add(slot);
+			} else {
+				other.add(slot);
+			}
 		}
-		// Always include Rune Sack so the pager has a stable name (empty if no runes).
-		pages.add(new InventorySnapshot.Page("Rune Sack", runes, 9));
+		if (!gemExtras.isEmpty()) {
+			if (gemstonePageIndex >= 0) {
+				List<InventorySnapshot.Slot> merged = new ArrayList<>(pages.get(gemstonePageIndex).slots());
+				merged.addAll(gemExtras);
+				InventorySnapshot.Page prev = pages.get(gemstonePageIndex);
+				pages.set(gemstonePageIndex, new InventorySnapshot.Page(prev.title(), merged, prev.columns(), prev.equippedColumn()));
+			} else {
+				pages.add(new InventorySnapshot.Page("Gemstone", gemExtras, 9));
+			}
+		}
+		// Always include Rune so the menu has a stable entry (empty if no runes).
+		pages.add(new InventorySnapshot.Page("Rune", runes, 9));
+		if (!other.isEmpty()) {
+			pages.add(new InventorySnapshot.Page("Other", other, 9));
+		}
 		return pages.isEmpty() ? List.of(InventorySnapshot.emptyPage("Sacks", 9)) : pages;
+	}
+
+	/** NEU lists Rough/Flawed/Fine only — add Flawless/Perfect for each gem type. */
+	private static List<String> expandGemstoneContents(List<String> contents) {
+		if (contents == null || contents.isEmpty()) {
+			return List.of();
+		}
+		String[] tiers = {"ROUGH_", "FLAWED_", "FINE_", "FLAWLESS_", "PERFECT_"};
+		LinkedHashSet<String> seenGems = new LinkedHashSet<>();
+		List<String> out = new ArrayList<>();
+		for (String itemId : contents) {
+			if (itemId == null || itemId.isBlank()) {
+				continue;
+			}
+			String upper = itemId.toUpperCase(Locale.ROOT);
+			String gem = null;
+			for (String tier : tiers) {
+				if (upper.startsWith(tier) && upper.endsWith("_GEM")) {
+					gem = upper.substring(tier.length());
+					break;
+				}
+			}
+			if (gem == null) {
+				if (seenGems.add(upper)) {
+					out.add(itemId);
+				}
+				continue;
+			}
+			if (!seenGems.add(gem)) {
+				continue;
+			}
+			for (String tier : tiers) {
+				out.add(tier + gem);
+			}
+		}
+		return out;
+	}
+
+	private static boolean isGemstoneSackId(String id) {
+		if (id == null || id.isBlank()) {
+			return false;
+		}
+		String key = id.toUpperCase(Locale.ROOT);
+		return key.endsWith("_GEM") || key.endsWith("_GEMSTONE");
+	}
+
+	private static boolean isRuneSackId(String id) {
+		if (id == null || id.isBlank()) {
+			return false;
+		}
+		String key = id.toUpperCase(Locale.ROOT);
+		return key.startsWith("RUNE_") || key.contains("_RUNE");
 	}
 
 	private static int sackAmount(Map<String, Integer> counts, String itemId) {

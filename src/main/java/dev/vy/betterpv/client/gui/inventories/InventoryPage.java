@@ -5,6 +5,7 @@ import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
 import dev.vy.betterpv.client.gui.SkyBlockStats;
 import dev.vy.betterpv.client.gui.nav.InventoryPane;
+import dev.vy.betterpv.client.neu.NeuRepoCache;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.EnumSet;
@@ -44,6 +45,8 @@ public final class InventoryPage {
 
 	private InventorySnapshot snapshot = InventorySnapshot.empty();
 	private InventoryPane pane = InventoryPane.INVENTORY;
+	/** When on Sacks: {@code null} = sack menu; otherwise index into {@link InventorySnapshot#sacks()}. */
+	private Integer openSackIndex;
 	private final Map<InventoryPane, Integer> pageIndex = new EnumMap<>(InventoryPane.class);
 	private String searchQuery = "";
 	private final Set<InventoryPane> searchPanes = EnumSet.noneOf(InventoryPane.class);
@@ -56,6 +59,7 @@ public final class InventoryPage {
 	public void apply(InventorySnapshot snapshot) {
 		this.snapshot = snapshot == null ? InventorySnapshot.empty() : snapshot;
 		this.pageIndex.clear();
+		this.openSackIndex = null;
 		rebuildSearchIndex();
 		SkyBlockItemFactory.prefetch(this.snapshot);
 	}
@@ -63,6 +67,7 @@ public final class InventoryPage {
 	public void setPane(InventoryPane pane) {
 		if (pane != null) {
 			this.pane = pane;
+			this.openSackIndex = null;
 		}
 	}
 
@@ -99,6 +104,11 @@ public final class InventoryPage {
 
 		PvDraw.innerPanel(g, x, y, w, h);
 
+		if (this.pane == InventoryPane.SACKS) {
+			renderSacks(g, font, x, y, w, h, mouseX, mouseY);
+			return;
+		}
+
 		boolean loadouts = this.pane == InventoryPane.LOADOUTS;
 		List<InventorySnapshot.Page> pages = loadouts ? List.of() : pagesFor(this.pane);
 		List<InventorySnapshot.Loadout> loadoutList = this.snapshot.loadouts();
@@ -119,13 +129,6 @@ public final class InventoryPage {
 		if (this.pane == InventoryPane.ACCESSORY_BAG) {
 			drawAccessoryMeta(g, font, x + 8, metaTop, w - 16, this.snapshot.accessoryInfo());
 			previewTop = metaTop + metaBandH + 6;
-		} else if (this.pane == InventoryPane.INVENTORY
-			|| this.pane == InventoryPane.SACKS
-			|| this.pane == InventoryPane.FISHING_BAG
-			|| this.pane == InventoryPane.QUIVER
-			|| this.pane == InventoryPane.TIME_POCKET) {
-			// Center in the full panel so the title sits in the top margin.
-			previewTop = y + 6;
 		} else {
 			previewTop = metaTop + PREVIEW_TOP_PAD;
 		}
@@ -166,12 +169,126 @@ public final class InventoryPage {
 			Set<Integer> matches = this.searchPages.getOrDefault(this.pane, Set.of());
 			boolean highlightPrev = matches.stream().anyMatch(p -> p < page);
 			boolean highlightNext = matches.stream().anyMatch(p -> p > page);
-			String pagerLabel = null;
-			if (this.pane == InventoryPane.SACKS && !pages.isEmpty()) {
-				pagerLabel = pages.get(Math.min(page, pages.size() - 1)).title();
-			}
-			drawPager(g, font, x, y + h - PAGE_BTN - 6, w, page, pageCount, mouseX, mouseY, highlightPrev, highlightNext, pagerLabel);
+			drawPager(g, font, x, y + h - PAGE_BTN - 6, w, page, pageCount, mouseX, mouseY, highlightPrev, highlightNext, null);
 		}
+	}
+
+	/** Sack menu (NEU sack skulls) or a single opened sack’s contents. */
+	private void renderSacks(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, int mouseX, int mouseY) {
+		List<InventorySnapshot.Page> sackPages = this.snapshot.sacks();
+		boolean inSack = this.openSackIndex != null
+			&& this.openSackIndex >= 0
+			&& this.openSackIndex < sackPages.size();
+
+		int headerY = y + 6;
+		String title = inSack ? sackPages.get(this.openSackIndex).title() : "Sacks";
+		PvDraw.text(g, font, title, x + 8, headerY, PvDraw.COLOR_TEXT);
+
+		int previewTop = headerY + font.lineHeight + 4 + PREVIEW_TOP_PAD;
+		boolean footer = inSack || sackMenuPageCount(sackPages) > 1;
+		int gridBottom = y + h - (footer ? PAGE_BTN + 10 : 6);
+		int previewH = Math.max(SLOT, gridBottom - previewTop);
+		int previewX = x + 8;
+		int previewW = w - 16;
+
+		if (inSack) {
+			InventorySnapshot.Page current = sackPages.get(this.openSackIndex);
+			drawGrid(
+				g, font, previewX, previewTop, previewW, previewH,
+				current.columns(), current.slots(), false, -1, mouseX, mouseY
+			);
+			int backX = x + 8;
+			int backY = y + h - PAGE_BTN - 6;
+			drawPageButton(g, font, backX, backY, "<", mouseX, mouseY, true, false, () -> this.openSackIndex = null);
+			PvDraw.textCentered(
+				g, font, "Sacks",
+				x + w / 2,
+				backY + (PAGE_BTN - font.lineHeight) / 2,
+				PvDraw.COLOR_MUTED
+			);
+			return;
+		}
+
+		int menuPages = sackMenuPageCount(sackPages);
+		int page = clampPage(this.pane, menuPages);
+		drawSackMenu(g, font, previewX, previewTop, previewW, previewH, sackPages, page, mouseX, mouseY);
+		if (menuPages > 1) {
+			int perPage = sackMenuSlotsPerPage();
+			Set<Integer> matches = this.searchPages.getOrDefault(this.pane, Set.of());
+			boolean highlightPrev = matches.stream().anyMatch(sackIdx -> sackIdx / perPage < page);
+			boolean highlightNext = matches.stream().anyMatch(sackIdx -> sackIdx / perPage > page);
+			drawPager(g, font, x, y + h - PAGE_BTN - 6, w, page, menuPages, mouseX, mouseY, highlightPrev, highlightNext, null);
+		}
+	}
+
+	private int sackMenuPageCount(List<InventorySnapshot.Page> sackPages) {
+		int total = Math.max(0, sackPages.size());
+		int perPage = sackMenuSlotsPerPage();
+		return Math.max(1, (total + perPage - 1) / perPage);
+	}
+
+	private int sackMenuSlotsPerPage() {
+		// Match drawGrid capacity for a typical preview (~6 rows × 9 cols).
+		return 9 * 6;
+	}
+
+	private void drawSackMenu(
+		GuiGraphicsExtractor g,
+		Font font,
+		int x,
+		int y,
+		int w,
+		int h,
+		List<InventorySnapshot.Page> sackPages,
+		int page,
+		int mouseX,
+		int mouseY
+	) {
+		if (sackPages.isEmpty()) {
+			PvDraw.textCentered(g, font, "Empty", x + w / 2, y + h / 2, PvDraw.COLOR_MUTED);
+			return;
+		}
+		int cols = 9;
+		int perPage = sackMenuSlotsPerPage();
+		int start = page * perPage;
+		int end = Math.min(sackPages.size(), start + perPage);
+		List<InventorySnapshot.Slot> menuSlots = new ArrayList<>(end - start);
+		for (int i = start; i < end; i++) {
+			menuSlots.add(sackMenuSlot(sackPages.get(i)));
+		}
+		drawGrid(g, font, x, y, w, h, cols, menuSlots, false, -1, mouseX, mouseY);
+
+		// Click targets: open the corresponding sack (drawGrid only adds tooltip hits).
+		int rows = Math.max(1, (menuSlots.size() + cols - 1) / cols);
+		int statusReserve = 0;
+		int maxRows = Math.max(1, (h - GRID_PAD - statusReserve + SLOT_GAP) / (SLOT + SLOT_GAP));
+		rows = Math.min(rows, maxRows);
+		int gridW = cols * SLOT + (cols - 1) * SLOT_GAP;
+		int gridH = rows * SLOT + (rows - 1) * SLOT_GAP;
+		int startX = x + Math.max(GRID_PAD, (w - gridW) / 2);
+		int startY = y + Math.max(GRID_PAD, (h - gridH) / 2);
+		int shown = Math.min(menuSlots.size(), cols * rows);
+		for (int i = 0; i < shown; i++) {
+			int sackIndex = start + i;
+			int col = i % cols;
+			int row = i / cols;
+			int sx = startX + col * (SLOT + SLOT_GAP);
+			int sy = startY + row * (SLOT + SLOT_GAP);
+			boolean searchHit = this.searchPages.getOrDefault(this.pane, Set.of()).contains(sackIndex);
+			if (searchHit) {
+				g.outline(sx, sy, SLOT, SLOT, SEARCH_HIGHLIGHT);
+			}
+			this.pageHits.add(new RunnableHit(sx, sy, SLOT, SLOT, () -> this.openSackIndex = sackIndex));
+		}
+	}
+
+	private InventorySnapshot.Slot sackMenuSlot(InventorySnapshot.Page page) {
+		String title = page == null || page.title() == null || page.title().isBlank() ? "Sack" : page.title();
+		String itemId = NeuRepoCache.sackItemId(title);
+		if (itemId == null || itemId.isBlank()) {
+			itemId = "POCKET_SACK_IN_A_SACK";
+		}
+		return new InventorySnapshot.Slot(itemId, 1, List.of(), title, null, null, null);
 	}
 
 	/** Drawn after the right button panel so tips are never covered by it. */
@@ -193,9 +310,17 @@ public final class InventoryPage {
 	}
 
 	public boolean mouseScrolled(double scrollY) {
-		int size = this.pane == InventoryPane.LOADOUTS
-			? Math.max(1, (Math.max(1, this.snapshot.loadouts().size()) + LOADOUTS_PER_PAGE - 1) / LOADOUTS_PER_PAGE)
-			: Math.max(1, pagesFor(this.pane).size());
+		if (this.pane == InventoryPane.SACKS && this.openSackIndex != null) {
+			return false;
+		}
+		int size;
+		if (this.pane == InventoryPane.LOADOUTS) {
+			size = Math.max(1, (Math.max(1, this.snapshot.loadouts().size()) + LOADOUTS_PER_PAGE - 1) / LOADOUTS_PER_PAGE);
+		} else if (this.pane == InventoryPane.SACKS) {
+			size = sackMenuPageCount(this.snapshot.sacks());
+		} else {
+			size = Math.max(1, pagesFor(this.pane).size());
+		}
 		if (size <= 1) {
 			return false;
 		}

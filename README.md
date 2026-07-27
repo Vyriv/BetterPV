@@ -1,5 +1,5 @@
 # BetterPV
-SkyBlock Profile Viewer for Fabric
+SkyBlock Profile Viewer for Fabric - Developed by catgirllivid
 
 A client-side Hypixel SkyBlock profile viewer for Minecraft **26.1.2**. Peek at a profile without leaving the game: yours with `/pv`, or anyone else's with `/pv <username>`.
 

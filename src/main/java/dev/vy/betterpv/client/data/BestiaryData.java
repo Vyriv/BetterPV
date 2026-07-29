@@ -1,0 +1,321 @@
+package dev.vy.betterpv.client.data;
+
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import dev.vy.betterpv.BetterPV;
+import java.io.Reader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+
+/**
+ * NEU {@code constants/bestiary.json}: island categories, families, and kill brackets.
+ */
+public final class BestiaryData {
+	public record Family(
+		String id,
+		String name,
+		String categoryId,
+		int bracket,
+		int cap,
+		List<String> mobIds,
+		String textureValue,
+		String itemIcon
+	) {
+		public Family {
+			id = id == null ? "" : id;
+			name = name == null || name.isBlank() ? id : name;
+			categoryId = categoryId == null ? "" : categoryId;
+			bracket = Math.max(1, bracket);
+			cap = Math.max(0, cap);
+			mobIds = mobIds == null ? List.of() : List.copyOf(mobIds);
+			textureValue = textureValue == null ? "" : textureValue;
+			itemIcon = itemIcon == null ? "" : itemIcon;
+		}
+	}
+
+	public record Category(
+		String id,
+		String name,
+		String textureValue,
+		String itemIcon,
+		List<Family> families
+	) {
+		public Category {
+			id = id == null ? "" : id;
+			name = name == null || name.isBlank() ? id : name;
+			textureValue = textureValue == null ? "" : textureValue;
+			itemIcon = itemIcon == null ? "" : itemIcon;
+			families = families == null ? List.of() : List.copyOf(families);
+		}
+	}
+
+	private static volatile boolean loaded;
+	private static List<Category> categories = List.of();
+	private static Map<String, List<Integer>> brackets = Map.of();
+	private static Map<String, Family> familiesById = Map.of();
+
+	private BestiaryData() {
+	}
+
+	public static void ensureLoaded() {
+		if (loaded) {
+			return;
+		}
+		synchronized (BestiaryData.class) {
+			if (loaded) {
+				return;
+			}
+			loadFromDisk();
+			loaded = true;
+		}
+	}
+
+	public static List<Category> categories() {
+		ensureLoaded();
+		return categories;
+	}
+
+	public static Category category(String id) {
+		ensureLoaded();
+		if (id == null) {
+			return null;
+		}
+		for (Category cat : categories) {
+			if (cat.id().equalsIgnoreCase(id)) {
+				return cat;
+			}
+		}
+		return null;
+	}
+
+	public static List<Integer> bracket(int bracketId) {
+		ensureLoaded();
+		return brackets.getOrDefault(String.valueOf(bracketId), List.of());
+	}
+
+	public static Family family(String id) {
+		ensureLoaded();
+		return id == null ? null : familiesById.get(id);
+	}
+
+	private static void loadFromDisk() {
+		Path path = Path.of(
+			System.getProperty("user.home"),
+			".betterpv",
+			"neu-repo",
+			"repo",
+			"constants",
+			"bestiary.json"
+		);
+		if (!Files.isRegularFile(path)) {
+			BetterPV.LOGGER.warn("Missing NEU bestiary.json at {}", path);
+			categories = List.of();
+			brackets = Map.of();
+			familiesById = Map.of();
+			return;
+		}
+		try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+			JsonElement rootEl = JsonParser.parseReader(reader);
+			if (rootEl == null || !rootEl.isJsonObject()) {
+				return;
+			}
+			JsonObject root = rootEl.getAsJsonObject();
+			Map<String, List<Integer>> br = new LinkedHashMap<>();
+			JsonObject bracketsObj = obj(root.get("brackets"));
+			if (bracketsObj != null) {
+				for (var entry : bracketsObj.entrySet()) {
+					if (!entry.getValue().isJsonArray()) {
+						continue;
+					}
+					List<Integer> ladder = new ArrayList<>();
+					for (JsonElement el : entry.getValue().getAsJsonArray()) {
+						if (el != null && el.isJsonPrimitive()) {
+							try {
+								ladder.add(Math.max(0, el.getAsInt()));
+							} catch (Exception ignored) {
+							}
+						}
+					}
+					br.put(entry.getKey(), List.copyOf(ladder));
+				}
+			}
+
+			List<Category> cats = new ArrayList<>();
+			Map<String, Family> byId = new LinkedHashMap<>();
+			for (var entry : root.entrySet()) {
+				String key = entry.getKey();
+				if (key == null || "brackets".equals(key) || !entry.getValue().isJsonObject()) {
+					continue;
+				}
+				parseCategory(key, entry.getValue().getAsJsonObject(), cats, byId);
+			}
+			brackets = Map.copyOf(br);
+			categories = List.copyOf(cats);
+			familiesById = Map.copyOf(byId);
+			BetterPV.LOGGER.info("Loaded bestiary catalog ({} categories, {} families)", cats.size(), byId.size());
+		} catch (Exception exception) {
+			BetterPV.LOGGER.warn("Failed to load bestiary.json", exception);
+			categories = List.of();
+			brackets = Map.of();
+			familiesById = Map.of();
+		}
+	}
+
+	private static void parseCategory(
+		String id,
+		JsonObject obj,
+		List<Category> cats,
+		Map<String, Family> byId
+	) {
+		String name = strip(str(obj, "name"));
+		if (name.isBlank()) {
+			name = pretty(id);
+		}
+		Icon icon = parseIcon(obj.get("icon"));
+		List<Family> families = new ArrayList<>();
+		if (obj.has("hasSubcategories") && obj.get("hasSubcategories").getAsBoolean()) {
+			for (var sub : obj.entrySet()) {
+				String subKey = sub.getKey();
+				if (subKey == null
+					|| subKey.equals("name")
+					|| subKey.equals("icon")
+					|| subKey.equals("hasSubcategories")
+					|| !sub.getValue().isJsonObject()) {
+					continue;
+				}
+				JsonObject subObj = sub.getValue().getAsJsonObject();
+				families.addAll(parseFamilies(id, subObj.get("mobs"), byId));
+			}
+		} else {
+			families.addAll(parseFamilies(id, obj.get("mobs"), byId));
+		}
+		cats.add(new Category(id, name, icon.texture(), icon.item(), families));
+	}
+
+	private static List<Family> parseFamilies(String categoryId, JsonElement mobsEl, Map<String, Family> byId) {
+		List<Family> out = new ArrayList<>();
+		if (mobsEl == null || !mobsEl.isJsonArray()) {
+			return out;
+		}
+		JsonArray arr = mobsEl.getAsJsonArray();
+		int index = 0;
+		for (JsonElement el : arr) {
+			if (el == null || !el.isJsonObject()) {
+				continue;
+			}
+			JsonObject mob = el.getAsJsonObject();
+			String name = strip(str(mob, "name"));
+			int bracket = Math.max(1, intOr(mob, "bracket", 1));
+			int cap = Math.max(0, intOr(mob, "cap", 0));
+			List<String> mobIds = new ArrayList<>();
+			if (mob.has("mobs") && mob.get("mobs").isJsonArray()) {
+				for (JsonElement mid : mob.getAsJsonArray("mobs")) {
+					if (mid != null && mid.isJsonPrimitive()) {
+						String id = mid.getAsString();
+						if (id != null && !id.isBlank()) {
+							mobIds.add(id.toLowerCase(Locale.ROOT));
+						}
+					}
+				}
+			}
+			Icon icon = parseIcon(mob);
+			String famId = categoryId + ":" + index + ":" + slug(name.isBlank() ? "mob" : name);
+			Family family = new Family(famId, name.isBlank() ? pretty(famId) : name, categoryId, bracket, cap, mobIds,
+				icon.texture(), icon.item());
+			out.add(family);
+			byId.put(famId, family);
+			index++;
+		}
+		return out;
+	}
+
+	private record Icon(String texture, String item) {
+	}
+
+	private static Icon parseIcon(JsonElement el) {
+		if (el == null) {
+			return new Icon("", "");
+		}
+		if (el.isJsonObject()) {
+			JsonObject obj = el.getAsJsonObject();
+			String texture = str(obj, "texture");
+			String item = str(obj, "item");
+			if (item.isBlank()) {
+				item = str(obj, "vanilla");
+			}
+			return new Icon(texture, item);
+		}
+		return new Icon("", "");
+	}
+
+	private static JsonObject obj(JsonElement el) {
+		return el != null && el.isJsonObject() ? el.getAsJsonObject() : null;
+	}
+
+	private static String str(JsonObject obj, String key) {
+		if (obj == null || !obj.has(key) || !obj.get(key).isJsonPrimitive()) {
+			return "";
+		}
+		try {
+			return obj.get(key).getAsString();
+		} catch (Exception ignored) {
+			return "";
+		}
+	}
+
+	private static int intOr(JsonObject obj, String key, int fallback) {
+		if (obj == null || !obj.has(key) || !obj.get(key).isJsonPrimitive()) {
+			return fallback;
+		}
+		try {
+			return obj.get(key).getAsInt();
+		} catch (Exception ignored) {
+			return fallback;
+		}
+	}
+
+	private static String strip(String raw) {
+		if (raw == null || raw.isBlank()) {
+			return "";
+		}
+		String cleaned = raw.replaceAll("§[0-9a-fk-or]", "");
+		return cleaned.trim();
+	}
+
+	private static String slug(String name) {
+		return name.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "_").replaceAll("^_|_$", "");
+	}
+
+	public static String prettyId(String id) {
+		if (id == null || id.isBlank()) {
+			return "";
+		}
+		String[] parts = id.toLowerCase(Locale.ROOT).split("[:_]+");
+		StringBuilder out = new StringBuilder();
+		for (String part : parts) {
+			if (part.isBlank()) {
+				continue;
+			}
+			if (out.length() > 0) {
+				out.append(' ');
+			}
+			out.append(Character.toUpperCase(part.charAt(0)));
+			if (part.length() > 1) {
+				out.append(part.substring(1));
+			}
+		}
+		return out.toString();
+	}
+
+	private static String pretty(String id) {
+		return prettyId(id);
+	}
+}

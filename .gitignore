@@ -18,3 +18,11 @@ betterpv.local.properties
 
 # Stray decompile / dump output
 /net/
+
+# Temporary / Cache
+tmp_heads/
+.output.txt
+
+# Assets / Resources
+assets/minecraft/lang/
+betterpv.local.properties.example

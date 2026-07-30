@@ -3,7 +3,9 @@ package dev.vy.betterpv.client.gui;
 import dev.vy.betterpv.client.api.EliteBotApiClient;
 import dev.vy.betterpv.client.api.HypixelApiClient;
 import dev.vy.betterpv.client.api.ProfileFetcher;
+import dev.vy.betterpv.client.data.BestiaryData;
 import dev.vy.betterpv.client.data.EventsSnapshot;
+import dev.vy.betterpv.client.data.FormatUtil;
 import dev.vy.betterpv.client.data.GardenSnapshot;
 import dev.vy.betterpv.client.data.MuseumCache;
 import dev.vy.betterpv.client.data.PlayerStatsSnapshot;
@@ -97,6 +99,9 @@ public final class ProfileViewerScreen extends Screen {
 	private Component inventoryPaneTip;
 	private int inventoryPaneTipX;
 	private int inventoryPaneTipY;
+	private Component bestiaryCategoryTip;
+	private int bestiaryCategoryTipX;
+	private int bestiaryCategoryTipY;
 
 	public ProfileViewerScreen(String playerName) {
 		super(Component.translatable("betterpv.screen.title"));
@@ -130,6 +135,7 @@ public final class ProfileViewerScreen extends Screen {
 		this.inventorySearch.setResponder(value -> {
 			this.inventorySearchQuery = value;
 			this.inventoryPage.setSearchQuery(value);
+			this.bestiaryPage.setSearchQuery(value);
 		});
 		this.inventorySearch.setVisible(false);
 		this.addWidget(this.inventorySearch);
@@ -307,7 +313,7 @@ public final class ProfileViewerScreen extends Screen {
 				this.dungeonPage.renderOverlay(graphics, this.font, this.width, this.height, mouseX, mouseY);
 			}
 
-			// Inventory tips last so they paint above pane buttons / frame tabs.
+			// Inventory / bestiary tips last so they paint above pane buttons / frame tabs.
 			if (this.tab.isInventorySplit()) {
 				this.inventoryPage.renderTooltip(graphics, this.font, mouseX, mouseY, this.width, this.height);
 				if (this.inventoryPaneTip != null) {
@@ -318,6 +324,19 @@ public final class ProfileViewerScreen extends Screen {
 						true,
 						this.inventoryPaneTipX,
 						this.inventoryPaneTipY
+					);
+				}
+			}
+			if (this.tab.isBestiarySplit()) {
+				this.bestiaryPage.renderTooltip(graphics, this.font, mouseX, mouseY, this.width, this.height);
+				if (this.bestiaryCategoryTip != null) {
+					this.inventoryBar.maybeTooltip(
+						graphics,
+						this.font,
+						this.bestiaryCategoryTip,
+						true,
+						this.bestiaryCategoryTipX,
+						this.bestiaryCategoryTipY
 					);
 				}
 			}
@@ -431,6 +450,12 @@ public final class ProfileViewerScreen extends Screen {
 			return;
 		}
 
+		if (this.tab.isBestiarySplit()) {
+			this.dungeonPage.blurField();
+			renderBestiarySplit(g, x, y, w, h, mouseX, mouseY, delta);
+			return;
+		}
+
 		if (this.tab == PvTab.PETS) {
 			hideInventorySearch();
 			this.dungeonPage.blurField();
@@ -512,13 +537,6 @@ public final class ProfileViewerScreen extends Screen {
 			this.museumPage.setSort(this.museumSort);
 			ensureMuseum(false);
 			this.museumPage.render(g, this.font, x, y, w, h, mouseX, mouseY, this.width, this.height);
-			return;
-		}
-
-		if (this.tab == PvTab.BESTIARY) {
-			hideInventorySearch();
-			this.dungeonPage.blurField();
-			this.bestiaryPage.render(g, this.font, x, y, w, h, mouseX, mouseY, this.width, this.height);
 			return;
 		}
 
@@ -657,6 +675,125 @@ public final class ProfileViewerScreen extends Screen {
 		}
 
 		// Item tips deferred to extractRenderState (after frame tabs) so they paint on top.
+	}
+
+	private void renderBestiarySplit(GuiGraphicsExtractor g, int x, int y, int w, int h, int mouseX, int mouseY, float delta) {
+		PvDraw.fill(g, x, y, w, SEARCH_H, 0xFF101018);
+		g.outline(x, y, w, SEARCH_H, PvDraw.COLOR_BORDER);
+		String header = "Tiers "
+			+ FormatUtil.commas(this.bestiaryPage.totalUnlockedTiers())
+			+ "/"
+			+ FormatUtil.commas(this.bestiaryPage.totalMaxTiers())
+			+ "  ·  Milestone "
+			+ FormatUtil.commas(this.bestiaryPage.claimedMilestone());
+		PvDraw.text(g, this.font, header, x + 6, y + (SEARCH_H - this.font.lineHeight) / 2, PvDraw.COLOR_MUTED);
+
+		int bodyY = y + SEARCH_H + SEARCH_GAP;
+		int bodyH = h - SEARCH_H - SEARCH_GAP;
+
+		BestiaryData.ensureLoaded();
+		List<BestiaryData.Category> cats = BestiaryData.categories();
+		int[] rowWidths = bestiaryRowWidths(cats.size());
+		int btn = 22;
+		int btnGap = 10;
+		int pad = 8;
+		int rows = rowWidths.length;
+		int maxCols = 0;
+		for (int width : rowWidths) {
+			maxCols = Math.max(maxCols, width);
+		}
+		int gridW = maxCols <= 0 ? btn : maxCols * btn + (maxCols - 1) * btnGap;
+
+		int gap = 8;
+		int rightW = gridW + pad * 2;
+		int leftW = w - rightW - gap;
+		if (leftW < 160) {
+			leftW = Math.max(140, (int) (w * 0.58));
+			rightW = w - leftW - gap;
+		}
+		int rightX = x + leftW + gap;
+
+		PvDraw.innerPanel(g, x, bodyY, leftW, bodyH);
+		this.bestiaryPage.setSearchQuery(this.inventorySearchQuery);
+		this.bestiaryPage.render(g, this.font, x, bodyY, leftW, bodyH, mouseX, mouseY, this.width, this.height);
+
+		PvDraw.innerPanel(g, rightX, bodyY, rightW, bodyH);
+
+		int startY = bodyY + pad;
+		int index = 0;
+		this.bestiaryCategoryTip = null;
+		for (int row = 0; row < rows && index < cats.size(); row++) {
+			int width = rowWidths[row];
+			int rowW = width * btn + (width - 1) * btnGap;
+			int rowStartX = rightX + (rightW - rowW) / 2;
+			for (int col = 0; col < width && index < cats.size(); col++) {
+				BestiaryData.Category cat = cats.get(index++);
+				int bx = rowStartX + col * (btn + btnGap);
+				int by = startY + row * (btn + btnGap);
+				boolean selected = cat.id().equals(this.bestiaryPage.categoryId());
+				boolean hovered = mouseX >= bx && mouseX < bx + btn && mouseY >= by && mouseY < by + btn;
+				boolean searchHit = this.bestiaryPage.searchHighlightsCategory(cat.id());
+				int bg = selected ? 0xFF2A3A55 : hovered ? 0xFF222230 : 0xFF16161E;
+				int border = searchHit ? 0xFF55FF55 : selected ? PvDraw.COLOR_ACCENT : PvDraw.COLOR_BORDER;
+				PvDraw.fill(g, bx, by, btn, btn, bg);
+				g.outline(bx, by, btn, btn, border);
+				ItemStack icon = this.bestiaryPage.categoryIcon(cat.id());
+				if (!icon.isEmpty()) {
+					g.item(icon, bx + (btn - 16) / 2, by + (btn - 16) / 2);
+				}
+				String catId = cat.id();
+				this.inventoryBar.addHit(bx, by, btn, btn, () -> this.bestiaryPage.setCategory(catId));
+				if (hovered) {
+					this.bestiaryCategoryTip = Component.literal(cat.name());
+					this.bestiaryCategoryTipX = bx - 4;
+					this.bestiaryCategoryTipY = by + btn / 2;
+				}
+			}
+		}
+
+		int searchBoxY = bodyY + bodyH - pad - SEARCH_H;
+		int searchBoxX = rightX + pad;
+		int searchBoxW = Math.max(20, rightW - pad * 2);
+		PvDraw.fill(g, searchBoxX, searchBoxY, searchBoxW, SEARCH_H, 0xFF101018);
+		g.outline(
+			searchBoxX,
+			searchBoxY,
+			searchBoxW,
+			SEARCH_H,
+			this.inventorySearch != null && this.inventorySearch.isFocused() ? PvDraw.COLOR_ACCENT : PvDraw.COLOR_BORDER
+		);
+		layoutInventorySearch(searchBoxX, searchBoxY, searchBoxW);
+		this.inventorySearch.extractWidgetRenderState(g, mouseX, mouseY, delta);
+		if (this.inventorySearch.getValue().isEmpty()) {
+			String hint = Component.translatable("betterpv.bestiary.search_hint").getString();
+			PvDraw.text(
+				g,
+				this.font,
+				hint,
+				this.inventorySearch.getX(),
+				this.inventorySearch.getY(),
+				PvDraw.COLOR_MUTED
+			);
+		}
+	}
+
+	private static int[] bestiaryRowWidths(int count) {
+		if (count <= 0) {
+			return new int[0];
+		}
+		if (count <= 5) {
+			return new int[] { count };
+		}
+		if (count <= 10) {
+			return new int[] { 5, count - 5 };
+		}
+		if (count <= 15) {
+			return new int[] { 5, 5, count - 10 };
+		}
+		if (count <= 19) {
+			return new int[] { 5, 5, 5, count - 15 };
+		}
+		return new int[] { 5, 5, 5, 5, Math.max(1, count - 20) };
 	}
 
 	private void layoutInventorySearch(int x, int y, int w) {
@@ -817,7 +954,7 @@ public final class ProfileViewerScreen extends Screen {
 		if (this.tab == PvTab.MUSEUM && this.museumPage.mouseScrolled(mouseX, mouseY, scrollY)) {
 			return true;
 		}
-		if (this.tab == PvTab.BESTIARY && this.bestiaryPage.mouseScrolled(mouseX, mouseY, scrollY)) {
+		if (this.tab.isBestiarySplit() && this.bestiaryPage.mouseScrolled(mouseX, mouseY, scrollY)) {
 			return true;
 		}
 		if (this.tab == PvTab.EVENTS

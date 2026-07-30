@@ -280,7 +280,6 @@ public final class HomePage {
 	private Layout measure(Font font, int w) {
 		Layout layout = new Layout();
 		layout.gap = 6;
-		// Slim SB-level column: short XP bar, width only needs the level label.
 		layout.levelW = 84;
 		layout.leftW = Math.max(100, (w - layout.levelW - layout.gap * 2) * 30 / 100);
 		layout.barsW = w - layout.leftW - layout.levelW - layout.gap * 2;
@@ -336,7 +335,7 @@ public final class HomePage {
 				flipProgress = 0F;
 			}
 		}
-		// Ease the timeline, then cosine-scale for a soft card flip (1 → 0 → 1).
+		// Flip progress
 		float eased = animating ? easeInOutCubic(flipProgress) : 0F;
 		float angle = eased * (float) Math.PI;
 		boolean showStats = animating
@@ -346,7 +345,6 @@ public final class HomePage {
 		float scaleY = 1F;
 		if (animating) {
 			scaleX = Math.max(0.04F, Math.abs((float) Math.cos(angle)));
-			// Slight vertical squash near edge-on for a paper/card feel.
 			scaleY = 1F - (1F - scaleX) * 0.06F;
 		}
 
@@ -384,7 +382,6 @@ public final class HomePage {
 
 		g.pose().popMatrix();
 
-		// Entity rendering ignores the GUI pose matrix - apply the same flip in screen space after pop.
 		if (drawModelAfter && this.snapshot.playerUuid() != null) {
 			this.playerModel.draw(
 				g,
@@ -495,11 +492,14 @@ public final class HomePage {
 		if (this.snapshot.playerUuid() != null) {
 			modelBox = new int[] { boxX + 2, boxTop + 2, boxX + boxW - 2, boxTop + boxH - 2 };
 		} else {
+			String message = this.loadError != null && !this.loadError.isBlank()
+				? trim(font, this.loadError, Math.max(8, boxW - 8))
+				: Component.translatable("betterpv.home.player").getString();
 			PvDraw.textCentered(
 				g, font,
-				Component.translatable("betterpv.home.player").getString(),
+				message,
 				cx, boxTop + boxH / 2 - font.lineHeight / 2,
-				PvDraw.COLOR_MUTED
+				this.loadError != null && !this.loadError.isBlank() ? 0xFFFF6666 : PvDraw.COLOR_MUTED
 			);
 		}
 
@@ -541,7 +541,6 @@ public final class HomePage {
 		if (styled != base) {
 			return styled;
 		}
-		// Fallback: Font-mixin gradient path (username match) when display-profile override is absent.
 		return NameStyler.applyGradientToName(base);
 	}
 
@@ -656,7 +655,6 @@ public final class HomePage {
 
 		int ty = y + PAD;
 		drawSkillGrid(g, font, leftX, rightX, ty, colW, layout.rowH);
-		// Visual midpoint between last skill bars and first slayer labels (not mid-SECTION_GAP alone).
 		int skillsBarsBottom = ty + (SKILL_ROWS - 1) * layout.rowH + font.lineHeight + BAR_LABEL_GAP + BAR_H;
 		int slayersTop = ty + SKILL_ROWS * layout.rowH + SECTION_GAP;
 		int lineInset = PAD + 6;
@@ -702,6 +700,29 @@ public final class HomePage {
 			);
 			this.zones.add(new HoverZone(bx, by, colW, rowH - 2, slayer.xpHover()));
 		}
+	}
+
+	private static String trim(Font font, String text, int maxW) {
+		if (text == null || text.isBlank()) {
+			return "";
+		}
+		if (font.width(text) <= maxW) {
+			return text;
+		}
+		String ellipsis = "...";
+		int budget = maxW - font.width(ellipsis);
+		if (budget <= 0) {
+			return ellipsis;
+		}
+		StringBuilder out = new StringBuilder();
+		for (int i = 0; i < text.length(); i++) {
+			char c = text.charAt(i);
+			if (font.width(out.toString() + c) > budget) {
+				break;
+			}
+			out.append(c);
+		}
+		return out + ellipsis;
 	}
 
 	private record HoverZone(int x, int y, int w, int h, String text) {

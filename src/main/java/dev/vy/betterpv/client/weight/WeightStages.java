@@ -53,7 +53,7 @@ public final class WeightStages {
 			return 0xFF9A9AAC;
 		}
 		return switch (stageOrRank.toLowerCase(Locale.ROOT)) {
-			// Lily — named after the colour/metal
+			// Lily - named after the colour/metal
 			case "bronze" -> 0xFFCD7F32;
 			case "silver" -> 0xFFC0C0C0;
 			case "gold" -> 0xFFFFAA00;
@@ -61,7 +61,7 @@ public final class WeightStages {
 			case "diamond" -> 0xFF55FFFF;
 			case "grandmaster" -> 0xFFFF55FF;
 			case "prestigious" -> 0xFFFF5555;
-			// Senither — progression ladder (grey → green → blue → purple → gold → red)
+			// Senither - progression ladder (grey → green → blue → purple → gold → red)
 			case "early game" -> 0xFFAAAAAA;
 			case "mid game" -> 0xFF55FF55;
 			case "late game" -> 0xFF5555FF;

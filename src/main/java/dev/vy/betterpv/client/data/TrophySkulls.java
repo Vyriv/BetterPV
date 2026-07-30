@@ -11,7 +11,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** Legacy NEU skull texture Values for trophy fish/frogs (pre–ItemModel paper). */
+/** Legacy NEU skull texture Values for trophy fish/frogs (pre-ItemModel paper). */
 public final class TrophySkulls {
 	private static volatile boolean loaded;
 	private static final Map<String, String> VALUES = new ConcurrentHashMap<>();

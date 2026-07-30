@@ -38,7 +38,7 @@ public final class CoflnetApiClient {
 	private CoflnetApiClient() {
 	}
 
-	/** Last 10 auctions the player created (page of 10). */
+	/** Auctions the player created. */
 	public static CompletableFuture<Optional<JsonArray>> playerAuctions(UUID uuid, int page) {
 		String id = HypixelApiClient.undashed(uuid);
 		int p = Math.max(0, page);
@@ -48,7 +48,7 @@ public final class CoflnetApiClient {
 		);
 	}
 
-	/** Last 10 bids the player made (page of 10). Bare /bids without page can 500. */
+	/** Bids the player made. */
 	public static CompletableFuture<Optional<JsonArray>> playerBids(UUID uuid, int page) {
 		String id = HypixelApiClient.undashed(uuid);
 		int p = Math.max(0, page);

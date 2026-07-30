@@ -47,6 +47,17 @@ public final class InventoryDecoder {
 		}
 	}
 
+	public record RiftInventories(
+		InventorySnapshot.Page inventory,
+		List<InventorySnapshot.Slot> equipment,
+		List<InventorySnapshot.Slot> armor,
+		InventorySnapshot.Page enderChest
+	) {
+		public List<InventorySnapshot.Page> enderPages() {
+			return enderChest == null ? List.of() : List.of(enderChest);
+		}
+	}
+
 	private InventoryDecoder() {
 	}
 
@@ -127,6 +138,30 @@ public final class InventoryDecoder {
 		categories.put("essence", parseEssence(member));
 		categories.put("pets", List.of()); // pets valued separately from JSON
 		return categories;
+	}
+
+	public static Map<String, Stack> parseMuseumById(JsonObject museumMember) {
+		Map<String, Stack> out = new LinkedHashMap<>();
+		if (museumMember == null) {
+			return out;
+		}
+		JsonObject items = obj(museumMember.get("items"));
+		if (items != null) {
+			for (var entry : items.entrySet()) {
+				JsonObject value = obj(entry.getValue());
+				if (value == null) {
+					continue;
+				}
+				JsonObject nested = obj(value.get("items"));
+				if (nested != null && nested.has("data")) {
+					List<Stack> decoded = decodeDataElement(nested);
+					if (!decoded.isEmpty()) {
+						out.put(entry.getKey().toUpperCase(Locale.ROOT), decoded.get(0));
+					}
+				}
+			}
+		}
+		return out;
 	}
 
 	/** Structured inventories for the Inventories tab (keeps empty slots / pages). */
@@ -385,7 +420,7 @@ public final class InventoryDecoder {
 	private record WardrobeSet(List<InventorySnapshot.Slot> slots, boolean equipped) {
 	}
 
-	private static InventorySnapshot.AccessoryInfo parseAccessoryInfo(JsonObject member) {
+	public static InventorySnapshot.AccessoryInfo parseAccessoryInfo(JsonObject member) {
 		JsonObject storage = obj(member.get("accessory_bag_storage"));
 		if (storage == null) {
 			return InventorySnapshot.AccessoryInfo.empty();
@@ -419,6 +454,24 @@ public final class InventoryDecoder {
 			}
 		}
 		return new InventorySnapshot.AccessoryInfo(mp, power, tunings);
+	}
+
+	public static RiftInventories parseRiftUi(JsonObject member) {
+		JsonObject rift = obj(member == null ? null : member.get("rift"));
+		JsonObject inv = obj(rift == null ? null : rift.get("inventory"));
+		InventorySnapshot.Page invPage = new InventorySnapshot.Page(
+			"Inventory",
+			toUiSlots(decodeFieldKeepingEmpty(inv, "inv_contents", 36)),
+			9
+		);
+		List<InventorySnapshot.Slot> armorSlots = toUiSlots(decodeFieldKeepingEmpty(inv, "inv_armor", 4));
+		List<InventorySnapshot.Slot> equipSlots = toUiSlots(decodeFieldKeepingEmpty(inv, "equipment_contents", 4));
+		InventorySnapshot.Page ender = new InventorySnapshot.Page(
+			"Ender Chest",
+			toUiSlots(decodeFieldKeepingEmpty(inv, "ender_chest_contents", 27)),
+			9
+		);
+		return new RiftInventories(invPage, equipSlots, armorSlots, ender);
 	}
 
 	private static List<InventorySnapshot.StatPoint> readTuningStats(JsonObject slot) {
@@ -938,8 +991,8 @@ public final class InventoryDecoder {
 
 	/**
 	 * One page per NEU sack type with every holdable item (count may be 0).
-	 * NEU's Rune sack has an empty contents list — real runes go on {@code Rune Sack}.
-	 * Gemstone sack is expanded with Flawless/Perfect (NEU only lists Rough–Fine).
+	 * NEU's Rune sack has an empty contents list - real runes go on {@code Rune Sack}.
+	 * Gemstone sack is expanded with Flawless/Perfect (NEU only lists Rough-Fine).
 	 */
 	private static List<InventorySnapshot.Page> parseSackPages(JsonObject member, JsonObject inventory) {
 		JsonObject countsJson = sackCountsObject(member, inventory);
@@ -1013,7 +1066,7 @@ public final class InventoryDecoder {
 		return pages.isEmpty() ? List.of(InventorySnapshot.emptyPage("Sacks", 9)) : pages;
 	}
 
-	/** NEU lists Rough/Flawed/Fine only — add Flawless/Perfect for each gem type. */
+	/** NEU lists Rough/Flawed/Fine only - add Flawless/Perfect for each gem type. */
 	private static List<String> expandGemstoneContents(List<String> contents) {
 		if (contents == null || contents.isEmpty()) {
 			return List.of();

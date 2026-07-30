@@ -211,7 +211,7 @@ public final class DungeonSnapshot {
 		return this.scarfBonus;
 	}
 
-	/** Catacombs Graduate attribute bonus (0–0.20). */
+	/** Catacombs Graduate attribute bonus (0-0.20). */
 	public double catacombsGraduateBonus() {
 		return this.catacombsGraduateBonus;
 	}

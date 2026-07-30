@@ -120,7 +120,7 @@ public final class AuctionSnapshot {
 		Map<String, Long> totalBought
 	) {
 		public Stats {
-			// LinkedHashMap — Map.copyOf does not preserve encounter order.
+			// LinkedHashMap - Map.copyOf does not preserve encounter order.
 			totalSold = Collections.unmodifiableMap(new LinkedHashMap<>(totalSold == null ? Map.of() : totalSold));
 			totalBought = Collections.unmodifiableMap(new LinkedHashMap<>(totalBought == null ? Map.of() : totalBought));
 		}
@@ -640,7 +640,7 @@ public final class AuctionSnapshot {
 		if (root == null || !root.has("auctions") || !root.get("auctions").isJsonArray()) {
 			return out;
 		}
-		// Hypixel ?player= returns auctions you created OR bid on — Active is only
+		// Hypixel ?player= returns auctions you created OR bid on - Active is only
 		// your own listings that are still running (not expired / claimed / bid-only).
 		for (JsonElement el : root.getAsJsonArray("auctions")) {
 			if (el == null || !el.isJsonObject()) {
@@ -707,7 +707,7 @@ public final class AuctionSnapshot {
 		}
 		long end = parseCoflTime(str(obj, "end"));
 		InventorySnapshot.Slot slot = InventoryDecoder.slotFromTag(tag, name);
-		// Prefer Cofl's auction tier when present — NEU rarity is often wrong for AH rows.
+		// Prefer Cofl's auction tier when present - NEU rarity is often wrong for AH rows.
 		String tier = SkyBlockItemFactory.normalizeTier(str(obj, "tier"));
 		if (tier.isBlank()) {
 			tier = SkyBlockItemFactory.normalizeTier(SkyBlockItemFactory.resolveTier(tag));

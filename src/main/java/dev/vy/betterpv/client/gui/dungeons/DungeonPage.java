@@ -39,9 +39,9 @@ public final class DungeonPage {
 	private static final String HELP_MARK = "(?)";
 	private static final int FLIP_MS = 480;
 	private static final int PANEL_HOVER = 0x0AFFFFFF;
-	/** Wither essence — dark gray (Hypixel §8). */
+	/** Wither essence - dark gray (Hypixel §8). */
 	private static final int WITHER_COLOR = 0xFF555555;
-	/** Undead essence — pink. */
+	/** Undead essence - pink. */
 	private static final int UNDEAD_COLOR = 0xFFFF8EC8;
 	/** Half-size perk icons (0.5×) stay crisp. */
 	private static final int ESSENCE_PERK_ICON = 8;

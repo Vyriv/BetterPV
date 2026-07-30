@@ -10,11 +10,11 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NumericTag;
 import net.minecraft.nbt.Tag;
 
-final class NbtAttrs {
+public final class NbtAttrs {
 	private NbtAttrs() {
 	}
 
-	static String string(CompoundTag tag, String key) {
+	public static String string(CompoundTag tag, String key) {
 		if (tag == null || !tag.contains(key)) {
 			return null;
 		}
@@ -33,7 +33,7 @@ final class NbtAttrs {
 		}
 	}
 
-	static int intValue(CompoundTag tag, String key, int fallback) {
+	public static int intValue(CompoundTag tag, String key, int fallback) {
 		if (tag == null || !tag.contains(key)) {
 			return fallback;
 		}
@@ -52,7 +52,7 @@ final class NbtAttrs {
 		}
 	}
 
-	static double doubleValue(CompoundTag tag, String key, double fallback) {
+	public static double doubleValue(CompoundTag tag, String key, double fallback) {
 		if (tag == null || !tag.contains(key)) {
 			return fallback;
 		}
@@ -67,11 +67,11 @@ final class NbtAttrs {
 		}
 	}
 
-	static boolean has(CompoundTag tag, String key) {
+	public static boolean has(CompoundTag tag, String key) {
 		return tag != null && tag.contains(key);
 	}
 
-	static CompoundTag compound(CompoundTag tag, String key) {
+	public static CompoundTag compound(CompoundTag tag, String key) {
 		if (tag == null || !tag.contains(key)) {
 			return null;
 		}
@@ -79,7 +79,7 @@ final class NbtAttrs {
 		return value instanceof CompoundTag c ? c : null;
 	}
 
-	static Map<String, Integer> intMap(CompoundTag tag, String key) {
+	public static Map<String, Integer> intMap(CompoundTag tag, String key) {
 		Map<String, Integer> out = new LinkedHashMap<>();
 		CompoundTag map = compound(tag, key);
 		if (map == null) {
@@ -91,7 +91,7 @@ final class NbtAttrs {
 		return out;
 	}
 
-	static List<String> stringList(CompoundTag tag, String key) {
+	public static List<String> stringList(CompoundTag tag, String key) {
 		List<String> out = new ArrayList<>();
 		if (tag == null || !tag.contains(key)) {
 			return out;
@@ -116,7 +116,7 @@ final class NbtAttrs {
 		return out;
 	}
 
-	static List<String> stringListValues(CompoundTag tag, String key) {
+	public static List<String> stringListValues(CompoundTag tag, String key) {
 		return stringList(tag, key);
 	}
 }

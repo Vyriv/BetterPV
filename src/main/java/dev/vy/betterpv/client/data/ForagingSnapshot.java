@@ -860,7 +860,7 @@ public final class ForagingSnapshot {
 	public boolean harpTalisman() { return harpTalisman; }
 	public String harpSelected() { return harpSelected; }
 	public List<HarpSong> harpSongs() { return harpSongs; }
-	/** Moonglade/Galatea beacon signal (0–10), or -1 if not exposed by the API. */
+	/** Moonglade/Galatea beacon signal (0-10), or -1 if not exposed by the API. */
 	public int galateaBeacon() { return galateaBeacon; }
 	public boolean hasGalateaBeacon() { return galateaBeacon >= 0; }
 	public double hotfXp() { return hotfXp; }

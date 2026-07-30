@@ -59,6 +59,27 @@ public final class PvTooltip {
 			}
 			return true;
 		}
+
+		public static Line row(String k1, int v1, String k2, int v2) {
+			return new Line(List.of(
+				Span.of(k1 + ": ", PvDraw.COLOR_MUTED),
+				Span.of(String.valueOf(v1), PvDraw.COLOR_TEXT),
+				Span.of("  " + k2 + ": ", PvDraw.COLOR_MUTED),
+				Span.of(String.valueOf(v2), PvDraw.COLOR_TEXT)
+			));
+		}
+
+		public static Line meta(String text) {
+			return of(text, PvDraw.COLOR_MUTED);
+		}
+
+		public static Line title(String text, int color) {
+			return bold(text, color);
+		}
+
+		public static Line divider() {
+			return blank();
+		}
 	}
 
 	private PvTooltip() {

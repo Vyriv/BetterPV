@@ -415,7 +415,7 @@ public final class ForagingPage {
 		int melodyBlock = melodyHeader + melodyRows * (ICON + 3) + SEP_GAP + 4;
 		int shopsBottom = Math.max(cy + 48, bottom - melodyBlock);
 
-		// Full 16px icons — no fractional scale (that softens item textures).
+		// Full 16px icons - no fractional scale (that softens item textures).
 		int headerH = Math.max(16, font.lineHeight + 2);
 		int headerTextMid = Math.max(0, (headerH - font.lineHeight) / 2);
 		g.item(essenceIcon(shop.iconId()), cx, cy + Math.max(0, (headerH - 16) / 2));
@@ -583,7 +583,7 @@ public final class ForagingPage {
 		int baseGap = 2;
 		int baseGridW = cols * baseCell + Math.max(0, cols - 1) * baseGap;
 		int baseGridH = rows * baseCell + Math.max(0, rows - 1) * baseGap;
-		// Integer zoom only — fractional scale softens item textures.
+		// Integer zoom only - fractional scale softens item textures.
 		int zoom = 1;
 		if (baseGridW > 0 && baseGridH > 0) {
 			zoom = Math.max(1, Math.min(innerW / baseGridW, innerH / baseGridH));
@@ -785,7 +785,7 @@ public final class ForagingPage {
 		for (ForagingSnapshot.AttributeShardRow row : notMaxed) {
 			totalCost += shardMaxCost(row);
 		}
-		String totalText = totalCost > 0 ? FormatUtil.shortCoins(totalCost) : "—";
+		String totalText = totalCost > 0 ? FormatUtil.shortCoins(totalCost) : "-";
 		PvDraw.textRight(g, font, totalText, rx + rw, ry, PvDraw.COLOR_GOLD);
 		ry += font.lineHeight + 2;
 		PvDraw.text(g, font, "Cheapest to max", rx, ry, PvDraw.COLOR_MUTED);
@@ -827,7 +827,7 @@ public final class ForagingPage {
 				rx + ICON + 4, yy, nameColor);
 			PvDraw.textRight(g, font, qty, rx + rw, yy, PvDraw.COLOR_ACCENT);
 			double cost = shardMaxCost(row);
-			String costText = cost > 0 ? FormatUtil.shortCoins(cost) : "—";
+			String costText = cost > 0 ? FormatUtil.shortCoins(cost) : "-";
 			PvDraw.text(g, font, costText, rx + ICON + 4, yy + font.lineHeight + 1, PvDraw.COLOR_GOLD);
 			addClippedHover(rx, yy, rw, rowH, rx, this.attrListY, rw, this.attrListH, attributeTooltip(row));
 			yy += rowH;

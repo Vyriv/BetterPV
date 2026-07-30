@@ -45,7 +45,7 @@ public final class FishingSnapshot {
 			return n;
 		}
 
-		/** Diamond=4 … Bronze=1, none=0 — for sort / completion. */
+		/** Diamond=4 … Bronze=1, none=0 - for sort / completion. */
 		public int bestRank() {
 			TrophyFishData.Tier best = bestDiscovered();
 			if (best == null) {

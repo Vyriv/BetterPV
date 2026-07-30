@@ -12,7 +12,10 @@ public enum MuseumSort {
 	FORAGING(Items.IRON_AXE, "betterpv.museum.foraging"),
 	FARMING(Items.IRON_HOE, "betterpv.museum.farming"),
 	FISHING(Items.FISHING_ROD, "betterpv.museum.fishing"),
-	MISC(Items.CHEST, "betterpv.museum.misc");
+	MISC(Items.CHEST, "betterpv.museum.misc"),
+	DUNGEONEERING(Items.GOLDEN_SWORD, "betterpv.museum.dungeoneering"),
+	HUNTING(Items.BOW, "betterpv.museum.hunting"),
+	SPECIAL(Items.BEACON, "betterpv.museum.special");
 
 	private final ItemStack icon;
 	private final String langKey;

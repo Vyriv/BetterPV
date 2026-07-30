@@ -3,22 +3,31 @@ package dev.vy.betterpv.client.gui;
 import dev.vy.betterpv.client.api.EliteBotApiClient;
 import dev.vy.betterpv.client.api.HypixelApiClient;
 import dev.vy.betterpv.client.api.ProfileFetcher;
+import dev.vy.betterpv.client.data.EventsSnapshot;
 import dev.vy.betterpv.client.data.GardenSnapshot;
+import dev.vy.betterpv.client.data.MuseumCache;
 import dev.vy.betterpv.client.data.PlayerStatsSnapshot;
 import dev.vy.betterpv.client.data.ProfileSnapshot;
 import dev.vy.betterpv.client.gui.auctions.AuctionPage;
+import dev.vy.betterpv.client.gui.bestiary.BestiaryPage;
 import dev.vy.betterpv.client.gui.collections.CollectionsPage;
+import dev.vy.betterpv.client.gui.crimson.CrimsonPage;
 import dev.vy.betterpv.client.gui.dungeons.DungeonPage;
+import dev.vy.betterpv.client.gui.events.EventsPage;
+import dev.vy.betterpv.client.gui.fishing.FishingPage;
+import dev.vy.betterpv.client.gui.foraging.ForagingPage;
 import dev.vy.betterpv.client.gui.garden.GardenPage;
 import dev.vy.betterpv.client.gui.home.HomePage;
 import dev.vy.betterpv.client.gui.inventories.InventoryPage;
 import dev.vy.betterpv.client.gui.mining.MiningPage;
+import dev.vy.betterpv.client.gui.museum.MuseumPage;
 import dev.vy.betterpv.client.gui.nav.IconButtonBar;
 import dev.vy.betterpv.client.gui.nav.InventoryPane;
 import dev.vy.betterpv.client.gui.nav.MuseumSort;
 import dev.vy.betterpv.client.gui.nav.PvSubTab;
 import dev.vy.betterpv.client.gui.nav.PvTab;
 import dev.vy.betterpv.client.gui.pets.PetsPage;
+import dev.vy.betterpv.client.gui.rift.RiftPage;
 import dev.vy.betterpv.BetterPV;
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -54,6 +63,13 @@ public final class ProfileViewerScreen extends Screen {
 	private final CollectionsPage collectionsPage = new CollectionsPage();
 	private final GardenPage gardenPage = new GardenPage();
 	private final MiningPage miningPage = new MiningPage();
+	private final ForagingPage foragingPage = new ForagingPage();
+	private final FishingPage fishingPage = new FishingPage();
+	private final CrimsonPage crimsonPage = new CrimsonPage();
+	private final RiftPage riftPage = new RiftPage();
+	private final MuseumPage museumPage = new MuseumPage();
+	private final BestiaryPage bestiaryPage = new BestiaryPage();
+	private final EventsPage eventsPage = new EventsPage();
 	private final IconButtonBar topBar = new IconButtonBar();
 	private final IconButtonBar sideBar = new IconButtonBar();
 	private final IconButtonBar inventoryBar = new IconButtonBar();
@@ -72,6 +88,10 @@ public final class ProfileViewerScreen extends Screen {
 	private boolean gardenFetchStarted;
 	private boolean gardenContestsFetchStarted;
 	private boolean gardenWeightFetchStarted;
+	private boolean museumFetchStarted;
+	private boolean bingoFetchStarted;
+	private boolean bingoFetchInFlight;
+	private long bingoRetryAtMs;
 	private EditBox inventorySearch;
 	private String inventorySearchQuery = "";
 	private Component inventoryPaneTip;
@@ -138,16 +158,22 @@ public final class ProfileViewerScreen extends Screen {
 				if (client.screen != this) {
 					return;
 				}
-				if (error != null || loaded == null || !loaded.ok()) {
+				ProfileFetcher.LoadedProfile displayed = loaded;
+				if (error != null || loaded == null) {
 					BetterPV.LOGGER.warn(
-						"Profile fetch failed for {} — staying on loading easter egg",
+						"Profile fetch failed for {}",
 						this.requestedName,
 						error
 					);
-					// Do not set dataReady; LoadingEgg escalates until finale or the user closes.
-					return;
+					String message = error != null && error.getMessage() != null
+						? error.getMessage()
+						: "Profile fetch failed";
+					displayed = ProfileFetcher.failed(this.requestedName, message);
 				}
-				applyLoadedProfile(loaded);
+				applyLoadedProfile(displayed);
+				if (!displayed.ok()) {
+					BetterPV.LOGGER.warn("Profile fetch failed for {}: {}", this.requestedName, displayed.error());
+				}
 				this.dataReady = true;
 			});
 		});
@@ -176,11 +202,27 @@ public final class ProfileViewerScreen extends Screen {
 		this.collectionsPage.apply(loaded.collections());
 		this.gardenPage.apply(loaded.garden());
 		this.miningPage.apply(loaded.mining());
+		this.foragingPage.apply(loaded.foraging());
+		this.fishingPage.apply(loaded.fishing());
+		this.crimsonPage.apply(loaded.crimson());
+		this.riftPage.apply(loaded.rift());
+		this.bestiaryPage.apply(loaded.bestiary());
+		this.eventsPage.apply(loaded.events());
+		if (loaded.museumMember() != null) {
+			this.museumPage.applyMuseum(loaded.museumMember());
+		} else {
+			this.museumPage.reset();
+		}
 		this.profileId = loaded.profileId();
 		this.playerUuid = loaded.snapshot() == null ? null : loaded.snapshot().playerUuid();
 		this.gardenFetchStarted = false;
 		this.gardenContestsFetchStarted = false;
 		this.gardenWeightFetchStarted = false;
+		this.museumFetchStarted = loaded.museumMember() != null;
+		this.bingoFetchStarted = false;
+		this.bingoFetchInFlight = false;
+		this.bingoRetryAtMs = 0L;
+		this.eventsPage.resetBingoFetch();
 	}
 
 	@Override
@@ -355,7 +397,7 @@ public final class ProfileViewerScreen extends Screen {
 			return;
 		}
 		this.breakScheduled = true;
-		BetterPV.LOGGER.warn("Loading egg hit finale for {} — starting limbo + fake ban", this.requestedName);
+		BetterPV.LOGGER.warn("Loading egg hit finale for {} - starting limbo + fake ban", this.requestedName);
 		LoadingEggFinale.start();
 	}
 
@@ -430,6 +472,62 @@ public final class ProfileViewerScreen extends Screen {
 			this.dungeonPage.blurField();
 			PvSubTab sub = this.subSelection.getOrDefault(this.tab, PvSubTab.MINING_OVERVIEW);
 			this.miningPage.render(g, this.font, sub, x, y, w, h, mouseX, mouseY, this.width, this.height);
+			return;
+		}
+
+		if (this.tab == PvTab.FORAGING) {
+			hideInventorySearch();
+			this.dungeonPage.blurField();
+			PvSubTab sub = this.subSelection.getOrDefault(this.tab, PvSubTab.FORAGING_OVERVIEW);
+			this.foragingPage.render(g, this.font, sub, x, y, w, h, mouseX, mouseY, this.width, this.height);
+			return;
+		}
+
+		if (this.tab == PvTab.FISHING) {
+			hideInventorySearch();
+			this.dungeonPage.blurField();
+			this.fishingPage.render(g, this.font, x, y, w, h, mouseX, mouseY, this.width, this.height);
+			return;
+		}
+
+		if (this.tab == PvTab.CRIMSON) {
+			hideInventorySearch();
+			this.dungeonPage.blurField();
+			PvSubTab sub = this.subSelection.getOrDefault(this.tab, PvSubTab.CRIMSON_OVERVIEW);
+			this.crimsonPage.render(g, this.font, sub, x, y, w, h, mouseX, mouseY, this.width, this.height);
+			return;
+		}
+
+		if (this.tab == PvTab.RIFT) {
+			hideInventorySearch();
+			this.dungeonPage.blurField();
+			PvSubTab sub = this.subSelection.getOrDefault(this.tab, PvSubTab.RIFT_OVERVIEW);
+			this.riftPage.render(g, this.font, sub, x, y, w, h, mouseX, mouseY, this.width, this.height);
+			return;
+		}
+
+		if (this.tab == PvTab.MUSEUM) {
+			hideInventorySearch();
+			this.dungeonPage.blurField();
+			this.museumPage.setSort(this.museumSort);
+			ensureMuseum(false);
+			this.museumPage.render(g, this.font, x, y, w, h, mouseX, mouseY, this.width, this.height);
+			return;
+		}
+
+		if (this.tab == PvTab.BESTIARY) {
+			hideInventorySearch();
+			this.dungeonPage.blurField();
+			this.bestiaryPage.render(g, this.font, x, y, w, h, mouseX, mouseY, this.width, this.height);
+			return;
+		}
+
+		if (this.tab == PvTab.EVENTS) {
+			hideInventorySearch();
+			this.dungeonPage.blurField();
+			ensureBingo(false);
+			PvSubTab sub = this.subSelection.getOrDefault(this.tab, PvSubTab.EVENTS_BINGO);
+			this.eventsPage.render(g, this.font, sub, x, y, w, h, mouseX, mouseY, this.width, this.height);
 			return;
 		}
 
@@ -600,6 +698,22 @@ public final class ProfileViewerScreen extends Screen {
 		if (this.tab == PvTab.MINING && this.miningPage.mouseClicked(mx, my)) {
 			return true;
 		}
+		if (this.tab == PvTab.FORAGING && this.foragingPage.mouseClicked(mx, my)) {
+			return true;
+		}
+		if (this.tab == PvTab.FISHING && this.fishingPage.mouseClicked(mx, my)) {
+			return true;
+		}
+		if (this.tab == PvTab.CRIMSON && this.crimsonPage.mouseClicked(mx, my)) {
+			return true;
+		}
+		if (this.tab == PvTab.RIFT && this.riftPage.mouseClicked(mx, my)) {
+			return true;
+		}
+		if (this.tab == PvTab.MUSEUM && this.museumPage.clickRefresh(mx, my)) {
+			ensureMuseum(true);
+			return true;
+		}
 		if (this.tab == PvTab.GARDEN && this.gardenPage.mouseClicked(mx, my)) {
 			return true;
 		}
@@ -670,6 +784,48 @@ public final class ProfileViewerScreen extends Screen {
 				mouseY,
 				scrollY,
 				this.subSelection.getOrDefault(this.tab, PvSubTab.MINING_OVERVIEW)
+			)) {
+			return true;
+		}
+		if (this.tab == PvTab.FORAGING
+			&& this.foragingPage.mouseScrolled(
+				mouseX,
+				mouseY,
+				scrollY,
+				this.subSelection.getOrDefault(this.tab, PvSubTab.FORAGING_OVERVIEW)
+			)) {
+			return true;
+		}
+		if (this.tab == PvTab.CRIMSON
+			&& this.crimsonPage.mouseScrolled(
+				mouseX,
+				mouseY,
+				scrollY,
+				this.subSelection.getOrDefault(this.tab, PvSubTab.CRIMSON_OVERVIEW)
+			)) {
+			return true;
+		}
+		if (this.tab == PvTab.RIFT
+			&& this.riftPage.mouseScrolled(
+				mouseX,
+				mouseY,
+				scrollY,
+				this.subSelection.getOrDefault(this.tab, PvSubTab.RIFT_OVERVIEW)
+			)) {
+			return true;
+		}
+		if (this.tab == PvTab.MUSEUM && this.museumPage.mouseScrolled(mouseX, mouseY, scrollY)) {
+			return true;
+		}
+		if (this.tab == PvTab.BESTIARY && this.bestiaryPage.mouseScrolled(mouseX, mouseY, scrollY)) {
+			return true;
+		}
+		if (this.tab == PvTab.EVENTS
+			&& this.eventsPage.mouseScrolled(
+				mouseX,
+				mouseY,
+				scrollY,
+				this.subSelection.getOrDefault(this.tab, PvSubTab.EVENTS_BINGO)
 			)) {
 			return true;
 		}
@@ -820,6 +976,158 @@ public final class ProfileViewerScreen extends Screen {
 				} catch (Exception exception) {
 					BetterPV.LOGGER.warn("Elite weight parse failed for {}", id, exception);
 					this.gardenPage.patch(base.withFarmingWeight(GardenSnapshot.FarmingWeightInfo.failed("Weight parse failed")));
+				}
+			});
+		});
+	}
+
+	private void ensureMuseum(boolean force) {
+		UUID uuid = this.playerUuid;
+		String id = this.profileId;
+		if (uuid == null || id == null || id.isBlank()) {
+			this.museumPage.applyError("Missing profile id");
+			this.museumFetchStarted = true;
+			return;
+		}
+		MuseumCache.Entry cached = MuseumCache.get(uuid, id);
+		if (!force && cached != null) {
+			this.museumPage.applyMuseum(cached.museumMember());
+			this.museumFetchStarted = true;
+			return;
+		}
+		if (this.museumFetchStarted && !force) {
+			return;
+		}
+		if (force && !MuseumCache.canRefresh(uuid, id)) {
+			this.museumPage.applyError("Refresh ready in " + dev.vy.betterpv.client.data.FormatUtil.prettySpan(
+				MuseumCache.refreshReadyInMs(uuid, id)
+			));
+			return;
+		}
+		this.museumFetchStarted = true;
+		this.museumPage.applyLoading();
+		HypixelApiClient.skyblockMuseum(uuid, id).whenComplete((opt, error) -> {
+			Minecraft client = Minecraft.getInstance();
+			if (client == null) {
+				return;
+			}
+			client.execute(() -> {
+				if (client.screen != this) {
+					return;
+				}
+				if (error != null || opt == null || opt.isEmpty()) {
+					BetterPV.LOGGER.warn("Museum fetch failed for {}", id, error);
+					this.museumPage.applyError(error == null || error.getMessage() == null ? "Museum unavailable" : error.getMessage());
+					return;
+				}
+				try {
+					String undashed = HypixelApiClient.undashed(uuid);
+					var member = ProfileFetcher.findMuseumMember(opt.get(), id, undashed);
+					if (member == null) {
+						this.museumPage.applyError("Museum unavailable");
+						return;
+					}
+					int itemCount = member.entrySet().size();
+					MuseumCache.put(uuid, id, member, itemCount);
+					this.museumPage.applyMuseum(member);
+				} catch (Exception exception) {
+					BetterPV.LOGGER.warn("Museum parse failed for {}", id, exception);
+					this.museumPage.applyError("Museum parse failed");
+				}
+			});
+		});
+	}
+
+	private void ensureBingo(boolean forceRefresh) {
+		if (this.playerUuid == null) {
+			this.eventsPage.applyBingoError("Missing player");
+			return;
+		}
+		if (!forceRefresh
+			&& this.eventsPage.bingoState() == EventsPage.BingoLoadState.READY
+			&& !this.eventsPage.needsBingoHistory()) {
+			this.bingoFetchStarted = true;
+			return;
+		}
+		if (this.bingoFetchInFlight) {
+			return;
+		}
+		boolean historyOnly = !forceRefresh
+			&& this.eventsPage.bingoState() == EventsPage.BingoLoadState.READY
+			&& this.eventsPage.needsBingoHistory();
+		if (historyOnly) {
+			if (System.currentTimeMillis() < this.bingoRetryAtMs) {
+				return;
+			}
+		} else if (!forceRefresh && this.bingoFetchStarted) {
+			if (this.eventsPage.bingoState() != EventsPage.BingoLoadState.ERROR
+				|| System.currentTimeMillis() < this.bingoRetryAtMs) {
+				return;
+			}
+		}
+		this.bingoFetchStarted = true;
+		this.bingoFetchInFlight = true;
+		if (!historyOnly) {
+			this.eventsPage.applyBingoLoading();
+		}
+		UUID uuid = this.playerUuid;
+		var resFut = historyOnly
+			? java.util.concurrent.CompletableFuture.completedFuture(java.util.Optional.<com.google.gson.JsonObject>empty())
+			: HypixelApiClient.skyblockBingoResources();
+		var histFut = HypixelApiClient.skyblockBingo(uuid);
+		java.util.concurrent.CompletableFuture.allOf(resFut, histFut).whenComplete((ignored, error) -> {
+			Minecraft client = Minecraft.getInstance();
+			if (client == null) {
+				return;
+			}
+			client.execute(() -> {
+				this.bingoFetchInFlight = false;
+				if (client.screen != this) {
+					return;
+				}
+				if (error != null) {
+					BetterPV.LOGGER.warn("Bingo fetch failed for {}", uuid, error);
+					if (!historyOnly) {
+						this.eventsPage.applyBingoError(
+							error.getMessage() == null ? "Bingo fetch failed" : error.getMessage());
+						this.bingoRetryAtMs = System.currentTimeMillis() + 5_000L;
+					} else {
+						this.bingoRetryAtMs = System.currentTimeMillis() + 15_000L;
+					}
+					return;
+				}
+				try {
+					com.google.gson.JsonObject resources = resFut.join().orElse(null);
+					com.google.gson.JsonObject history = histFut.join().orElse(null);
+					if (!historyOnly && resources == null && history == null) {
+						this.eventsPage.applyBingoError("Bingo unavailable");
+						this.bingoRetryAtMs = System.currentTimeMillis() + 5_000L;
+						return;
+					}
+					EventsSnapshot events = this.eventsPage.snapshot();
+					if (resources != null) {
+						events = events.withBingoResources(resources);
+					}
+					boolean historyLoaded = history != null;
+					if (historyLoaded) {
+						events = events.withBingoHistory(history);
+						this.bingoRetryAtMs = 0L;
+					} else {
+						BetterPV.LOGGER.warn(
+							"Bingo history missing for {} (worker miss / no local API key); will retry",
+							uuid
+						);
+						this.bingoRetryAtMs = System.currentTimeMillis() + 15_000L;
+					}
+					this.eventsPage.applyBingoReady(events, historyLoaded);
+				} catch (Exception exception) {
+					BetterPV.LOGGER.warn("Bingo parse failed for {}", uuid, exception);
+					if (!historyOnly) {
+						this.eventsPage.applyBingoError("Bingo parse failed");
+						this.bingoRetryAtMs = System.currentTimeMillis() + 5_000L;
+					} else {
+						this.bingoRetryAtMs = System.currentTimeMillis() + 15_000L;
+					}
 				}
 			});
 		});

@@ -159,9 +159,10 @@ public final class HypixelApiClient {
 		String workerUrl = WORKER_BASE + "/hypixel/skyblock/museum/" + id;
 		String directQuery = "uuid=" + id;
 		if (profileId != null && !profileId.isBlank()) {
-			String encoded = URLEncoder.encode(profileId.trim(), StandardCharsets.UTF_8);
+			String profile = profileId.trim().replace("-", "").toLowerCase(Locale.ROOT);
+			String encoded = URLEncoder.encode(profile, StandardCharsets.UTF_8);
 			workerUrl += "?profile=" + encoded;
-			directQuery += "&profile=" + profileId.trim();
+			directQuery += "&profile=" + profile;
 		}
 		String finalWorkerUrl = workerUrl;
 		String finalDirectQuery = directQuery;
@@ -189,7 +190,7 @@ public final class HypixelApiClient {
 		if (profileId == null || profileId.isBlank()) {
 			return CompletableFuture.completedFuture(Optional.empty());
 		}
-		String id = profileId.trim();
+		String id = profileId.trim().replace("-", "").toLowerCase(Locale.ROOT);
 		String encoded = URLEncoder.encode(id, StandardCharsets.UTF_8);
 		return CompletableFuture.supplyAsync(
 			() -> {
@@ -249,6 +250,27 @@ public final class HypixelApiClient {
 			}
 			return getJson(DIRECT_HYPIXEL.resolve("resources/skyblock/election").toString(), false);
 		}, EXECUTOR);
+	}
+
+	/** Current Bingo event goals. Resources endpoint; worker cached. */
+	public static CompletableFuture<Optional<JsonObject>> skyblockBingoResources() {
+		return CompletableFuture.supplyAsync(() -> {
+			waitForSlot();
+			return getJson(WORKER_BASE + "/hypixel/resources/skyblock/bingo", false);
+		}, EXECUTOR);
+	}
+
+	/** Player Bingo event history. */
+	public static CompletableFuture<Optional<JsonObject>> skyblockBingo(UUID uuid) {
+		String id = undashed(uuid);
+		return CompletableFuture.supplyAsync(
+			() -> fetchPreferWorker(
+				WORKER_BASE + "/hypixel/skyblock/bingo/" + id,
+				"skyblock/bingo",
+				"uuid=" + id
+			),
+			EXECUTOR
+		);
 	}
 
 	private static Optional<JsonObject> fetchPreferWorker(String workerUrl, String directPath, String directQuery) {

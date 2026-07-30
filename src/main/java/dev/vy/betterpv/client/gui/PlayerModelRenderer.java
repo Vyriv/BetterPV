@@ -87,7 +87,7 @@ public final class PlayerModelRenderer {
 		equipIfChanged(entity, EquipmentSlot.FEET, 3, boots);
 		applyDinnerboneFlip(entity);
 
-		// Entity path ignores GUI pose matrices — mirror open expand then card flip in screen space.
+		// Entity path ignores GUI pose matrices - mirror open expand then card flip in screen space.
 		float[] box = {x0, y0, x1, y1};
 		scaleBox(box, openPivotX, openPivotY, open, open);
 		scaleBox(box, flipPivotX, flipPivotY, sx, sy);

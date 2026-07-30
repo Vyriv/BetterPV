@@ -82,7 +82,7 @@ public final class ItemWorth {
 		return Math.max(0, base + mods);
 	}
 
-	/** Standalone cosmetic items (skins, dyes, furniture, etc.) — zeroed when cosmetics off. */
+	/** Standalone cosmetic items (skins, dyes, furniture, etc.) - zeroed when cosmetics off. */
 	private static boolean isCosmeticItem(InventoryDecoder.Stack stack) {
 		String id = stack.id().toUpperCase(Locale.ROOT);
 		if (id.contains("_SKIN") || id.startsWith("PET_SKIN_") || id.endsWith("_DYE") || id.contains("DYE_")) {

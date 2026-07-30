@@ -271,7 +271,7 @@ public final class MiningSnapshot {
 		JsonObject glaciteData = Leveling.obj(member.get("glacite_player_data"));
 		List<String> fossils = stringList(glaciteData == null ? null : glaciteData.get("fossils_donated"));
 		long dust = longOf(glaciteData, "fossil_dust");
-		// API exposes entered only — no mineshafts_spawned field.
+		// API exposes entered only - no mineshafts_spawned field.
 		long shafts = longOf(glaciteData, "mineshafts_entered");
 		CorpseCounts corpses = parseCorpses(Leveling.obj(glaciteData == null ? null : glaciteData.get("corpses_looted")));
 		int corpseMs = highestCorpseMilestone(corpses);
@@ -493,7 +493,7 @@ public final class MiningSnapshot {
 
 	/**
 	 * Lifetime powder = available + spent (SkyCrypt).
-	 * Note: {@code powder_*_total} in the API is available - spent, not lifetime — do not use it.
+	 * Note: {@code powder_*_total} in the API is available - spent, not lifetime - do not use it.
 	 */
 	private static Powder powder(JsonObject core, String kind) {
 		long available = Math.max(0L, longOf(core, "powder_" + kind));

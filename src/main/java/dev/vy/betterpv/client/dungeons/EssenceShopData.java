@@ -46,6 +46,24 @@ public final class EssenceShopData {
 		new Def("eager_miner", "Eager Miner", 10),
 		new Def("midas_lure", "Midas Lure", 10)
 	);
+	
+	/** Crimson Essence Shop. */
+	private static final List<Def> CRIMSON = List.of(
+		new Def("crimson_health", "Health", 5),
+		new Def("crimson_defense", "Defense", 5),
+		new Def("crimson_strength", "Strength", 5),
+		new Def("crimson_intelligence", "Intelligence", 5),
+		new Def("crimson_crit_damage", "Crit", 5)
+	);
+
+	/** Forest Essence Shop (Foraging). */
+	private static final List<Def> FOREST = List.of(
+		new Def("forest_health", "Health", 5),
+		new Def("forest_defense", "Defense", 5),
+		new Def("forest_strength", "Strength", 5),
+		new Def("forest_intelligence", "Intelligence", 5),
+		new Def("forest_crit_damage", "Crit", 5)
+	);
 
 	/** Diamond Essence Shop. */
 	private static final List<Def> DIAMOND = List.of(
@@ -70,6 +88,14 @@ public final class EssenceShopData {
 
 	public static DungeonSnapshot.EssenceShop gold(JsonObject member) {
 		return shop("gold", "Gold", "GOLD", "ESSENCE_GOLD", GOLD, member);
+	}
+
+	public static DungeonSnapshot.EssenceShop crimson(JsonObject member) {
+		return shop("crimson", "Crimson", "CRIMSON", "ESSENCE_CRIMSON", CRIMSON, member);
+	}
+
+	public static DungeonSnapshot.EssenceShop forest(JsonObject member) {
+		return shop("forest", "Forest", "FOREST", "ESSENCE_FOREST", FOREST, member);
 	}
 
 	public static DungeonSnapshot.EssenceShop diamond(JsonObject member) {

@@ -50,8 +50,8 @@ public final class GardenPage {
 	private static final int BRONZE = 0xFFCD7F32;
 	private static final int SILVER = 0xFFC0C0C0;
 	private static final int GOLD = 0xFFFFD700;
-	private static final int PLATINUM = 0xFF55FFFF; // aqua / cyan
-	private static final int DIAMOND = 0xFFAAFFFF; // light blue
+	private static final int PLATINUM = 0xFF55FFFF;
+	private static final int DIAMOND = 0xFFAAFFFF;
 	private static final int MEDAL_ORB_EMPTY = 0xFF2A2A35;
 	private static final int GHOST = 0xFF9A9AAC;
 	private static final int COPPER = 0xFFE07A3D;
@@ -382,8 +382,8 @@ public final class GardenPage {
 			rx, ry, rw, VISITS_C) + 1;
 		ry = statLine(g, font, "Unique Visitors", FormatUtil.commas(this.snapshot.uniqueVisitors()),
 			rx, ry, rw, PvDraw.COLOR_MUTED) + 1;
-		ry += STAT_ROW + 1; // empty
-		ry += STAT_ROW + 1; // empty
+		ry += STAT_ROW + 1;
+		ry += STAT_ROW + 1;
 		PvDraw.text(g, font, "Accepted Rarities", rx, ry, PvDraw.COLOR_MUTED);
 		ry += font.lineHeight + 3;
 		Map<String, Long> accepted = acceptedRarityTotals(this.snapshot.visitors());
@@ -1077,7 +1077,6 @@ public final class GardenPage {
 			g.blit(RenderPipelines.GUI_TEXTURED, texture, x, y, 0, 0, size, size, tex, tex, tex, tex);
 			return;
 		}
-		// Prefer vanilla crop / upgrade stand-ins over NEU paper / legacy resolve misses.
 		ItemStack vanilla = vanillaFallback(id);
 		if (!vanilla.isEmpty()) {
 			drawStack(g, vanilla, x, y, size);
@@ -1088,7 +1087,6 @@ public final class GardenPage {
 			drawStack(g, icon, x, y, size);
 			return;
 		}
-		// Missing NPC / mayor skulls: villager egg instead of blank Steve head.
 		String upper = id == null ? "" : id.toUpperCase(Locale.ROOT);
 		if (upper.endsWith("_NPC") || upper.contains("MAYOR") || upper.endsWith("_MONSTER")) {
 			drawStack(g, new ItemStack(Items.VILLAGER_SPAWN_EGG), x, y, size);

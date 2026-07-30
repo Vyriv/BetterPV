@@ -36,7 +36,7 @@ public final class LoadingEggFinale {
 		if (step != Step.IDLE && step != Step.DONE) {
 			return;
 		}
-		BetterPV.LOGGER.warn("Loading egg finale — close PV, /limbo, then fake ban");
+		BetterPV.LOGGER.warn("Loading egg finale - close PV, /limbo, then fake ban");
 		step = Step.CLOSE_PV;
 		nextAtMs = 0L;
 	}

@@ -3,10 +3,10 @@ package dev.vy.betterpv.client.networth;
 /**
  * Networth display mode cycled on the home page (left = next, right = prev).
  * <ol>
- *   <li>Normal — full NW</li>
- *   <li>Non-cosmetic — full NW without cosmetics</li>
- *   <li>Unsoulbound — tradeable NW only</li>
- *   <li>Unsoulbound Non-Cosmetic — tradeable NW without cosmetics</li>
+ *   <li>Normal - full NW</li>
+ *   <li>Non-cosmetic - full NW without cosmetics</li>
+ *   <li>Unsoulbound - tradeable NW only</li>
+ *   <li>Unsoulbound Non-Cosmetic - tradeable NW without cosmetics</li>
  * </ol>
  */
 public enum NetworthMode {
@@ -28,7 +28,7 @@ public enum NetworthMode {
 			};
 		}
 
-		/** Purse / bank are liquid coins — only in full and un-soulbound views. */
+		/** Purse / bank are liquid coins - only in full and un-soulbound views. */
 		public boolean includesLiquid() {
 			return this != ONLY_SOULBOUND;
 		}

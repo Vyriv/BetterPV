@@ -188,7 +188,7 @@ public final class NameStyler {
 			return message;
 		}
 
-		// Identity cache pins one Component instance forever — that freezes animated gradients.
+		// Identity cache pins one Component instance forever - that freezes animated gradients.
 		boolean animated = hasAnimatedGradientMatch(plain, candidatesForKind(kind));
 		if (!animated) {
 			Component identityCached = identityCache.get(message);
@@ -232,7 +232,7 @@ public final class NameStyler {
 			return text;
 		}
 
-		// Same freeze issue as Component path — never identity-cache animated frames.
+		// Same freeze issue as Component path - never identity-cache animated frames.
 		if (!plan.hasAnimatedGradient) {
 			FormattedCharSequence identityCached = identityCache.get(text);
 			if (identityCached != null) return identityCached;

@@ -25,7 +25,7 @@ import java.util.regex.Pattern;
 
 /**
  * Builds overview combat/skill stats from Hypixel member data.
- * Hypixel does not expose final stats — values are reconstructed from NEU constants,
+ * Hypixel does not expose final stats - values are reconstructed from NEU constants,
  * skills/slayers, SkyBlock level, bestiary, essence permanents, Maxwell power, tuning,
  * active pet, and item lore on armor / equipment / accessories.
  */
@@ -100,7 +100,7 @@ public final class PlayerStatsCalculator {
 		new AttributeFlat("rare_bird", "pet_luck", 1.0)
 	);
 
-	/** Wither Essence Forbidden perks — cumulative total at each level (wiki). */
+	/** Wither Essence Forbidden perks - cumulative total at each level (wiki). */
 	private static final Map<String, int[]> FORBIDDEN = Map.of(
 		"permanent_health", new int[]{0, 2, 4, 6, 8, 10},
 		"permanent_defense", new int[]{0, 1, 2, 3, 4, 5},
@@ -748,7 +748,7 @@ public final class PlayerStatsCalculator {
 			if (level <= hi) {
 				return highStats;
 			}
-			// Extrapolate past the last key using the gain from first→last (GDRAG 101–200).
+			// Extrapolate past the last key using the gain from first→last (GDRAG 101-200).
 			int first = keys.get(0);
 			int last = keys.get(keys.size() - 1);
 			if (last <= first) {

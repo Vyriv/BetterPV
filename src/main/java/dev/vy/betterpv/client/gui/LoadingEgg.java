@@ -12,15 +12,17 @@ import net.minecraft.network.chat.TextColor;
  * NEU-style “stuck loading forever” easter egg for the profile viewer.
  * Escalating copy while the PV never becomes ready (missing player / failed fetch / hung load).
  *
- * <p><b>TEST TIMING:</b> hour-scale beats compressed to a 30s finale
- * ({@code originalMinutes} → seconds). Restore to 60m before shipping.
  * At finale: close PV → /limbo → fake Hypixel ban. Unlocked lines stack.
  */
 public final class LoadingEgg {
-	/** Trigger the limbo → fake-ban finale after this long on a stuck load. */
-	public static final long BREAK_AT_MS = 30L * 1000L;
+	private static final long SECOND_MS = 1000L;
+	private static final long MINUTE_MS = 60L * SECOND_MS;
+	private static final long TEST_BREAK_SECONDS = 30L;
 
-	/** Threshold seconds → message (oldest first). */
+	/** Trigger the limbo → fake-ban finale after this long on a stuck load. */
+	public static final long BREAK_AT_MS = 60L * MINUTE_MS;
+
+	/** Old test threshold seconds, proportionally scaled across the one-hour finale. */
 	private static final Beat[] BEATS = {
 		new Beat(1, "This is taking awhile, try again?", 0xFF9A9AAC, false, false),
 		new Beat(3, "Okay, really.. try again", 0xFFE8E8F0, false, false),
@@ -42,15 +44,18 @@ public final class LoadingEgg {
 	public record Stage(Component line, int color, boolean bold, boolean shout) {
 	}
 
-	private record Beat(long atSeconds, String text, int color, boolean bold, boolean shout) {
+	private record Beat(long testAtSeconds, String text, int color, boolean bold, boolean shout) {
+		long atMs() {
+			return (testAtSeconds * BREAK_AT_MS) / TEST_BREAK_SECONDS;
+		}
 	}
 
 	/** All messages unlocked so far, oldest → newest (stack top to bottom). */
 	public static List<Stage> stagesUnlocked(long elapsedMs) {
-		long sec = Math.max(0L, elapsedMs / 1000L);
+		long elapsed = Math.max(0L, elapsedMs);
 		List<Stage> out = new ArrayList<>();
 		for (Beat beat : BEATS) {
-			if (sec >= beat.atSeconds()) {
+			if (elapsed >= beat.atMs()) {
 				out.add(stage(beat.text(), beat.color(), beat.bold(), beat.shout()));
 			}
 		}

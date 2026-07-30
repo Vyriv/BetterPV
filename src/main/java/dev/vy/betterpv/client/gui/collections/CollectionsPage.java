@@ -37,7 +37,7 @@ public final class CollectionsPage {
 	private static final int ITEM_ICON = 16;
 	/**
 	 * Collections: pick the largest crisp icon that fits without scrolling.
-	 * Discrete sizes only — fractional scales look muddy.
+	 * Discrete sizes only - fractional scales look muddy.
 	 */
 	private static final int[] COLL_ICON_STEPS = {16, 14, 12, 10};
 	private static final int MINION_UNLOCKED = 0xFF98E898;
@@ -184,7 +184,7 @@ public final class CollectionsPage {
 		int rowPitch = cellH + layout.rowGap;
 		int contentH = headerH + layout.maxRows * cellH + Math.max(0, layout.maxRows - 1) * layout.rowGap;
 
-		// No scrolling — board is fitted to the panel.
+		// No scrolling - board is fitted to the panel.
 		this.gridMaxScroll = 0;
 		this.gridScroll = 0;
 
@@ -295,7 +295,7 @@ public final class CollectionsPage {
 				PvTooltip.Span.of(" (" + pct + "%)", PvDraw.COLOR_ACCENT)
 			)));
 		}
-		// Shared collections only — boss kills are personal per member.
+		// Shared collections only - boss kills are personal per member.
 		if (!boss && this.snapshot.members().size() > 1) {
 			lines.add(PvTooltip.Line.blank());
 			lines.add(PvTooltip.Line.bold(

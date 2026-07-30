@@ -141,7 +141,7 @@ public final class PvDraw {
 			return;
 		}
 		// Round the progressing edge only when fill covers the track; otherwise a mid-bar
-		// “pill tip” looks broken — especially on short fills like Social.
+		// “pill tip” looks broken - especially on short fills like Social.
 		boolean roundRight = filled >= w;
 		if (MoulberryMode.isActive()) {
 			drawXpBarAnimatedGradient(g, x, y, filled, h, roundRight);
@@ -162,7 +162,7 @@ public final class PvDraw {
 		drawPillGradient(g, x, y, w, h, t -> lerpArgb(from, to, t), true, roundRight);
 	}
 
-	/** Scrolling HSV rainbow — tips sample the same t-map as the body so ends stay in sync. */
+	/** Scrolling HSV rainbow - tips sample the same t-map as the body so ends stay in sync. */
 	private static void drawXpBarAnimatedGradient(
 		GuiGraphicsExtractor g, int x, int y, int w, int h, boolean roundRight
 	) {
@@ -184,7 +184,7 @@ public final class PvDraw {
 
 	/**
 	 * Mild rounded-rect ends for short XP bars (h≈6).
-	 * Only a 1px corner cut — a 2px “capsule tip” on a 6px bar reads as a point, not a curve.
+	 * Only a 1px corner cut - a 2px “capsule tip” on a 6px bar reads as a point, not a curve.
 	 * Low fill widths still keep a soft left tip; the right tip is optional (flat progress edge).
 	 */
 	private static void drawPillSolid(

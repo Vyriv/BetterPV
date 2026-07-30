@@ -21,8 +21,7 @@ public enum PvTab {
 	RIFT(Items.ENDER_EYE, "betterpv.tab.rift"),
 	MUSEUM(Items.EMERALD, "betterpv.tab.museum"),
 	BESTIARY(Items.IRON_SWORD, "betterpv.tab.bestiary"),
-	BINGO(Items.FILLED_MAP, "betterpv.tab.bingo"),
-	CHOCOLATE(Items.COOKIE, "betterpv.tab.chocolate");
+	EVENTS(Items.FIREWORK_ROCKET, "betterpv.tab.events");
 
 	private final ItemStack icon;
 	private final String langKey;
@@ -57,9 +56,23 @@ public enum PvTab {
 				PvSubTab.MINING_HOTM,
 				PvSubTab.MINING_GLACITE
 			};
-			case FORAGING -> new PvSubTab[] { PvSubTab.FORAGING_MAIN, PvSubTab.FORAGING_SHARDS };
-			case CRIMSON -> new PvSubTab[] { PvSubTab.CRIMSON_MAIN, PvSubTab.CRIMSON_TROPHY, PvSubTab.CRIMSON_ABIPHONE };
+			case FORAGING -> new PvSubTab[] {
+				PvSubTab.FORAGING_OVERVIEW,
+				PvSubTab.FORAGING_HOTF,
+				PvSubTab.FORAGING_HUNTING,
+				PvSubTab.FORAGING_ATTRIBUTE_SHARDS
+			};
+			case FISHING -> PvSubTab.NONE;
+			case CRIMSON -> new PvSubTab[] {
+				PvSubTab.CRIMSON_OVERVIEW,
+				PvSubTab.CRIMSON_KUUDRA,
+				PvSubTab.CRIMSON_ABIPHONE
+			};
 			case RIFT -> new PvSubTab[] { PvSubTab.RIFT_OVERVIEW, PvSubTab.RIFT_INVENTORY };
+			case EVENTS -> new PvSubTab[] {
+				PvSubTab.EVENTS_BINGO,
+				PvSubTab.EVENTS_CHOCOLATE
+			};
 			default -> PvSubTab.NONE;
 		};
 	}
@@ -70,6 +83,10 @@ public enum PvTab {
 
 	public boolean isInventorySplit() {
 		return this == INVENTORIES;
+	}
+
+	public boolean isBestiarySplit() {
+		return this == BESTIARY;
 	}
 
 	public boolean hasMuseumSort() {

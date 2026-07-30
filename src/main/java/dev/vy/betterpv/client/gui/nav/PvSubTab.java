@@ -25,13 +25,17 @@ public enum PvSubTab {
 	MINING_OVERVIEW(Items.IRON_PICKAXE, "betterpv.sub.mining_overview"),
 	MINING_HOTM(Items.PLAYER_HEAD, "betterpv.sub.mining_hotm", "textures/gui/nav/hotm.png", 64),
 	MINING_GLACITE(Items.BLUE_ICE, "betterpv.sub.mining_glacite"),
-	FORAGING_MAIN(Items.IRON_AXE, "betterpv.sub.foraging"),
-	FORAGING_SHARDS(Items.AMETHYST_SHARD, "betterpv.sub.shards"),
-	CRIMSON_MAIN(Items.NETHERRACK, "betterpv.sub.crimson"),
-	CRIMSON_TROPHY(Items.TROPICAL_FISH, "betterpv.sub.trophy_fish"),
+	FORAGING_OVERVIEW(Items.IRON_AXE, "betterpv.sub.foraging_overview"),
+	FORAGING_HOTF(Items.OAK_SAPLING, "betterpv.sub.hotf"),
+	FORAGING_HUNTING(Items.LEAD, "betterpv.sub.hunting"),
+	FORAGING_ATTRIBUTE_SHARDS(Items.PRISMARINE_SHARD, "betterpv.sub.attribute_shards"),
+	CRIMSON_OVERVIEW(Items.NETHERRACK, "betterpv.sub.crimson_overview"),
+	CRIMSON_KUUDRA(Items.NETHERITE_SCRAP, "betterpv.sub.kuudra"),
 	CRIMSON_ABIPHONE(Items.NOTE_BLOCK, "betterpv.sub.abiphone"),
 	RIFT_OVERVIEW(Items.ENDER_EYE, "betterpv.sub.rift_overview"),
-	RIFT_INVENTORY(Items.CHEST, "betterpv.sub.rift_inventory");
+	RIFT_INVENTORY(Items.CHEST, "betterpv.sub.rift_inventory"),
+	EVENTS_BINGO(Items.FILLED_MAP, "betterpv.sub.bingo"),
+	EVENTS_CHOCOLATE(Items.COOKIE, "betterpv.sub.chocolate");
 
 	public static final PvSubTab[] NONE = new PvSubTab[0];
 

@@ -18,7 +18,7 @@ import net.minecraft.world.item.Items;
 
 /**
  * Fishing: single page, 1:2 split.
- * Left (~1/3) overview stats — click to flip to trophy frogs.
+ * Left (~1/3) overview stats - click to flip to trophy frogs.
  * Right (~2/3) trophy fish.
  */
 public final class FishingPage {
@@ -94,7 +94,7 @@ public final class FishingPage {
 	) {
 		this.zones.clear();
 
-		// 1:2 — left overview/frogs, right trophy fish.
+		// 1:2 - left overview/frogs, right trophy fish.
 		int leftW = Math.max(90, w / 3);
 		int rightW = Math.max(120, w - leftW - GAP);
 		leftW = w - rightW - GAP;

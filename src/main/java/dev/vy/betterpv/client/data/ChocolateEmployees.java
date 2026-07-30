@@ -4,7 +4,7 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * Chocolate Factory rabbit employees — skull textures + hire-order rarities.
+ * Chocolate Factory rabbit employees - skull textures + hire-order rarities.
  * Texture hashes from community wiki {@code SkinRender} pages.
  */
 public final class ChocolateEmployees {

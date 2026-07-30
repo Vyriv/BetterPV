@@ -631,7 +631,6 @@ public final class AuctionPage {
 				}
 				boolean missingTier = listing.tier() == null || listing.tier().isBlank();
 				boolean mangledStars = listing.itemName() != null && listing.itemName().indexOf('?') >= 0;
-				// Player summaries omit upgrades; fetch detail once per auction id.
 				if (missingTier || mangledStars || listing.detailLines() == null || listing.detailLines().isEmpty()) {
 					needDetail.add(listing);
 				}
@@ -657,7 +656,6 @@ public final class AuctionPage {
 					if (missingTier && !tier.isBlank()) {
 						resolved.put(listing.auctionId(), tier);
 					}
-					// Always pull Cofl detail for upgrade/reforge/stars when we can.
 					needCofl.add(listing);
 				}
 				if (!resolved.isEmpty()) {

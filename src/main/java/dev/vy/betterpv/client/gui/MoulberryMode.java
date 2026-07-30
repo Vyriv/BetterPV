@@ -1,7 +1,7 @@
 package dev.vy.betterpv.client.gui;
 
 /**
- * Konami-code easter egg (↑↑↓↓←→←→BA↵) — a nod to Moulberry / NEU PV shenanigans.
+ * Konami-code easter egg (↑↑↓↓←→←→BA↵) - a nod to Moulberry / NEU PV shenanigans.
  * Enables animated rainbow skill bars, Dinnerbone flip, and a spinning player preview.
  */
 public final class MoulberryMode {
@@ -65,7 +65,7 @@ public final class MoulberryMode {
 		return false;
 	}
 
-	/** Letter keys also arrive as typed characters — accept B/A that way if keyPressed missed them. */
+	/** Letter keys also arrive as typed characters - accept B/A that way if keyPressed missed them. */
 	public static boolean charTyped(char ch) {
 		char lower = Character.toLowerCase(ch);
 		// keyPressed already consumed this letter on the same press.

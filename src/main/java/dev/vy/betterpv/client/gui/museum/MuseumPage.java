@@ -424,7 +424,7 @@ public final class MuseumPage {
 			int iconY = by + Math.max(0, (Math.max(LIST_ICON, font.lineHeight) - LIST_ICON) / 2);
 			drawSkyblockIcon(g, row.iconId(), icon, lx, iconY, LIST_ICON);
 
-			String price = row.price() > 0 ? FormatUtil.shortCoins(row.price()) : "—";
+			String price = row.price() > 0 ? FormatUtil.shortCoins(row.price()) : "-";
 			int priceW = font.width(price);
 			int textX = lx + LIST_ICON + 3;
 			int nameMax = Math.max(8, lw - LIST_ICON - 3 - priceW - 4);
@@ -524,7 +524,7 @@ public final class MuseumPage {
 		if (icon.isEmpty()) {
 			icon = MISSING_ICON;
 		}
-		// Paper+item_model is normal until the pack texture resolves — keep retrying.
+		// Paper+item_model is normal until the pack texture resolves - keep retrying.
 		if (!isWeakIcon(icon) || SkyBlockItemFactory.customIcon(row.iconId()) != null) {
 			this.missingIconById.put(row.donationId(), icon);
 		}
@@ -645,7 +645,7 @@ public final class MuseumPage {
 		return icon == null || icon.isEmpty() || icon.is(Items.PAPER) || icon.is(Items.BARRIER);
 	}
 
-	/** Lightweight icon only — never builds full lore stacks for the grid unless needed for skulls. */
+	/** Lightweight icon only - never builds full lore stacks for the grid unless needed for skulls. */
 	private ItemStack iconAt(int index, Slot slot) {
 		ItemStack cached = this.iconByIndex.get(index);
 		if (cached != null) {
@@ -660,7 +660,7 @@ public final class MuseumPage {
 		if (!slot.coveredByHigherTier() && slot.stack() != null
 			&& ((slot.stack().skullValue() != null && !slot.stack().skullValue().isBlank())
 			|| slot.stack().dyeColor() != null)) {
-			// Donated NBT skulls / dyed leather — same path as tooltips.
+			// Donated NBT skulls / dyed leather - same path as tooltips.
 			icon = SkyBlockItemFactory.toStack(toUiSlot(slot));
 		} else if (iconId != null && !iconId.isBlank() && !isSpecialKey(iconId)) {
 			icon = SkyBlockItemFactory.iconStack(iconId);

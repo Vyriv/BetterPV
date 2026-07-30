@@ -308,7 +308,7 @@ public final class SkyBlockItemFactory {
 	}
 
 	/**
-	 * Heart of the Mountain tab icon — SkyBlock mining skull (Deep Caverns / HotM menu style head).
+	 * Heart of the Mountain tab icon - SkyBlock mining skull (Deep Caverns / HotM menu style head).
 	 * Token of the Mountain is not in the items API; this is the closest NEU mining portal skull.
 	 */
 	public static ItemStack hotmTabIcon() {
@@ -326,7 +326,7 @@ public final class SkyBlockItemFactory {
 		"ewogICJ0aW1lc3RhbXAiIDogMTYxODk5OTIyNDk2OSwKICAicHJvZmlsZUlkIiA6ICI1NjY3NWIyMjMyZjA0ZWUwODkxNzllOWM5MjA2Y2ZlOCIsCiAgInByb2ZpbGVOYW1lIiA6ICJUaGVJbmRyYSIsCiAgInNpZ25hdHVyZVJlcXVpcmVkIiA6IHRydWUsCiAgInRleHR1cmVzIiA6IHsKICAgICJTS0lOIiA6IHsKICAgICAgInVybCIgOiAiaHR0cDovL3RleHR1cmVzLm1pbmVjcmFmdC5uZXQvdGV4dHVyZS83NDIxM2RjNmRjNGIxNjQxZGVmZDMzM2Y0YTQ3MzJjYzcxNGRkNjc3NzE4ZmExMGYxNDBhNjkzOWMxMmFhMzJiIgogICAgfQogIH0KfQ==";
 
 	/**
-	 * Classic Flawless gemstone player-head textures (pre–item-model NEU).
+	 * Classic Flawless gemstone player-head textures (pre-item-model NEU).
 	 * Modern gems are paper; these skull Values still render the familiar 3D cubes.
 	 */
 	private static final Map<String, String> FLAWLESS_GEM_SKULLS = Map.ofEntries(
@@ -365,6 +365,26 @@ public final class SkyBlockItemFactory {
 		ItemStack head = new ItemStack(Items.PLAYER_HEAD);
 		applySkullTextureValue(head, value, null);
 		return head;
+	}
+
+	public static ItemStack texturedHead(String value) {
+		if (value == null || value.isBlank()) {
+			return ItemStack.EMPTY;
+		}
+		ItemStack head = new ItemStack(Items.PLAYER_HEAD);
+		applySkullTextureValue(head, value, null);
+		return head;
+	}
+
+	public static ItemStack trophySkullStack(String id) {
+		if (id == null || id.isBlank()) {
+			return ItemStack.EMPTY;
+		}
+		String value = dev.vy.betterpv.client.data.TrophySkulls.value(id);
+		if (value == null || value.isBlank()) {
+			return new ItemStack(Items.PLAYER_HEAD);
+		}
+		return texturedHead(value);
 	}
 
 
@@ -832,7 +852,7 @@ public final class SkyBlockItemFactory {
 
 	/**
 	 * Resolve rarity from Hypixel items definitions, then NEU.
-	 * Cofl pet tags ({@code PET_JELLYFISH}) omit rarity — do not guess from {@code TYPE;n} NEU files.
+	 * Cofl pet tags ({@code PET_JELLYFISH}) omit rarity - do not guess from {@code TYPE;n} NEU files.
 	 */
 	public static String resolveTier(String skyblockId) {
 		if (skyblockId == null || skyblockId.isBlank()) {

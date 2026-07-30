@@ -33,15 +33,15 @@ public final class CrimsonPage {
 	private static final int FLIP_MS = 480;
 	private static final int SEP_GAP = 10;
 	private static final int PANEL_HOVER = 0x0AFFFFFF;
-	/** Mages — light purple. */
+	/** Mages - light purple. */
 	private static final int MAGE_COLOR = 0xFFD97FFF;
-	/** Barbarians — light red. */
+	/** Barbarians - light red. */
 	private static final int BARB_COLOR = 0xFFFF7777;
-	/** Kuudra — red. */
+	/** Kuudra - red. */
 	private static final int KUUDRA_COLOR = 0xFFFF5555;
-	/** Dojo — gold. */
+	/** Dojo - gold. */
 	private static final int DOJO_COLOR = 0xFFFFAA00;
-	/** Crimson essence shop header — red. */
+	/** Crimson essence shop header - red. */
 	private static final int SHOP_HEADER_COLOR = 0xFFFF5555;
 	private static final int ENABLED = 0xFF55FF55;
 	private static final int DISABLED = 0xFF555555;

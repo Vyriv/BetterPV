@@ -50,6 +50,10 @@ public final class HypixelItemsCache {
 		return items.get(itemId.toUpperCase(java.util.Locale.ROOT));
 	}
 
+	public static java.util.Collection<JsonObject> allItems() {
+		return items.values();
+	}
+
 	private static void refreshSafely() {
 		try {
 			refresh();

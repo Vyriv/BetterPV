@@ -69,7 +69,7 @@ public abstract class FontCosmeticsMixin {
 		if (text == null || !vypv$shouldDecorateRenderedText()) return text;
 		return vypv$decorateSafely(() -> {
 			FormattedCharSequence styled = text;
-			// Gradients first; only run chat-header pass when that feature has candidates.
+			// Gradients
 			if (NameStyler.hasGradientStyles()) {
 				styled = NameStyler.applyGradientToOrderedText(styled);
 			}

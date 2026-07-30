@@ -18,7 +18,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
-/** Events tab: Bingo / Chocolate Factory — layout matches Mining/Rift overviews. */
+/** Events tab: Bingo / Chocolate Factory - layout matches Mining/Rift overviews. */
 public final class EventsPage {
 	private static final int PAD = 6;
 	private static final int GAP = 6;
@@ -60,7 +60,7 @@ public final class EventsPage {
 		this.snapshot = snapshot == null ? EventsSnapshot.empty() : snapshot;
 		this.scroll = 0;
 		this.zones.clear();
-		// Fresh profile — bingo resources/history load lazily on Events tab.
+		// Fresh profile - bingo resources/history load lazily on Events tab.
 		if (this.bingoState == BingoLoadState.READY
 			&& (this.snapshot.bingo().currentGoals().isEmpty() && this.snapshot.bingo().history().isEmpty())) {
 			this.bingoState = BingoLoadState.IDLE;
@@ -94,7 +94,7 @@ public final class EventsPage {
 		return this.bingoState;
 	}
 
-	/** Resources present but {@code /skyblock/bingo} history missing — worth retrying. */
+	/** Resources present but {@code /skyblock/bingo} history missing - worth retrying. */
 	public boolean needsBingoHistory() {
 		return this.bingoState == BingoLoadState.READY && this.bingoHistoryMissing;
 	}
@@ -686,7 +686,7 @@ public final class EventsPage {
 	private static int statLine(
 		GuiGraphicsExtractor g, Font font, String label, String value, int x, int y, int w, int valueColor
 	) {
-		String safe = value == null || value.isBlank() ? "—" : value;
+		String safe = value == null || value.isBlank() ? "-" : value;
 		int leftMax = Math.max(8, w - font.width(safe) - 6);
 		PvDraw.text(g, font, trim(font, label, leftMax), x, y, PvDraw.COLOR_MUTED);
 		PvDraw.textRight(g, font, safe, x + w, y, valueColor);
@@ -717,7 +717,7 @@ public final class EventsPage {
 
 	private static String formatAgo(long epochMs) {
 		if (epochMs <= 0L) {
-			return "—";
+			return "-";
 		}
 		long age = Math.max(0L, System.currentTimeMillis() - epochMs);
 		return FormatUtil.prettySpan(age) + " ago";

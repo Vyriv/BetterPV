@@ -4,9 +4,14 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import dev.vy.betterpv.client.data.AuctionSnapshot;
+import dev.vy.betterpv.client.data.BestiarySnapshot;
 import dev.vy.betterpv.client.data.ColeWeight;
 import dev.vy.betterpv.client.data.CollectionSnapshot;
+import dev.vy.betterpv.client.data.CrimsonSnapshot;
 import dev.vy.betterpv.client.data.DungeonSnapshot;
+import dev.vy.betterpv.client.data.EventsSnapshot;
+import dev.vy.betterpv.client.data.FishingSnapshot;
+import dev.vy.betterpv.client.data.ForagingSnapshot;
 import dev.vy.betterpv.client.data.FormatUtil;
 import dev.vy.betterpv.client.data.GardenData;
 import dev.vy.betterpv.client.data.GardenSnapshot;
@@ -19,6 +24,7 @@ import dev.vy.betterpv.client.data.PlayerStatsCalculator;
 import dev.vy.betterpv.client.data.PlayerStatsSnapshot;
 import dev.vy.betterpv.client.data.ProfileSnapshot;
 import dev.vy.betterpv.client.data.RepoData;
+import dev.vy.betterpv.client.data.RiftSnapshot;
 import dev.vy.betterpv.client.dungeons.CataXpMath;
 import dev.vy.betterpv.client.dungeons.DungeonModifierScanner;
 import dev.vy.betterpv.client.dungeons.DungeonXpData;
@@ -76,6 +82,13 @@ public final class ProfileFetcher {
 		CollectionSnapshot collections,
 		GardenSnapshot garden,
 		MiningSnapshot mining,
+		ForagingSnapshot foraging,
+		FishingSnapshot fishing,
+		CrimsonSnapshot crimson,
+		RiftSnapshot rift,
+		BestiarySnapshot bestiary,
+		EventsSnapshot events,
+		JsonObject museumMember,
 		String profileId,
 		WeightBreakdown senither,
 		WeightBreakdown lily,
@@ -126,6 +139,13 @@ public final class ProfileFetcher {
 				CollectionSnapshot.empty(),
 				GardenSnapshot.empty(),
 				MiningSnapshot.empty(),
+				ForagingSnapshot.empty(),
+				FishingSnapshot.empty(),
+				CrimsonSnapshot.empty(),
+				RiftSnapshot.empty(),
+				BestiarySnapshot.empty(),
+				EventsSnapshot.empty(),
+				null,
 				null,
 				WeightBreakdown.empty(dev.vy.betterpv.client.weight.WeightSystem.SENITHER),
 				WeightBreakdown.empty(dev.vy.betterpv.client.weight.WeightSystem.LILY),
@@ -169,8 +189,6 @@ public final class ProfileFetcher {
 				CompletableFuture<Optional<JsonArray>> soldFut = CoflnetApiClient.playerAuctions(id.uuid(), 0);
 				CompletableFuture<Optional<JsonArray>> bidsFut = CoflnetApiClient.playerBids(id.uuid(), 0);
 
-				// The client can render the profile as soon as the local profile data is parsed.
-				// Keep the slower museum, election, auction, and Coflnet calls off this gate.
 				CompletableFuture<LoadedProfile> coreFuture = CompletableFuture.supplyAsync(
 					() -> parseHomeCore(id.name(), id.uuid(), root),
 					HypixelApiClient.parseExecutor()
@@ -269,7 +287,7 @@ public final class ProfileFetcher {
 		return best;
 	}
 
-	private static LoadedProfile fail(String name, String error) {
+	public static LoadedProfile failed(String name, String error) {
 		return new LoadedProfile(
 			ProfileSnapshot.loading(name),
 			DungeonSnapshot.empty(),
@@ -279,6 +297,13 @@ public final class ProfileFetcher {
 			CollectionSnapshot.empty(),
 			GardenSnapshot.empty(),
 			MiningSnapshot.empty(),
+			ForagingSnapshot.empty(),
+			FishingSnapshot.empty(),
+			CrimsonSnapshot.empty(),
+			RiftSnapshot.empty(),
+			BestiarySnapshot.empty(),
+			EventsSnapshot.empty(),
+			null,
 			null,
 			WeightBreakdown.empty(dev.vy.betterpv.client.weight.WeightSystem.SENITHER),
 			WeightBreakdown.empty(dev.vy.betterpv.client.weight.WeightSystem.LILY),
@@ -290,6 +315,10 @@ public final class ProfileFetcher {
 			PlayerStatsSnapshot.empty(),
 			error
 		);
+	}
+
+	private static LoadedProfile fail(String name, String error) {
+		return failed(name, error);
 	}
 
 	private static ItemStack[] emptyArmor() {
@@ -474,7 +503,6 @@ public final class ProfileFetcher {
 		InventorySnapshot inventories;
 		try {
 			inventories = InventoryDecoder.parseUi(member);
-			// Texture warm is slow; show the profile immediately and fill icons in the background.
 			dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory.warmAsync(inventories);
 		} catch (Exception exception) {
 			BetterPV.LOGGER.warn("Inventory decode failed for {}", name, exception);
@@ -510,10 +538,53 @@ public final class ProfileFetcher {
 			BetterPV.LOGGER.warn("Mining member parse failed for {}", name, exception);
 			mining = MiningSnapshot.empty();
 		}
+		ForagingSnapshot foraging;
+		try {
+			foraging = ForagingSnapshot.fromMember(member);
+		} catch (Exception exception) {
+			BetterPV.LOGGER.warn("Foraging member parse failed for {}", name, exception);
+			foraging = ForagingSnapshot.empty();
+		}
+		FishingSnapshot fishing;
+		try {
+			fishing = FishingSnapshot.fromMember(member);
+		} catch (Exception exception) {
+			BetterPV.LOGGER.warn("Fishing member parse failed for {}", name, exception);
+			fishing = FishingSnapshot.empty();
+		}
+		CrimsonSnapshot crimson;
+		try {
+			crimson = CrimsonSnapshot.fromMember(member);
+		} catch (Exception exception) {
+			BetterPV.LOGGER.warn("Crimson member parse failed for {}", name, exception);
+			crimson = CrimsonSnapshot.empty();
+		}
+		RiftSnapshot rift;
+		try {
+			rift = RiftSnapshot.fromMember(member);
+		} catch (Exception exception) {
+			BetterPV.LOGGER.warn("Rift member parse failed for {}", name, exception);
+			rift = RiftSnapshot.empty();
+		}
+		BestiarySnapshot bestiary;
+		try {
+			bestiary = BestiarySnapshot.fromMember(member);
+		} catch (Exception exception) {
+			BetterPV.LOGGER.warn("Bestiary member parse failed for {}", name, exception);
+			bestiary = BestiarySnapshot.empty();
+		}
+		EventsSnapshot events;
+		try {
+			events = EventsSnapshot.fromMember(member, root, uuid);
+		} catch (Exception exception) {
+			BetterPV.LOGGER.warn("Events member parse failed for {}", name, exception);
+			events = EventsSnapshot.empty();
+		}
 		BetterPV.LOGGER.info("Profile ready for {} (nw={})", name, nwText);
 		AuctionSnapshot auctionSnapshot = auctions == null ? AuctionSnapshot.empty() : auctions;
 		auctionSnapshot = auctionSnapshot.withStats(AuctionSnapshot.Stats.fromMember(member));
 		PlayerStatsSnapshot playerStats = PlayerStatsCalculator.fromMember(member, inventoryCategories);
+		crimson = crimson.withPlayerStats(playerStats);
 		return new LoadedProfile(
 			snapshot,
 			dungeons,
@@ -523,6 +594,13 @@ public final class ProfileFetcher {
 			collections,
 			garden,
 			mining,
+			foraging,
+			fishing,
+			crimson,
+			rift,
+			bestiary,
+			events,
+			museumMember,
 			profileId,
 			senither,
 			lily,
@@ -619,7 +697,6 @@ public final class ProfileFetcher {
 				: InventoryDecoder.parseCategories(member, museumMember);
 			mods = DungeonModifierScanner.scan(categories);
 		} catch (Exception ignored) {
-			// Inventory decode can fail on odd NBT; calc still works without gear mods.
 		}
 
 		double mayorFactor = CataXpMath.mayorXpFactor(electionRoot);
@@ -736,11 +813,10 @@ public final class ProfileFetcher {
 		return num == null ? 0D : num.doubleValue();
 	}
 
-	private static JsonObject findMuseumMember(JsonObject museumRoot, String profileId, String undashed) {
+	public static JsonObject findMuseumMember(JsonObject museumRoot, String profileId, String undashed) {
 		if (museumRoot == null) {
 			return null;
 		}
-		// Modern museum: { members: { uuid: {...} } } or per-profile nesting
 		JsonObject members = Leveling.obj(museumRoot.get("members"));
 		if (members != null) {
 			JsonObject direct = findMember(members, undashed);

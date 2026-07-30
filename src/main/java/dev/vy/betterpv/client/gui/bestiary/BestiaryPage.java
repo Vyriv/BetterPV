@@ -256,7 +256,7 @@ public final class BestiaryPage {
 		int n = families.size();
 		int sepTotal = Math.max(0, (n - 1) * DIST_SEP);
 		int fillW = Math.max(n, innerW - sepTotal);
-		// Equal segment widths — colour still encodes each family's completion.
+		// Equal segment widths - colour still encodes each family's completion.
 		int[] weights = new int[n];
 		for (int i = 0; i < n; i++) {
 			weights[i] = 1;
@@ -301,7 +301,7 @@ public final class BestiaryPage {
 			frac[i] = exact - Math.floor(exact);
 			assigned += out[i];
 		}
-		// If every segment got the 1px floor, we may overshoot — scale down largest.
+		// If every segment got the 1px floor, we may overshoot - scale down largest.
 		while (assigned > totalPx) {
 			int best = 0;
 			for (int i = 1; i < n; i++) {

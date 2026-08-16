@@ -5,7 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.vy.betterpv.BetterPV;
-import dev.vy.betterpv.client.api.WorkerSecrets;
+import dev.vy.betterpv.client.api.BetterPvSessionAuth;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -21,10 +21,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-/** Keyless Hypixel {@code resources/skyblock/collections} definitions. */
 public final class HypixelCollectionsCache {
 	private static final URI COLLECTIONS_URI = URI.create("https://api.vyriv.dev/hypixel/resources/skyblock/collections");
-	private static final String VYPV_AUTH_HEADER = "X-VyPV-Key";
 	private static final Duration TIMEOUT = Duration.ofSeconds(20);
 	private static final long REFRESH_HOURS = 12L;
 	private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
@@ -156,20 +154,27 @@ public final class HypixelCollectionsCache {
 
 	private static void refreshSafely() {
 		try {
-			refresh();
+			refresh(true);
 		} catch (Exception exception) {
 			BetterPV.LOGGER.warn("Failed to refresh Hypixel collections", exception);
 		}
 	}
 
-	private static void refresh() throws IOException, InterruptedException {
+	private static void refresh(boolean allowReauth) throws IOException, InterruptedException {
 		HttpRequest.Builder builder = HttpRequest.newBuilder(COLLECTIONS_URI).timeout(TIMEOUT).GET();
-		String secret = WorkerSecrets.HYPIXEL_WORKER_SECRET;
-		if (secret != null && !secret.isBlank()) {
-			builder.header(VYPV_AUTH_HEADER, secret);
+		if (!BetterPvSessionAuth.applyAuthHeaders(builder)) {
+			throw new IOException(BetterPvSessionAuth.userFacingFailure()
+				.orElse("Missing BetterPV credentials for Hypixel collections"));
 		}
-		HttpRequest request = builder.build();
-		HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
+		HttpResponse<String> response = HTTP.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+		if (response.statusCode() == 401) {
+			BetterPvSessionAuth.invalidate();
+			if (allowReauth) {
+				refresh(false);
+				return;
+			}
+			throw new IOException("Hypixel collections unauthorized after re-auth");
+		}
 		if (response.statusCode() < 200 || response.statusCode() >= 300) {
 			throw new IOException("Hypixel collections HTTP " + response.statusCode());
 		}

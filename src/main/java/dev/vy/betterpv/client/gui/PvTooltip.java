@@ -24,17 +24,11 @@ public final class PvTooltip {
 	private static final int DIVIDER_H = 7;
 
 	public enum Kind {
-		/** Left-aligned spans (titles, freeform notes). */
 		TEXT,
-		/** 1px {@link PvDraw#COLOR_DIVIDER} rule. */
 		DIVIDER,
-		/** Label left, primary value right-aligned, optional muted meta after value. */
 		ROW,
-		/** Full-width secondary / disclaimer text. */
 		META,
-		/** Click / interaction hint (italic, accent). */
 		ACTION,
-		/** Compact vertical spacer. */
 		BLANK
 	}
 
@@ -43,7 +37,6 @@ public final class PvTooltip {
 			text = text == null ? "" : text;
 		}
 
-		/** Compat: non-italic span. */
 		public Span(String text, int color, boolean bold) {
 			this(text, color, bold, false);
 		}
@@ -73,7 +66,6 @@ public final class PvTooltip {
 			meta = meta == null ? List.of() : List.copyOf(meta);
 		}
 
-		/** Backward-compatible text line from spans. */
 		public Line(List<Span> spans) {
 			this(Kind.TEXT, spans, List.of(), List.of());
 		}
@@ -130,7 +122,6 @@ public final class PvTooltip {
 			return new Line(Kind.ROW, label, value, meta);
 		}
 
-		/** All spans in draw order (compat for string dumps). */
 		public List<Span> spans() {
 			if (this.kind == Kind.ROW) {
 				List<Span> out = new ArrayList<>(this.left.size() + this.value.size() + this.meta.size());
@@ -248,9 +239,6 @@ public final class PvTooltip {
 	/**
 	 * Draw a styled tip; when {@code maxBodyH} is finite, content after the sticky header
 	 * (title + optional divider) scrolls by {@code scrollY}.
-	 *
-	 * @param maxScrollOut if non-null, receives the max scroll (px) for the body
-	 * @return max scroll for the body (0 if no scrolling)
 	 */
 	public static int drawStyled(
 		GuiGraphicsExtractor g,
@@ -342,7 +330,6 @@ public final class PvTooltip {
 		return maxScroll;
 	}
 
-	/** Center a single-line tip horizontally above {@code (cx, topY)}. */
 	public static void drawCenteredAbove(
 		GuiGraphicsExtractor g,
 		Font font,
@@ -364,7 +351,6 @@ public final class PvTooltip {
 		drawLegacyBox(g, font, List.of(line), x, y, boxW, boxH, pad, lineH, screenW, screenH);
 	}
 
-	/** Center a single-line tip vertically to the left of {@code (leftX, cy)}. */
 	public static void drawCenteredLeft(
 		GuiGraphicsExtractor g,
 		Font font,

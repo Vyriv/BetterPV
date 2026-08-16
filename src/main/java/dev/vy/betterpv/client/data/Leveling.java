@@ -52,7 +52,6 @@ public final class Leveling {
 				+ " to Level " + next;
 		}
 
-		/** Colored skill hover: name accent, XP gold. */
 		public List<PvTooltip.Line> skillHoverLines(String name) {
 			int lvl = (int) Math.floor(level);
 			String title = (name == null ? "?" : name) + " " + lvl;
@@ -86,7 +85,6 @@ public final class Leveling {
 			return name + " " + tier + " - " + FormatUtil.commas(into) + " / " + FormatUtil.commas(need) + " XP";
 		}
 
-		/** Colored slayer XP line: name accent, XP gold. */
 		public List<PvTooltip.Line> slayerHoverLines(String name) {
 			int tier = (int) Math.floor(level);
 			String title = (name == null ? "?" : name) + " " + tier;
@@ -138,7 +136,6 @@ public final class Leveling {
 			return sb.toString();
 		}
 
-		/** Colored XP + muted kill lines for Home slayer bars. */
 		public List<PvTooltip.Line> slayerHoverLinesWithKills(String name, String slayerId, int[] tierKills) {
 			List<PvTooltip.Line> lines = new ArrayList<>(slayerHoverLines(name));
 			if (tierKills != null && tierKills.length > 0) {
@@ -209,7 +206,6 @@ public final class Leveling {
 		return new Progress(capped, 0, true, levelCap, xp, 0, Math.max(0F, xp - xpToCap));
 	}
 
-	/** XP required to reach {@code levelCap} (non-cumulative = sum of steps; cumulative = table value). */
 	public static float xpRequiredForLevel(JsonArray table, int levelCap, boolean cumulative) {
 		if (table == null || table.isEmpty() || levelCap <= 0) {
 			return 0F;
@@ -260,7 +256,6 @@ public final class Leveling {
 		return xp == null ? 0F : xp;
 	}
 
-	/** Boss JSON under {@code slayer.slayer_bosses.<id>} (or legacy root). */
 	public static JsonObject slayerBossObject(JsonObject member, String slayer) {
 		if (member == null || slayer == null) {
 			return null;

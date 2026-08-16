@@ -31,7 +31,6 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
-/** Critter Safari subtab: tickets / biomes left, discovered critters grid right. */
 public final class SafariPage {
 	private static final String[] TICKET_ORDER = { "basic", "economy", "premium", "first_class" };
 	private static final String[] BIOME_ORDER = { "forest", "cavern", "haunted", "icy", "desert" };

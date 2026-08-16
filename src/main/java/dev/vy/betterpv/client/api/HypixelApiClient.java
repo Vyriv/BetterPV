@@ -21,13 +21,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/**
- * Hypixel SkyBlock API access via the shared Vyriv API
- * ({@code /hypixel/skyblock/...}).
- */
 public final class HypixelApiClient {
 	private static final String WORKER_BASE = "https://api.vyriv.dev";
-	private static final String WORKER_HYPIXEL_HEADER = "X-VyPV-Key";
 	private static final URI MOJANG_PROFILE = URI.create("https://api.mojang.com/users/profiles/minecraft/");
 	private static final URI MOJANG_SESSION = URI.create("https://sessionserver.mojang.com/session/minecraft/profile/");
 	private static final Duration TIMEOUT = Duration.ofSeconds(12);
@@ -98,7 +93,6 @@ public final class HypixelApiClient {
 		}, EXECUTOR);
 	}
 
-	/** UUID → current Minecraft username (keyless Mojang session server). */
 	public static CompletableFuture<Optional<UuidName>> resolveName(UUID uuid) {
 		if (uuid == null) {
 			return CompletableFuture.completedFuture(Optional.empty());
@@ -159,7 +153,6 @@ public final class HypixelApiClient {
 		);
 	}
 
-	/** Player auctions (Active). Requires API key / worker. */
 	public static CompletableFuture<Optional<JsonObject>> skyblockAuction(UUID uuid) {
 		String id = undashed(uuid);
 		return CompletableFuture.supplyAsync(
@@ -171,7 +164,6 @@ public final class HypixelApiClient {
 		);
 	}
 
-	/** SkyBlock garden island by profile id (lazy; not on initial PV load). */
 	public static CompletableFuture<Optional<JsonObject>> skyblockGarden(String profileId) {
 		if (profileId == null || profileId.isBlank()) {
 			return CompletableFuture.completedFuture(Optional.empty());
@@ -197,7 +189,6 @@ public final class HypixelApiClient {
 		);
 	}
 
-	/** Hypixel player object (ranks, displayname, …). */
 	public static CompletableFuture<Optional<JsonObject>> player(UUID uuid) {
 		String id = undashed(uuid);
 		JsonObject cached = PLAYER_CACHE.get(id);
@@ -224,7 +215,6 @@ public final class HypixelApiClient {
 		);
 	}
 
-	/** Hypixel guild for a player uuid. */
 	public static CompletableFuture<Optional<JsonObject>> guild(UUID uuid) {
 		String id = undashed(uuid);
 		return CompletableFuture.supplyAsync(
@@ -236,7 +226,6 @@ public final class HypixelApiClient {
 		);
 	}
 
-	/** SkyBlock election / current mayor. Resources endpoint; no API key required. */
 	public static CompletableFuture<Optional<JsonObject>> skyblockElection() {
 		return CompletableFuture.supplyAsync(() -> {
 			waitForSlot();
@@ -244,7 +233,6 @@ public final class HypixelApiClient {
 		}, EXECUTOR);
 	}
 
-	/** Current Bingo event goals. Resources endpoint; worker cached. */
 	public static CompletableFuture<Optional<JsonObject>> skyblockBingoResources() {
 		return CompletableFuture.supplyAsync(() -> {
 			waitForSlot();
@@ -252,7 +240,6 @@ public final class HypixelApiClient {
 		}, EXECUTOR);
 	}
 
-	/** Player Bingo event history. */
 	public static CompletableFuture<Optional<JsonObject>> skyblockBingo(UUID uuid) {
 		String id = undashed(uuid);
 		return CompletableFuture.supplyAsync(
@@ -275,15 +262,35 @@ public final class HypixelApiClient {
 	}
 
 	private static Optional<JsonObject> getJson(String url) {
+		return getJson(url, true);
+	}
+
+	private static Optional<JsonObject> getJson(String url, boolean allowReauth) {
 		try {
 			HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url)).timeout(TIMEOUT).GET();
-			if (url != null && url.startsWith(WORKER_BASE) && url.contains("/hypixel/")) {
-				String secret = WorkerSecrets.HYPIXEL_WORKER_SECRET;
-				if (secret != null && !secret.isBlank()) {
-					builder.header(WORKER_HYPIXEL_HEADER, secret);
-				}
+			boolean needsProxyAuth = url != null && url.startsWith(WORKER_BASE) && url.contains("/hypixel/");
+			if (needsProxyAuth && !BetterPvSessionAuth.applyAuthHeaders(builder)) {
+				BetterPV.LOGGER.warn(
+					"Hypixel GET {} skipped: {}",
+					url,
+					BetterPvSessionAuth.userFacingFailure().orElse("missing BetterPV credentials")
+				);
+				BetterPvSessionAuth.notifyPlayerIfNeeded();
+				return Optional.empty();
 			}
 			HttpResponse<String> response = HTTP.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+			if (response.statusCode() == 401 && needsProxyAuth) {
+				BetterPvSessionAuth.invalidate();
+				if (allowReauth) {
+					return getJson(url, false);
+				}
+				BetterPV.LOGGER.warn("Hypixel GET {} unauthorized after re-auth", url);
+				return Optional.empty();
+			}
+			if (response.statusCode() == 503 && needsProxyAuth) {
+				BetterPV.LOGGER.warn("Hypixel GET {} session auth unavailable (503)", url);
+				return Optional.empty();
+			}
 			if (response.statusCode() < 200 || response.statusCode() >= 300 || response.body() == null || response.body().isBlank()) {
 				BetterPV.LOGGER.warn("Hypixel GET {} failed status={}", url, response.statusCode());
 				return Optional.empty();
@@ -341,7 +348,6 @@ public final class HypixelApiClient {
 	}
 
 	
-	/** Hypixel online status ({@code /v2/status}) via Vyriv API. */
 	public static CompletableFuture<Optional<JsonObject>> status(UUID uuid) {
 		String id = undashed(uuid);
 		return CompletableFuture.supplyAsync(() -> {

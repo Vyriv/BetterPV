@@ -19,7 +19,6 @@ import net.minecraft.world.item.Items;
 
 import static dev.vy.betterpv.client.gui.garden.GardenUi.*;
 
-/** Garden overview subpage. */
 public final class GardenOverviewPage {
 	private int scroll;
 	private int maxScroll;
@@ -80,32 +79,34 @@ public final class GardenOverviewPage {
 			PvDraw.text(g, font, "Garden chips", lx, ly, PvDraw.COLOR_MUTED);
 			ly += font.lineHeight + 3;
 			int cols = Math.min(5, Math.max(4, (lw + CHIP_GAP) / (CHIP_CELL + CHIP_GAP)));
-			int cellH = CHIP_CELL + font.lineHeight + 2;
+			int rowsNeeded = Math.max(1, (chips.size() + cols - 1) / cols);
+			// Leave room for farming toolkit below; shrink row height so every chip fits (do not clip to 1 row).
+			int toolkitReserve = 52;
+			int avail = Math.max(CHIP_CELL + font.lineHeight + 2, (y + h - PAD - toolkitReserve) - ly);
+			int naturalCellH = CHIP_CELL + font.lineHeight + 2;
+			int cellH = Math.min(naturalCellH, Math.max(CHIP_CELL + 2, (avail - (rowsNeeded - 1) * CHIP_GAP) / rowsNeeded));
+			int iconSize = Math.min(ICON, Math.max(10, cellH - font.lineHeight - 2));
 			int gridW = cols * CHIP_CELL + (cols - 1) * CHIP_GAP;
 			int gridX = lx + Math.max(0, (lw - gridW) / 2);
-			int bottom = y + h - PAD;
 			for (int i = 0; i < chips.size(); i++) {
 				int col = i % cols;
 				int row = i / cols;
 				int bx = gridX + col * (CHIP_CELL + CHIP_GAP);
 				int by = ly + row * (cellH + CHIP_GAP);
-				if (by + cellH > bottom) {
-					break;
-				}
 				GardenSnapshot.ChipEntry chip = chips.get(i);
-				GardenUi.drawCellBorder(g, bx, by, CHIP_CELL, CHIP_CELL);
-				int iconX = bx + (CHIP_CELL - ICON) / 2;
-				int iconY = by + (CHIP_CELL - ICON) / 2;
-				GardenUi.drawIcon(g, chip.iconId(), iconX, iconY, ICON, chipPackModel(chip.id()));
+				GardenUi.drawCellBorder(g, bx, by, CHIP_CELL, Math.min(CHIP_CELL, cellH - font.lineHeight));
+				int iconX = bx + (CHIP_CELL - iconSize) / 2;
+				int iconY = by + Math.max(0, (Math.min(CHIP_CELL, cellH - font.lineHeight) - iconSize) / 2);
+				GardenUi.drawIcon(g, chip.iconId(), iconX, iconY, iconSize, chipPackModel(chip.id()));
 				String lvl = String.valueOf(chip.level());
-				PvDraw.text(g, font, lvl, bx + (CHIP_CELL - font.width(lvl)) / 2, by + CHIP_CELL + 1, PvDraw.COLOR_ACCENT);
+				int lvlY = by + Math.min(CHIP_CELL, cellH - font.lineHeight) + 1;
+				PvDraw.text(g, font, lvl, bx + (CHIP_CELL - font.width(lvl)) / 2, lvlY, PvDraw.COLOR_ACCENT);
 				ui.zones.add(new GardenUi.HoverZone(bx, by, CHIP_CELL, cellH, List.of(
 					PvTooltip.Line.of(chip.name(), PvDraw.COLOR_TEXT),
 					PvTooltip.Line.of("Level " + chip.level(), PvDraw.COLOR_ACCENT)
 				)));
 			}
-			int chipRows = (chips.size() + cols - 1) / cols;
-			ly += chipRows * (cellH + CHIP_GAP) + 4;
+			ly += rowsNeeded * (cellH + CHIP_GAP) + 4;
 		}
 
 		drawFarmingToolkit(snap, ui, g, font, lx, ly, lw, y + h - PAD, mx, my);

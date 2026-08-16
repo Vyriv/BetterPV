@@ -165,8 +165,6 @@ public final class InventoryDecoder {
 		return out;
 	}
 
-	/** Structured inventories for the Inventories tab (keeps empty slots / pages). */
-	/** Decode a single auction {@code item_bytes} blob into a UI slot (or null). */
 	public static InventorySnapshot.Slot slotFromItemBytes(JsonElement itemBytes) {
 		List<Stack> decoded = decodeDataElement(itemBytes);
 		if (decoded.isEmpty()) {
@@ -175,7 +173,6 @@ public final class InventoryDecoder {
 		return toUiSlot(decoded.get(0));
 	}
 
-	/** Minimal slot from a SkyBlock item tag (Coflnet history rows). */
 	public static InventorySnapshot.Slot slotFromTag(String tag, String displayName) {
 		return slotFromTag(tag, displayName, "");
 	}

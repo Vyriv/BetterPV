@@ -7,7 +7,6 @@ import dev.vy.betterpv.client.data.RepoData;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Loaded from {@code assets/betterpv/data/dungeons_xp.json}. */
 public final class DungeonXpData {
 	public record FloorDef(
 		String id,

@@ -38,6 +38,14 @@ stonecutter parameters {
 				"client\\.gui\\.getChat\\(\\)" to "client.gui.hud.getChat()",
 				"client\\.gui\\.hud\\.getChat\\(\\)" to "client.gui.getChat()"
 			)
+			replace(
+				"mc\\.gui\\.getChat\\(\\)" to "mc.gui.hud.getChat()",
+				"mc\\.gui\\.hud\\.getChat\\(\\)" to "mc.gui.getChat()"
+			)
+			replace(
+				"minecraft\\.gui\\.getChat\\(\\)" to "minecraft.gui.hud.getChat()",
+				"minecraft\\.gui\\.hud\\.getChat\\(\\)" to "minecraft.gui.getChat()"
+			)
 
 			// 26.2 collapsed per-color dye constants into Items.DYE : ColorCollection<Item>.
 			// Match longer ids first (LIGHT_GRAY before GRAY).

@@ -7,7 +7,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Estimates class XP/run and runs to a target class level. */
 public final class ClassXpCalculator {
 	/**
 	 * Off-class share used by Adjectils / common RTCA sims ({@code selectedRate / 4}).
@@ -35,7 +34,6 @@ public final class ClassXpCalculator {
 	public record ClassRuns(String classId, String className, int currentLevel, long selectedRuns) {
 	}
 
-	/** Equal-runs RTCA: selected runs per class so all reach the target level XP. */
 	public record AverageResult(
 		int targetLevel,
 		String floorLabel,

@@ -9,7 +9,6 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NumericTag;
 import net.minecraft.nbt.Tag;
 
-/** Scans decoded inventories for dungeon XP modifiers. */
 public final class DungeonModifierScanner {
 	public record Mods(boolean expertRing, int hecatombLevel, double scarfBonus) {
 		public static Mods none() {
@@ -87,7 +86,6 @@ public final class DungeonModifierScanner {
 		return attrs == null ? null : num(attrs.get(key));
 	}
 
-	/** Essence-shop class XP perk levels (each level = +2%, max typically 5 → +10%). */
 	public static Map<String, Double> readEssenceClassBonuses(com.google.gson.JsonObject member) {
 		Map<String, Double> out = new HashMap<>();
 		com.google.gson.JsonObject dungeons = LevelingObj(member);

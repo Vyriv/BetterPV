@@ -5,7 +5,6 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
-/** Top-level PV pages. */
 public enum PvTab {
 	HOME(Items.PAPER, "betterpv.tab.home"),
 	DUNGEONS(Items.SKELETON_SKULL, "betterpv.tab.dungeons"),
@@ -95,7 +94,6 @@ public enum PvTab {
 		return this == MUSEUM;
 	}
 
-	/** Left-edge tabs for this page (sub modes + museum sorts). */
 	public Object[] leftTabs() {
 		if (this == MUSEUM) {
 			return MuseumSort.values();

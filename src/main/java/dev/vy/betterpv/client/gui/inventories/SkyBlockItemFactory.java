@@ -46,11 +46,6 @@ import net.minecraft.world.item.component.DyedItemColor;
 import net.minecraft.world.item.component.ItemLore;
 import net.minecraft.world.item.component.ResolvableProfile;
 
-/**
- * SkyBlock id → renderable {@link ItemStack}.
- * Prefers NotEnoughUpdates-REPO ({@code itemid} + {@code nbttag} skull/leather),
- * falls back to Hypixel items material.
- */
 public final class SkyBlockItemFactory {
 	private static final Pattern SKULL_VALUE = Pattern.compile(
 		"Value\\s*:\\s*\"([^\"]+)\"",
@@ -99,7 +94,6 @@ public final class SkyBlockItemFactory {
 		SkyBlockItemIconCache.clear();
 	}
 
-	/** Dynamic texture for paper/custom-model items (trophy fish, Magma Chunk, …). */
 	public static Identifier customIcon(String skyblockId) {
 		if (skyblockId == null || skyblockId.isBlank()) {
 			return null;
@@ -113,7 +107,6 @@ public final class SkyBlockItemFactory {
 		return SkyBlockItemIconCache.getOrRequest(model);
 	}
 
-	/** Force a known hypixel_skyblock item model path (e.g. greenhouse pack textures). */
 	public static Identifier customIconModel(String skyblockId, String itemModel) {
 		if (itemModel == null || itemModel.isBlank()) {
 			return customIcon(skyblockId);
@@ -297,10 +290,6 @@ public final class SkyBlockItemFactory {
 		}
 	}
 
-	/**
-	 * Pane / nav icon for a SkyBlock item id (NEU skull, else Hypixel {@code skin}).
-	 * Returns a copy; never empty when {@code skyblockId} is non-blank (falls back to paper).
-	 */
 	public static ItemStack iconStack(String skyblockId) {
 		if (skyblockId == null || skyblockId.isBlank()) {
 			return ItemStack.EMPTY;
@@ -346,9 +335,6 @@ public final class SkyBlockItemFactory {
 		Map.entry("PERIDOT", "ewogICJ0aW1lc3RhbXAiIDogMTcwNzY0MjI2OTYzMSwKICAicHJvZmlsZUlkIiA6ICIxZDIyYmUxYmQ2YTM0NWQ0OTI0Nzc4YmM4YWFlMjYzMCIsCiAgInByb2ZpbGVOYW1lIiA6ICJNQVJTX0hYIiwKICAic2lnbmF0dXJlUmVxdWlyZWQiIDogdHJ1ZSwKICAidGV4dHVyZXMiIDogewogICAgIlNLSU4iIDogewogICAgICAidXJsIiA6ICJodHRwOi8vdGV4dHVyZXMubWluZWNyYWZ0Lm5ldC90ZXh0dXJlLzE4ODRhOGRjYjcxMjgzNDFjZTA5Y2IzNjE2YzExYzNlNDZmODBkMDgzYTZmMmRiYjRkYmUwYmI5MzIzMThiMDkiCiAgICB9CiAgfQp9")
 	);
 
-	/**
-	 * Classic Flawless gemstone player head (3D cube). {@code gem} is e.g. {@code JADE}, {@code RUBY}.
-	 */
 	public static ItemStack gemstoneHead(String gem) {
 		if (gem == null || gem.isBlank()) {
 			return ItemStack.EMPTY;
@@ -924,7 +910,6 @@ public final class SkyBlockItemFactory {
 		};
 	}
 
-	/** ARGB colour for a SkyBlock rarity tier name. */
 	public static int tierArgb(String tier) {
 		String key = normalizeTier(tier);
 		if (key.isBlank()) {
@@ -944,7 +929,6 @@ public final class SkyBlockItemFactory {
 		};
 	}
 
-	/** Resolve rarity tier from NEU (or empty). */
 	public static String neuTier(String skyblockId) {
 		JsonObject neu = neuItem(skyblockId);
 		if (neu == null) {
@@ -988,7 +972,6 @@ public final class SkyBlockItemFactory {
 		return "";
 	}
 
-	/** Normalize rarity labels ({@code Very Special} → {@code VERY_SPECIAL}). */
 	public static String normalizeTier(String tier) {
 		if (tier == null || tier.isBlank()) {
 			return "";
@@ -1056,7 +1039,6 @@ public final class SkyBlockItemFactory {
 		return "";
 	}
 
-	/** Plain display name (no § codes) from NEU / Hypixel / pretty id. */
 	public static String plainDisplayName(String skyblockId) {
 		if (skyblockId == null || skyblockId.isBlank()) {
 			return "";
@@ -1460,12 +1442,10 @@ public final class SkyBlockItemFactory {
 		return out.toString();
 	}
 
-	/** Parse Hypixel/NEU §-legacy strings into styled components. */
 	public static Component legacyLine(String text) {
 		return legacyText(text);
 	}
 
-	/** Parse Hypixel/NEU §-legacy strings into styled components. */
 	private static Component legacyText(String text) {
 		if (text == null || text.isEmpty()) {
 			return Component.empty();

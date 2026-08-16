@@ -33,6 +33,22 @@ Run a specific version:
 .\gradlew.bat :26.1.2:runClient
 .\gradlew.bat :26.2:runClient
 ```
- 
- ## About
- BetterPV is developed and maintained by **vyriv** (Minecraft IGN: `catgirllivid` / `vyriv`).
+
+A public clone builds with no secrets. Hypixel proxy routes authenticate with a
+Minecraft session proof (`joinServer` locally → `POST /hypixel/auth` with
+`username` + `serverId` only → short-lived `Authorization: Bearer` JWT). The
+Minecraft access token is never sent to `api.vyriv.dev`. The client is
+JWT-only (no static `X-VyPV-Key` path).
+
+### Offline / Fabric runClient
+Default Loom `runClient` uses an offline `Player###` session (`FabricMC` token).
+That cannot complete Mojang `joinServer` / `hasJoined`, so **`/pv` cannot work
+there**. Test `/pv` from a real Microsoft-authenticated Minecraft launcher
+instance instead. BetterPV shows a clear chat error when offline session proof
+is impossible.
+
+If the API returns session-auth unavailable (missing
+`BETTERPV_SESSION_SIGNING_SECRET` in Coolify), BetterPV shows that in chat.
+
+## About
+BetterPV is developed and maintained by **vyriv** (Minecraft IGN: `catgirllivid` / `vyriv`).

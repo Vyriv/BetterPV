@@ -7,15 +7,10 @@ import dev.vy.betterpv.client.data.Leveling;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Wither / Undead essence shop progress from {@code player_data.perks}.
- * Perk lists match NEU {@code essenceshops.json} (class XP shops are separate).
- */
 public final class EssenceShopData {
 	private record Def(String id, String name, int maxLevel, String... aliasIds) {
 	}
 
-	/** Six Forbidden upgrades in the Wither Essence Shop. */
 	private static final List<Def> WITHER = List.of(
 		new Def("permanent_health", "Health", 5),
 		new Def("permanent_defense", "Defense", 5),
@@ -25,7 +20,6 @@ public final class EssenceShopData {
 		new Def("forbidden_blessing", "Blessing", 10)
 	);
 
-	/** Undead Essence Shop (Catacombs-only). */
 	private static final List<Def> UNDEAD = List.of(
 		new Def("catacombs_boss_luck", "Boss Luck", 4),
 		new Def("catacombs_looting", "Looting", 5),
@@ -37,7 +31,6 @@ public final class EssenceShopData {
 		new Def("catacombs_crit_damage", "Crit", 5)
 	);
 
-	/** Gold Essence Shop (Dwarven Mines / Crystal Hollows). */
 	private static final List<Def> GOLD = List.of(
 		new Def("heart_of_gold", "Heart of Gold", 5),
 		new Def("treasures_of_the_earth", "Treasure of the Earth", 5),
@@ -47,7 +40,6 @@ public final class EssenceShopData {
 		new Def("midas_lure", "Midas Lure", 10)
 	);
 	
-	/** Crimson Essence Shop (NEU ESSENCE_CRIMSON). */
 	private static final List<Def> CRIMSON = List.of(
 		new Def("strongarm_kuudra", "Strongarm", 2),
 		new Def("fresh_tools_kuudra", "Fresh Tools", 5),
@@ -59,7 +51,6 @@ public final class EssenceShopData {
 		new Def("wither_piper", "Wither Piper", 5)
 	);
 
-	/** Forest Essence Shop (Foraging) — NEU ESSENCE_FOREST. */
 	private static final List<Def> FOREST = List.of(
 		new Def("trapped", "Trapped", 5),
 		new Def("axed", "Axed", 1),
@@ -69,7 +60,6 @@ public final class EssenceShopData {
 		new Def("forest_training", "Forest Training", 3)
 	);
 
-	/** Fossil Essence Shop (Glacite / mineshafts) — NEU ESSENCE_FOSSIL. */
 	private static final List<Def> FOSSIL = List.of(
 		new Def("prehistorian", "Prehistorian", 10),
 		new Def("resourceful", "Resourceful", 5),
@@ -79,7 +69,6 @@ public final class EssenceShopData {
 		new Def("cut_loose", "Cut Loose", 5)
 	);
 
-	/** Diamond Essence Shop. */
 	private static final List<Def> DIAMOND = List.of(
 		new Def("radiant_fisher", "Radiant Fisher", 10),
 		new Def("diamond_in_the_rough", "Diamond in the Rough", 5),
@@ -89,7 +78,6 @@ public final class EssenceShopData {
 		new Def("return_to_sender", "Return to Sender", 10)
 	);
 
-	/** Spider Essence Shop (NEU ESSENCE_SPIDER). */
 	private static final List<Def> SPIDER = List.of(
 		new Def("empowered_agility", "Empowered Agility", 10),
 		new Def("vermin_control", "Vermin Control", 5),
@@ -98,7 +86,6 @@ public final class EssenceShopData {
 		new Def("toxophilite", "Toxophilite", 5)
 	);
 
-	/** Dragon Essence Shop (NEU ESSENCE_DRAGON). */
 	private static final List<Def> DRAGON = List.of(
 		new Def("flat_damage_vs_ender", "One Punch", 5),
 		new Def("mana_after_ender_kill", "Recharge", 10),
@@ -111,7 +98,6 @@ public final class EssenceShopData {
 		new Def("unbridled_rage", "Unbridled Rage", 5)
 	);
 
-	/** Ice Essence Shop (NEU ESSENCE_ICE). */
 	private static final List<Def> ICE = List.of(
 		new Def("cold_efficiency", "Cold Efficiency", 5),
 		new Def("cooled_forges", "Cooled Forges", 5),
@@ -120,7 +106,6 @@ public final class EssenceShopData {
 		new Def("drake_piper", "Drake Piper", 1)
 	);
 
-	/** Safari Essence Shop (Archie / Critter Safari). */
 	private static final List<Def> SAFARI = List.of(
 		new Def("critter_catcher", "Critter Catcher", 8),
 		new Def("critter_master", "Critter Master", 1),

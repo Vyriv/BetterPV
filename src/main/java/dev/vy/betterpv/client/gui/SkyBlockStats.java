@@ -7,7 +7,6 @@ import java.util.Map;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 
-/** Hypixel-style SkyBlock stat symbols / colours and power-stone name colours. */
 public final class SkyBlockStats {
 	private static final Map<String, StatStyle> STATS = Map.ofEntries(
 		Map.entry("health", new StatStyle("❤", 0xFFFF5555)),
@@ -100,7 +99,6 @@ public final class SkyBlockStats {
 		return tuningStats(stats);
 	}
 
-	/** Stat chips only (no preset index) - used by loadouts. */
 	public static Component tuningStats(java.util.List<InventorySnapshot.StatPoint> stats) {
 		MutableComponent out = Component.empty();
 		if (stats == null || stats.isEmpty()) {

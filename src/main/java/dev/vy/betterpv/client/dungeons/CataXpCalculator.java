@@ -5,7 +5,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
-/** Estimates Catacombs XP/run and runs to a target level for the best unlocked floors. */
 public final class CataXpCalculator {
 	public record FloorEstimate(String id, String label, boolean master, long xpPerRun, long runsNeeded, long completions) {
 	}

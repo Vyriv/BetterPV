@@ -5,9 +5,6 @@ import dev.vy.betterpv.client.gui.PvTooltip;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * UI-facing profile snapshot. Starts as loading placeholder, then filled from Hypixel.
- */
 public final class ProfileSnapshot {
 	public record SkillEntry(
 		String id,

@@ -1,6 +1,7 @@
 package dev.vy.betterpv.client.gui;
 
 import dev.vy.betterpv.client.api.EliteBotApiClient;
+import dev.vy.betterpv.client.api.BetterPvSessionAuth;
 import dev.vy.betterpv.client.api.HypixelApiClient;
 import dev.vy.betterpv.client.api.ProfileFetcher;
 import com.google.gson.JsonArray;
@@ -60,7 +61,6 @@ public final class ProfileViewerScreen extends Screen {
 	private static final int PAD = 8;
 	private static final int SEARCH_H = 16;
 	private static final int SEARCH_GAP = 4;
-	/** Open expand animation duration (ms). */
 	private static final long OPEN_ANIM_MS = 260L;
 	private static final float OPEN_SCALE_START = 0.12F;
 
@@ -114,7 +114,6 @@ public final class ProfileViewerScreen extends Screen {
 	private Component bestiaryCategoryTip;
 	private int bestiaryCategoryTipX;
 	private int bestiaryCategoryTipY;
-	/** Built once; click handlers only mutate tab selection. */
 	private List<IconButtonBar.Entry> topTabEntries;
 	private PvTab cachedSideTab;
 	private List<IconButtonBar.Entry> sideTabEntries = List.of();
@@ -226,10 +225,13 @@ public final class ProfileViewerScreen extends Screen {
 						: "Profile fetch failed";
 					displayed = ProfileFetcher.failed(this.requestedName, message);
 				}
-				applyLoadedProfile(displayed);
 				if (!displayed.ok()) {
 					BetterPV.LOGGER.warn("Profile fetch failed for {}: {}", this.requestedName, displayed.error());
+					BetterPvSessionAuth.notifyPlayerIfNeeded();
+					// Stay on the loading face (easter egg) instead of an empty template.
+					return;
 				}
+				applyLoadedProfile(displayed);
 				this.dataReady = true;
 			});
 		});
@@ -304,20 +306,16 @@ public final class ProfileViewerScreen extends Screen {
 		this.sideBar.clearHits();
 		this.inventoryBar.clearHits();
 
-		// Always reserve tab gutters so the frame never jumps between tabs.
 		int topRoom = IconButtonBar.TAB + 4;
 		int leftRoom = IconButtonBar.TAB + 4;
 
 		int panelW = Math.min(520, Math.max(420, this.width - 80 - leftRoom));
-		// One height for every tab: fit Home content tightly (no empty border), never retarget per-tab.
 		int contentH = this.homePage.preferredHeight(this.font, panelW - PAD * 2);
 		if (this.tab == PvTab.HOME && activeSub(PvSubTab.HOME_OVERVIEW) == PvSubTab.HOME_MISC) {
 			contentH = Math.max(contentH, 220);
 		}
 		int maxPanelH = Math.max(200, this.height - topRoom - 24);
 		int panelH = Math.min(maxPanelH, Math.max(200, contentH + PAD * 2));
-		// Never grow the panel for left subtabs (Museum sorts, etc.) — IconButtonBar
-		// shrinks tab size / gaps to fit panelH instead.
 
 		int panelX = (this.width - panelW) / 2 + leftRoom / 2;
 		int panelY = (this.height - panelH - topRoom) / 2 + topRoom;
@@ -359,10 +357,8 @@ public final class ProfileViewerScreen extends Screen {
 				);
 			}
 
-			// Content uses the full panel - nothing reserved inside for subtabs.
 			renderBody(graphics, panelX + PAD, panelY + PAD, panelW - PAD * 2, panelH - PAD * 2, mouseX, mouseY, delta);
 
-			// Profile name floats just under the outer menu's bottom-left corner.
 			String profileName = this.homePage.profileName();
 			ProfileFetcher.ProfileChoice selectedChoice = selectedProfileChoice();
 			String modeLabel = selectedChoice == null ? "" : selectedChoice.gameModeLabel();
@@ -412,7 +408,6 @@ public final class ProfileViewerScreen extends Screen {
 				this.dungeonPage.renderOverlay(graphics, this.font, this.width, this.height, mouseX, mouseY);
 			}
 
-			// Inventory / bestiary tips last so they paint above pane buttons / frame tabs.
 			if (this.tab.isInventorySplit()) {
 				this.inventoryPage.renderTooltip(graphics, this.font, mouseX, mouseY, this.width, this.height);
 				if (this.inventoryPaneTip != null) {
@@ -567,7 +562,6 @@ public final class ProfileViewerScreen extends Screen {
 		return this.sideTabEntries;
 	}
 
-	/** Shared chrome before standard full-body pages (not inventory/bestiary split layouts). */
 	private void prepareStandardBody() {
 		hideInventorySearch();
 		this.dungeonPage.blurField();
@@ -683,7 +677,6 @@ public final class ProfileViewerScreen extends Screen {
 	}
 
 	private void renderInventorySplit(GuiGraphicsExtractor g, int x, int y, int w, int h, int mouseX, int mouseY, float delta) {
-		// Top strip is decorative only - empty header panel, not a search field.
 		PvDraw.fill(g, x, y, w, SEARCH_H, 0xFF101018);
 		g.outline(x, y, w, SEARCH_H, PvDraw.COLOR_BORDER);
 
@@ -691,7 +684,6 @@ public final class ProfileViewerScreen extends Screen {
 		int bodyH = h - SEARCH_H - SEARCH_GAP;
 
 		InventoryPane[] panes = InventoryPane.values();
-		// Row widths top→bottom: 5, 5, 3 (13 panes).
 		int[] rowWidths = {5, 5, 3};
 		int btn = 22;
 		int btnGap = 14;
@@ -720,7 +712,6 @@ public final class ProfileViewerScreen extends Screen {
 		PvDraw.innerPanel(g, rightX, bodyY, rightW, bodyH);
 
 		int startX = rightX + (rightW - gridW) / 2;
-		// Buttons pinned near the top of the right panel.
 		int startY = bodyY + pad;
 
 		int index = 0;
@@ -766,7 +757,6 @@ public final class ProfileViewerScreen extends Screen {
 			}
 		}
 
-		// Real search field near the bottom of the right panel.
 		int searchBoxY = bodyY + bodyH - pad - SEARCH_H;
 		int searchBoxX = rightX + pad;
 		int searchBoxW = rightW - pad * 2;
@@ -792,8 +782,6 @@ public final class ProfileViewerScreen extends Screen {
 				PvDraw.COLOR_MUTED
 			);
 		}
-
-		// Item tips deferred to extractRenderState (after frame tabs) so they paint on top.
 	}
 
 	private void renderBestiarySplit(GuiGraphicsExtractor g, int x, int y, int w, int h, int mouseX, int mouseY, float delta) {
@@ -1202,7 +1190,6 @@ public final class ProfileViewerScreen extends Screen {
 		if (clickProfileFooter(mx, my)) {
 			return true;
 		}
-		// HEAD order: page handlers first, then frame bars, then HOME specials.
 		if (routePageClick(mx, my)) {
 			return true;
 		}
@@ -1231,7 +1218,6 @@ public final class ProfileViewerScreen extends Screen {
 		return super.mouseClicked(click, doubled);
 	}
 
-	/** Screen -> active top-level page click routing (excludes HOME overview specials). */
 	private boolean routePageClick(double mx, double my) {
 		return switch (this.tab) {
 			case HOME -> activeSub(PvSubTab.HOME_OVERVIEW) == PvSubTab.HOME_MISC
@@ -1269,7 +1255,6 @@ public final class ProfileViewerScreen extends Screen {
 		return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
 	}
 
-	/** Screen -> active top-level page scroll routing. */
 	private boolean routePageScroll(double mouseX, double mouseY, double scrollY) {
 		return switch (this.tab) {
 			case HOME -> {

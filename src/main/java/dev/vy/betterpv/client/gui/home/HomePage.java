@@ -81,7 +81,6 @@ public final class HomePage {
 	private int bankHitY;
 	private int bankHitW;
 	private int bankHitH;
-	/** False = profile face, true = stats face. */
 	private boolean leftStatsFace;
 	private long leftFlipStartMs;
 	private boolean leftFlipTarget;
@@ -193,7 +192,6 @@ public final class HomePage {
 		return this.snapshot == null ? "" : this.snapshot.playerName();
 	}
 
-	/** Applies newly available networth data without replacing the already-rendered profile. */
 	public void applyNetworth(
 		NetworthBreakdown normal,
 		NetworthBreakdown nonCosmetic,
@@ -227,7 +225,6 @@ public final class HomePage {
 		return false;
 	}
 
-	/** Flip the left profile / stats panel (ignores name / status / footer hits). */
 	public boolean clickLeftPanel(double mouseX, double mouseY) {
 		if (mouseX < this.leftHitX || mouseX >= this.leftHitX + this.leftHitW
 			|| mouseY < this.leftHitY || mouseY >= this.leftHitY + this.leftHitH) {
@@ -258,7 +255,6 @@ public final class HomePage {
 			&& this.statusHitW > 0;
 	}
 
-	/** @param button GLFW mouse button (0 = left / next, 1 = right / prev) */
 	public boolean clickNetworth(double mouseX, double mouseY, int button) {
 		if (showingLeftStatsFace()) {
 			return false;
@@ -393,7 +389,6 @@ public final class HomePage {
 	private Layout measure(Font font, int w) {
 		Layout layout = new Layout();
 		layout.gap = 6;
-		// Slim SB-level column: short XP bar, width only needs the level label.
 		layout.levelW = 84;
 		layout.leftW = Math.max(100, (w - layout.levelW - layout.gap * 2) * 30 / 100);
 		layout.barsW = w - layout.leftW - layout.levelW - layout.gap * 2;
@@ -410,18 +405,15 @@ public final class HomePage {
 		layout.socialToFooterGap = 6;
 		layout.statusH = font.lineHeight + 4;
 		layout.footerH = layout.statusH;
-		// Status sits under the social bar; Profile floats outside the main menu panel.
 		layout.footerY = 0;
 		layout.socialBarY = 0;
 		layout.socialLabelY = 0;
 		layout.boxBottom = 0;
 		layout.nameY = layout.statsH;
 		layout.boxTop = layout.nameY + layout.nameLineH + layout.nameGap;
-		// Keep overall PV height on the bars column - do not grow for the status footer.
 		layout.contentH = layout.barsH;
 		layout.levelH = layout.contentH;
 		layout.leftH = layout.contentH;
-		// Stack status + social from the bottom; leftover height is the player preview.
 		layout.footerY = layout.leftH - PAD - layout.statusH;
 		layout.socialBarY = layout.footerY - layout.socialToFooterGap - BAR_H;
 		layout.socialLabelY = layout.socialBarY - BAR_LABEL_GAP - layout.nameLineH;
@@ -458,7 +450,6 @@ public final class HomePage {
 				flipProgress = 0F;
 			}
 		}
-		// Ease the timeline, then cosine-scale for a soft card flip (1 → 0 → 1).
 		float eased = animating ? easeInOutCubic(flipProgress) : 0F;
 		float angle = eased * (float) Math.PI;
 		boolean showStats = animating
@@ -468,7 +459,6 @@ public final class HomePage {
 		float scaleY = 1F;
 		if (animating) {
 			scaleX = Math.max(0.04F, Math.abs((float) Math.cos(angle)));
-			// Slight vertical squash near edge-on for a paper/card feel.
 			scaleY = 1F - (1F - scaleX) * 0.06F;
 		}
 
@@ -535,7 +525,6 @@ public final class HomePage {
 		}
 	}
 
-	/** Smooth ease-in-out for flip timing (slow start / finish, faster mid). */
 	private static float easeInOutCubic(float t) {
 		t = Math.max(0F, Math.min(1F, t));
 		return t < 0.5F
@@ -543,7 +532,6 @@ public final class HomePage {
 			: 1F - (float) Math.pow(-2F * t + 2F, 3) / 2F;
 	}
 
-	/** @return mannequin box {@code [x0,y0,x1,y1]} if the model should be drawn, else null */
 	private int[] drawProfileFace(
 		GuiGraphicsExtractor g,
 		Font font,
@@ -633,7 +621,6 @@ public final class HomePage {
 		this.weightHitW = weightLineW;
 		this.weightHitH = font.lineHeight;
 
-		// Spacer under Weight, then Bank (purse stays inside Networth breakdown).
 		ty += layout.line * 2;
 		String bankValue = FormatUtil.shortCoins(this.snapshot.bankCoins());
 		Component bankLine = Component.empty()
@@ -708,7 +695,6 @@ public final class HomePage {
 			social.hoverLines()
 		));
 
-		// Status stretched to social-bar width under the social skill.
 		int footerY = y + layout.footerY;
 		String statusLabel = this.playerStatus.buttonLabel();
 		int statusColor = this.playerStatus.buttonColor(
@@ -752,7 +738,6 @@ public final class HomePage {
 		}
 	}
 
-	/** Scroll username history tip while hovering the name. */
 	public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
 		if (!showingLeftStatsFace() && hitName(mouseX, mouseY)
 			&& this.usernameHistory.state() == UsernameHistory.State.READY
@@ -1145,7 +1130,6 @@ public final class HomePage {
 
 		int ty = y + PAD;
 		drawSkillGrid(g, font, leftX, rightX, ty, colW, layout.rowH);
-		// Visual midpoint between last skill bars and first slayer labels (not mid-SECTION_GAP alone).
 		int skillsBarsBottom = ty + (SKILL_ROWS - 1) * layout.rowH + font.lineHeight + BAR_LABEL_GAP + BAR_H;
 		int slayersTop = ty + SKILL_ROWS * layout.rowH + SECTION_GAP;
 		int lineInset = PAD + 6;

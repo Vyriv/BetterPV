@@ -24,7 +24,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Builds overview combat/skill stats from Hypixel member data.
  * Hypixel does not expose final stats - values are reconstructed from NEU constants,
  * skills/slayers, SkyBlock level, bestiary, essence permanents, Maxwell power, tuning,
  * active pet, and item lore on armor / equipment / accessories.

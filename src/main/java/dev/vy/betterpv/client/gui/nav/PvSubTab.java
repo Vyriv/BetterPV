@@ -7,7 +7,6 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
-/** Side subtabs for pages that need mode switching. */
 public enum PvSubTab {
 	DUNGEON_NORMAL(Items.STONE_BRICKS, "betterpv.sub.dungeon_normal"),
 	DUNGEON_MASTER(Items.NETHER_BRICKS, "betterpv.sub.dungeon_master"),
@@ -64,12 +63,10 @@ public enum PvSubTab {
 		return this.icon;
 	}
 
-	/** Bundled GUI texture when set (e.g. HotM skull icon). */
 	public Identifier textureIcon() {
 		return this.textureIcon;
 	}
 
-	/** Pixel size of {@link #textureIcon()} (square). */
 	public int textureSize() {
 		return this.textureSize;
 	}

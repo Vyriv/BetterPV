@@ -55,7 +55,6 @@ public final class FormatUtil {
 		return shortCompact(value, true);
 	}
 
-	/** Format a dungeon time stored in milliseconds. */
 	public static String prettyTime(long ms) {
 		if (ms <= 0L) {
 			return "N/A";

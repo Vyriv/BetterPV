@@ -33,9 +33,6 @@ public final class MoulberryMode {
 		return active;
 	}
 
-	/**
-	 * Feed a key press. Returns {@code true} when the code completes (toggles the mode).
-	 */
 	public static boolean keyPressed(int key) {
 		if (key == KEY_KP_ENTER) {
 			key = KEY_ENTER;

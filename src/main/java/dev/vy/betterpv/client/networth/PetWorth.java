@@ -6,17 +6,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/** SkyHelper-style pet valuation with LVL_1 / LVL_100 / LVL_200 interpolation. */
 public final class PetWorth {
 	private PetWorth() {
 	}
 
-	/** Display level (1-100/200) for UI labels. */
 	public static int level(JsonObject pet) {
 		return levelInfo(pet).level();
 	}
 
-	/** Level + XP progress for UI bars. */
 	public static LevelInfo levelInfo(JsonObject pet) {
 		if (pet == null || !pet.has("type") || !pet.has("tier") || !pet.has("exp")) {
 			return new LevelInfo(1, 100, 0, 0, 0, 0, 0f);

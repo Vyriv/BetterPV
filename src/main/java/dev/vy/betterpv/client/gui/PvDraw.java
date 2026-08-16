@@ -14,9 +14,7 @@ import net.minecraft.resources.Identifier;
 
 public final class PvDraw {
 	public static final int COLOR_PANEL = 0xD0101018;
-	/** Darker shell behind bars / panels. */
 	public static final int COLOR_PANEL_OUTER = 0xE00A0A10;
-	/** Slightly lighter row / content area. */
 	public static final int COLOR_PANEL_INNER = 0xC0181824;
 	public static final int COLOR_BORDER = 0xFF3A3A4A;
 	public static final int COLOR_TEXT = 0xFFE8E8F0;
@@ -58,7 +56,6 @@ public final class PvDraw {
 		g.outline(x, y, w, h, COLOR_BORDER);
 	}
 
-	/** Content panel with equal padding; no dark outer frame. */
 	public static void layeredPanel(GuiGraphicsExtractor g, int x, int y, int w, int h, int pad) {
 		fill(g, x, y, w, h, COLOR_PANEL_INNER);
 		g.outline(x, y, w, h, COLOR_BORDER);
@@ -108,7 +105,6 @@ public final class PvDraw {
 		text(g, font, styled(value, color, true), x, y);
 	}
 
-	/** Bold text scaled about its top-left corner (keeps glyph raster crisp at mild scales). */
 	public static void textBoldScaled(GuiGraphicsExtractor g, Font font, String value, int x, int y, int color, float scale) {
 		if (scale == 1.0F) {
 			textBold(g, font, value, x, y, color);
@@ -158,7 +154,6 @@ public final class PvDraw {
 		text(g, font, value, rightX - font.width(value), y, color);
 	}
 
-	/** Section label + 1px horizontal divider to the right edge. */
 	public static int sectionHeader(GuiGraphicsExtractor g, Font font, String label, int x, int y, int w) {
 		text(g, font, label, x, y, COLOR_MUTED);
 		int lineX = x + font.width(label) + 4;
@@ -203,7 +198,6 @@ public final class PvDraw {
 		}
 	}
 
-	/** Solid fill with pill tips so incomplete bars match maxed rounding. */
 	private static void drawXpBarSolidRounded(
 		GuiGraphicsExtractor g, int x, int y, int w, int h, int fillColor, boolean roundRight
 	) {

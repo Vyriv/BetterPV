@@ -138,7 +138,6 @@ public final class NetworthBreakdown {
 		));
 	}
 
-	/** @return USD estimate, or null if cookie price unavailable */
 	public static Double profileValueUsd(double networthCoins) {
 		if (networthCoins <= 0) {
 			return 0.0;

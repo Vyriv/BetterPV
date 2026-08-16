@@ -2,9 +2,6 @@ package dev.vy.betterpv.client.price;
 
 import java.util.Locale;
 
-/**
- * Athen first, SkyHelper pricesV2 fallback.
- */
 public final class ItemPricer {
 	private ItemPricer() {
 	}

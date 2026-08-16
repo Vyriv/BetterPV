@@ -11,7 +11,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/** Member-side mining: HOTM, forge queue, glacite / corpse milestones. */
 public final class MiningSnapshot {
 	public record Powder(long available, long spent) {
 		public long total() {
@@ -46,7 +45,6 @@ public final class MiningSnapshot {
 		}
 	}
 
-	/** One frozen-corpse milestone tier (wiki thresholds). */
 	public record CorpseMilestone(int tier, long needLapis, long needUmber, long needTungsten, long needVanguard) {
 		public boolean met(CorpseCounts counts) {
 			return counts.lapis() >= needLapis
@@ -55,7 +53,6 @@ public final class MiningSnapshot {
 				&& counts.vanguard() >= needVanguard;
 		}
 
-		/** 0..1 progress toward this tier from previous (or zero). */
 		public float fill(CorpseCounts counts, CorpseMilestone previous) {
 			long[] need = {
 				needLapis - (previous == null ? 0L : previous.needLapis),
@@ -82,7 +79,6 @@ public final class MiningSnapshot {
 		}
 	}
 
-	/** Wiki frozen corpse milestones (Lapis / Umber / Tungsten / Vanguard). */
 	public static final List<CorpseMilestone> CORPSE_MILESTONES = List.of(
 		new CorpseMilestone(1, 10, 0, 0, 0),
 		new CorpseMilestone(2, 25, 1, 0, 0),
@@ -420,7 +416,6 @@ public final class MiningSnapshot {
 		return nodes;
 	}
 
-	/** Level for a layout perk id (API aliases resolved). */
 	public int nodeLevel(String layoutId) {
 		if (layoutId == null || layoutId.isBlank()) {
 			return 0;

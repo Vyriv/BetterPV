@@ -16,9 +16,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-/**
- * Live Athen AH/bazaar prices from {@code https://athen.aerii.xyz/prices}.
- */
 public final class AthenPriceCache {
 	private static final URI PRICES_URI = URI.create("https://athen.aerii.xyz/prices");
 	private static final Duration TIMEOUT = Duration.ofSeconds(10);

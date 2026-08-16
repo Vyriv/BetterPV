@@ -13,7 +13,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
-/** Garden island (lazy) + member Jacob / copper / farming / chips / greenhouse. */
 public final class GardenSnapshot {
 	public static final List<String> CROP_ORDER = List.of(
 		"WHEAT", "CARROT_ITEM", "POTATO_ITEM", "PUMPKIN", "SUGAR_CANE", "MELON", "CACTUS",
@@ -86,7 +85,7 @@ public final class GardenSnapshot {
 	}
 
 	public record CropMedal(String id, String name, String iconId, int filled) {
-		/** Highest unique bracket: 0 none … 5 diamond. */
+		// Highest unique bracket: 0 none … 5 diamond.
 		public CropMedal {
 			filled = Math.max(0, Math.min(5, filled));
 			id = id == null ? "" : id;
@@ -113,7 +112,6 @@ public final class GardenSnapshot {
 		}
 	}
 
-	/** Island-side greenhouse progress (slots + desk upgrades). */
 	public record GreenhouseMeta(
 		int slotsUnlocked, int yieldLevel, int plotLimitLevel, int growthSpeedLevel, long lastGrowthStageMs
 	) {
@@ -388,7 +386,6 @@ public final class GardenSnapshot {
 		return copy(islandLoaded, islandLoading, islandError, false, false, error == null ? "Contests unavailable" : error);
 	}
 
-	/** Keep existing contest list (e.g. Hypixel fallback) and clear loading state. */
 	public GardenSnapshot withContestsReady() {
 		return copy(islandLoaded, islandLoading, islandError, true, false, "");
 	}

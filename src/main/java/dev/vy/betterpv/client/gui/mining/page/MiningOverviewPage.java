@@ -17,7 +17,6 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
-/** Mining overview subtab: levels, powders, crystals / essence flip panel. */
 public final class MiningOverviewPage {
 	private static final int CRYSTAL_ICON = 14;
 	private static final int FLIP_MS = 480;

@@ -6,7 +6,6 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Parses inputs like {@code Mage 50}, {@code Bers 55}, {@code CA 50}, {@code Class Avg 50}. */
 public final class ClassLevelQuery {
 	public record Parsed(String classId, String displayName, int targetLevel, boolean classAverage) {
 		public static Parsed ofClass(String classId, int targetLevel) {

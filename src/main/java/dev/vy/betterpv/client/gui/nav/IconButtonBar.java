@@ -12,13 +12,9 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 
-/**
- * NEU-style frame tabs: icons sit on the outside of the panel edge.
- */
 public final class IconButtonBar {
 	public static final int TAB = 26;
 	public static final int GAP = 1;
-	/** Pixels of the tab that sit on top of the panel border. */
 	public static final int SEAM = 3;
 
 	public static final int BTN = TAB;
@@ -61,9 +57,6 @@ public final class IconButtonBar {
 		}
 	}
 
-	/**
-	 * Folder tabs along the top of the panel. Almost entirely above {@code panelY}.
-	 */
 	public void drawTopFrameTabs(
 		GuiGraphicsExtractor g,
 		Font font,
@@ -85,11 +78,6 @@ public final class IconButtonBar {
 		}
 	}
 
-	/**
-	 * Folder tabs along the left of the panel. Fully outside {@code panelX} (no mid-icon clip).
-	 * When {@code panelH > 0}, spacing (and if needed tab size) is compressed so tabs stay
-	 * within the panel height — Museum's 9 sorts need this on shorter panels.
-	 */
 	public void drawLeftFrameTabs(
 		GuiGraphicsExtractor g,
 		Font font,
@@ -162,15 +150,12 @@ public final class IconButtonBar {
 		int border = selected || hovered ? PvDraw.COLOR_ACCENT : PvDraw.COLOR_BORDER;
 
 		PvDraw.fill(g, x, y, TAB, h, bg);
-		// top + sides
 		g.fill(x, y, x + TAB, y + 1, border);
 		g.fill(x, y, x + 1, y + h, border);
 		g.fill(x + TAB - 1, y, x + TAB, y + h, border);
 		if (!selected) {
-			// bottom sits on the panel rim
 			g.fill(x, y + h - 1, x + TAB, y + h, border);
 		} else {
-			// erase panel top border under selected tab
 			PvDraw.fill(g, x + 1, panelY, TAB - 2, 1, PvDraw.COLOR_PANEL);
 		}
 

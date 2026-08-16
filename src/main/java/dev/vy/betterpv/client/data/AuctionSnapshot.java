@@ -17,7 +17,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
-/** Player auction listings for Active / Sold / Bought + lifetime AH stats. */
 public final class AuctionSnapshot {
 	private static final String[] RARITY_ORDER = {
 		"COMMON", "UNCOMMON", "RARE", "EPIC", "LEGENDARY", "MYTHIC", "DIVINE", "SPECIAL", "VERY_SPECIAL", "ULTIMATE"
@@ -86,7 +85,6 @@ public final class AuctionSnapshot {
 			);
 		}
 
-		/** Apply Cofl auction-detail fields (tier, stars/reforge name, upgrade lore). */
 		public Listing withEnrichment(String name, String tier, InventorySnapshot.Slot slot, List<String> details) {
 			String n = name == null || name.isBlank() ? this.itemName : name;
 			String t = tier == null || tier.isBlank() ? (this.tier == null ? "" : this.tier) : tier;
@@ -371,7 +369,6 @@ public final class AuctionSnapshot {
 		);
 	}
 
-	/** Apply Cofl auction-detail enrichments (name/tier/slot/upgrade lines) by auction id. */
 	public AuctionSnapshot withEnrichments(Map<String, Listing> byAuctionId) {
 		if (byAuctionId == null || byAuctionId.isEmpty()) {
 			return this;
@@ -446,7 +443,6 @@ public final class AuctionSnapshot {
 		return changed ? out : listings;
 	}
 
-	/** Build an enriched listing from a Cofl {@code /auction/{id}} payload. */
 	public static Listing enrichFromCoflDetail(Listing base, JsonObject detail) {
 		if (base == null || detail == null) {
 			return base;

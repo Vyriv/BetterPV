@@ -74,10 +74,6 @@ public final class ProfileFetcher {
 	private ProfileFetcher() {
 	}
 
-	/**
-	 * @param gameMode raw {@code profiles[].game_mode} (blank when normal / absent)
-	 * @param createdAtMs {@code profiles[].created_at} epoch ms, or {@code 0} when absent
-	 */
 	public record ProfileChoice(
 		String cuteName,
 		String profileId,
@@ -92,7 +88,6 @@ public final class ProfileFetcher {
 			createdAtMs = Math.max(0L, createdAtMs);
 		}
 
-		/** Display label for non-normal modes only (Ironman / Stranded / Bingo / …). */
 		public String gameModeLabel() {
 			if (gameMode.isBlank()) {
 				return "";
@@ -224,7 +219,10 @@ public final class ProfileFetcher {
 			}
 			return HypixelApiClient.skyblockProfiles(id.uuid()).thenCompose(profilesOpt -> {
 				if (profilesOpt.isEmpty()) {
-					return CompletableFuture.completedFuture(fail(id.name(), "Profiles request failed"));
+					String authMessage = BetterPvSessionAuth.userFacingFailure()
+						.orElse("Profiles request failed");
+					BetterPvSessionAuth.notifyPlayerIfNeeded();
+					return CompletableFuture.completedFuture(fail(id.name(), authMessage));
 				}
 				JsonObject root = profilesOpt.get();
 				JsonObject best = selectedProfile(root);

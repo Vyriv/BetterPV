@@ -19,7 +19,6 @@ import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** Collections + crafted minions across a coop profile. */
 public final class CollectionSnapshot {
 	public record Member(
 		String uuid,
@@ -60,7 +59,6 @@ public final class CollectionSnapshot {
 			return best;
 		}
 
-		/** Highest crafted generator tier for this minion type (0 if none). */
 		public int maxCraftedMinion(String minionId) {
 			if (minionId == null || minionId.isBlank() || craftedTiers.isEmpty()) {
 				return 0;
@@ -106,7 +104,6 @@ public final class CollectionSnapshot {
 	private final List<Member> members;
 	private final String viewedUuid;
 	private final List<MinionEntry> minions;
-	/** Live name overrides (uuid → name) filled asynchronously. */
 	private final ConcurrentHashMap<String, String> nameOverrides = new ConcurrentHashMap<>();
 	private final ConcurrentHashMap<String, JsonObject> playerRanks = new ConcurrentHashMap<>();
 
@@ -237,7 +234,6 @@ public final class CollectionSnapshot {
 		return totalAmount(item.id());
 	}
 
-	/** Coop members sorted by amount desc for a collection item. */
 	public List<Member> membersByAmount(String itemId) {
 		List<Member> sorted = new ArrayList<>(this.members);
 		sorted.sort(Comparator

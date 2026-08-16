@@ -11,9 +11,6 @@ import java.util.Map;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 
-/**
- * SkyHelper-style item valuation (base + modifiers) using {@link ItemPricer}.
- */
 public final class ItemWorth {
 	private static final Map<String, UpgradeEnchant> ENCHANT_UPGRADES = Map.of(
 		"SCAVENGER", new UpgradeEnchant("GOLDEN_BOUNTY", 6),

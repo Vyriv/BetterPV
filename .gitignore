@@ -14,7 +14,7 @@ out/
 bin/
 **/config/betterpv.json
 
-# Local build secrets (baked into jar at compile time - never commit)
+# Local runtime secrets (never commit real values)
 betterpv.local.properties
 
 # Stray decompile / dump output
@@ -29,4 +29,6 @@ tmp_heads/
 
 # Assets / Resources
 assets/minecraft/lang/
-betterpv.local.properties.example
+# Generated/local Hypixel worker secret stub (never commit)
+**/WorkerSecrets.java
+

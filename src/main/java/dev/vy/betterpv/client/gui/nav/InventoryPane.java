@@ -8,7 +8,6 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
-/** Right-side container pickers for the Inventories page. */
 public enum InventoryPane {
 	INVENTORY(null, null, Items.CHEST, "betterpv.inv.inventory"),
 	ENDER_CHEST(null, null, Items.ENDER_CHEST, "betterpv.inv.ender_chest"),

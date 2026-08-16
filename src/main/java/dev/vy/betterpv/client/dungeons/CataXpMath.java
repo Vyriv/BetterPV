@@ -7,7 +7,6 @@ import dev.vy.betterpv.client.data.Leveling;
 import dev.vy.betterpv.client.data.RepoData;
 import java.util.Locale;
 
-/** Catacombs XP needed to reach a target integer level. */
 public final class CataXpMath {
 	private CataXpMath() {
 	}
@@ -40,7 +39,6 @@ public final class CataXpMath {
 		return Math.max(0F, need);
 	}
 
-	/** Pretty mayor display from election JSON. */
 	public static String mayorName(JsonObject electionRoot) {
 		if (electionRoot == null) {
 			return "";

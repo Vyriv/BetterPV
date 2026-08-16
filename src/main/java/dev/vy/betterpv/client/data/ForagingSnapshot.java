@@ -12,7 +12,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/** Member-side foraging: Overview / HOTF / Shards. */
 public final class ForagingSnapshot {
 	public record CollectionRow(String id, String name, long amount) {
 	}
@@ -44,7 +43,6 @@ public final class ForagingSnapshot {
 	) {
 	}
 
-	/** Critter Safari from top-level {@code members.*.safari}. */
 	public record SafariInfo(
 		List<String> discoveredCritters,
 		Map<String, Long> biomeCaptures,
@@ -99,7 +97,6 @@ public final class ForagingSnapshot {
 	private final List<CollectionRow> collections;
 	private final List<AttrStack> attributes;
 
-	/** Forest / Desert whisper currency pools from {@code foraging_core.whispers}. */
 	public record WhisperPool(
 		String id,
 		String label,
@@ -144,7 +141,7 @@ public final class ForagingSnapshot {
 	private final boolean harpTalisman;
 	private final String harpSelected;
 	private final List<HarpSong> harpSongs;
-	/** Moonglade/Galatea beacon signal strength when API exposes it; -1 = not present. */
+	// Moonglade/Galatea beacon signal strength; -1 = not present.
 	private final int galateaBeacon;
 
 	private final double hotfXp;
@@ -764,10 +761,6 @@ public final class ForagingSnapshot {
 		return out;
 	}
 
-	/**
-	 * Moonglade Beacon signal strength when Hypixel exposes it.
-	 * Returns -1 when absent (do not show in UI).
-	 */
 	private static int parseGalateaBeacon(JsonObject member, JsonObject foraging, JsonObject core) {
 		String[] keys = {
 			"beacon_signal_strength", "moonglade_beacon", "moonglade_beacon_level",
@@ -913,7 +906,6 @@ public final class ForagingSnapshot {
 		}
 	}
 
-	/** Coarse fallback when API claim flag is missing but the talisman item is present. */
 	private static boolean memberJsonContains(JsonObject member, String needle) {
 		if (member == null || needle == null || needle.isBlank()) {
 			return false;
@@ -1046,12 +1038,10 @@ public final class ForagingSnapshot {
 	public List<StarlynBest> starlynBests() { return starlynBests; }
 	public List<WhisperPool> whisperPools() { return whisperPools; }
 
-	/** Forest pool balance (legacy accessor). */
 	public long whispers() {
 		return whisperBalance("forest");
 	}
 
-	/** Forest pool spent total (legacy accessor). */
 	public long whispersSpent() {
 		return whisperSpent("forest");
 	}
@@ -1085,7 +1075,6 @@ public final class ForagingSnapshot {
 	public boolean harpTalisman() { return harpTalisman; }
 	public String harpSelected() { return harpSelected; }
 	public List<HarpSong> harpSongs() { return harpSongs; }
-	/** Moonglade/Galatea beacon signal (0-10), or -1 if not exposed by the API. */
 	public int galateaBeacon() { return galateaBeacon; }
 	public boolean hasGalateaBeacon() { return galateaBeacon >= 0; }
 	public double hotfXp() { return hotfXp; }

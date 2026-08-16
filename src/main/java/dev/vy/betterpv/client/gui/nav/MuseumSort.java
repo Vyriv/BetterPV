@@ -5,7 +5,6 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
-/** Museum category sort chips (not page subtabs). */
 public enum MuseumSort {
 	COMBAT(Items.IRON_SWORD, "betterpv.museum.combat"),
 	MINING(Items.IRON_PICKAXE, "betterpv.museum.mining"),

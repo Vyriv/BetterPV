@@ -16,6 +16,7 @@ import dev.vy.betterpv.client.gui.SkyBlockSymbols;
 import dev.vy.betterpv.client.neu.NeuRepoCache;
 import dev.vy.betterpv.client.neu.SkyBlockPackCache;
 import dev.vy.betterpv.client.price.HypixelItemsCache;
+import dev.vy.betterpv.client.util.LegacyChatFormatting;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
@@ -762,7 +763,8 @@ public final class SkyBlockItemFactory {
 		if (isPlayerSkull(itemId, damage)) {
 			ItemStack skull = new ItemStack(Items.PLAYER_HEAD);
 			applySkullTexture(skull, nbt);
-			return skull;
+			// Never cache / return a bare Steve head — let Hypixel fallback or callers skip.
+			return isTexturedPlayerHead(skull) ? skull : null;
 		}
 		if (isLegacySkull(itemId)) {
 			return new ItemStack(legacySkullByDamage(damage));
@@ -819,7 +821,7 @@ public final class SkyBlockItemFactory {
 			ItemStack skull = new ItemStack(Items.PLAYER_HEAD);
 			// Hypixel item skins often carry invalid signatures; unsigned Value still loads the texture URL.
 			applySkullTextureValue(skull, skinValue, null);
-			return skull;
+			return isTexturedPlayerHead(skull) ? skull : new ItemStack(Items.PAPER);
 		}
 		if (skullMaterial) {
 			// Bare SKULL_ITEM without skin renders as Steve - prefer paper so callers can fall back.
@@ -1178,11 +1180,21 @@ public final class SkyBlockItemFactory {
 			return;
 		}
 		String padded = padBase64(value.replaceAll("\\s+", ""));
-		// Prefer NBT profile decode (same path as DRT) - more reliable across authlib changes.
+		// Prefer unsigned textures first: NEU/Hypixel signatures are often rejected by the client
+		// skin pipeline, which leaves a bare Steve head even when PROFILE is set incorrectly.
+		if (tryApplySkullProfile(stack, padded, null)) {
+			return;
+		}
+		if (signature != null && !signature.isBlank() && tryApplySkullProfile(stack, padded, signature)) {
+			return;
+		}
+	}
+
+	private static boolean tryApplySkullProfile(ItemStack stack, String paddedValue, String signature) {
 		try {
 			CompoundTag propTag = new CompoundTag();
 			propTag.putString("name", "textures");
-			propTag.putString("value", padded);
+			propTag.putString("value", paddedValue);
 			if (signature != null && !signature.isBlank()) {
 				propTag.putString("signature", signature);
 			}
@@ -1194,20 +1206,48 @@ public final class SkyBlockItemFactory {
 			var parsed = ResolvableProfile.CODEC.parse(NbtOps.INSTANCE, profileTag).result();
 			if (parsed.isPresent()) {
 				stack.set(DataComponents.PROFILE, parsed.get());
-				return;
+				if (isTexturedPlayerHead(stack)) {
+					return true;
+				}
 			}
 		} catch (Exception ignored) {
 		}
 		try {
-			UUID uuid = UUID.nameUUIDFromBytes(("betterpv:" + padded).getBytes());
+			UUID uuid = UUID.nameUUIDFromBytes(("betterpv:" + paddedValue).getBytes());
 			Property textures = signature == null || signature.isBlank()
-				? new Property("textures", padded)
-				: new Property("textures", padded, signature);
+				? new Property("textures", paddedValue)
+				: new Property("textures", paddedValue, signature);
 			PropertyMap properties = new PropertyMap(ImmutableListMultimap.of("textures", textures));
 			GameProfile profile = new GameProfile(uuid, "betterpv", properties);
 			stack.set(DataComponents.PROFILE, ResolvableProfile.createResolved(profile));
+			return isTexturedPlayerHead(stack);
+		} catch (Exception ignored) {
+			return false;
+		}
+	}
+
+	/** True when a player head has a non-blank textures property (not a Steve placeholder). */
+	public static boolean isTexturedPlayerHead(ItemStack stack) {
+		if (stack == null || stack.isEmpty() || !stack.is(Items.PLAYER_HEAD)) {
+			return false;
+		}
+		ResolvableProfile profile = stack.get(DataComponents.PROFILE);
+		if (profile == null) {
+			return false;
+		}
+		try {
+			var props = profile.partialProfile().properties().get("textures");
+			if (props == null || props.isEmpty()) {
+				return false;
+			}
+			for (Property prop : props) {
+				if (prop != null && prop.value() != null && !prop.value().isBlank()) {
+					return true;
+				}
+			}
 		} catch (Exception ignored) {
 		}
+		return false;
 	}
 
 	private static String padBase64(String value) {
@@ -1444,7 +1484,7 @@ public final class SkyBlockItemFactory {
 				char code = Character.toLowerCase(text.charAt(++i));
 				ChatFormatting formatting = ChatFormatting.getByCode(code);
 				if (formatting != null) {
-					if (formatting.isColor() || formatting == ChatFormatting.RESET) {
+					if (LegacyChatFormatting.isColor(formatting) || formatting == ChatFormatting.RESET) {
 						style = Style.EMPTY.withItalic(false);
 					}
 					style = style.applyFormat(formatting);

@@ -129,14 +129,6 @@ public final class IconButtonBar {
 		}
 	}
 
-	/** Minimum height to place {@code count} left tabs at full {@link #TAB} size with {@link #GAP}. */
-	public static int leftTabsMinHeight(int count) {
-		if (count <= 0) {
-			return 0;
-		}
-		return count * TAB + Math.max(0, count - 1) * GAP;
-	}
-
 	public void drawLeftFrameTabs(
 		GuiGraphicsExtractor g,
 		Font font,

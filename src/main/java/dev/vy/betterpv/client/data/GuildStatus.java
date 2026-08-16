@@ -3,6 +3,7 @@ package dev.vy.betterpv.client.data;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import dev.vy.betterpv.client.util.LegacyChatFormatting;
 import java.util.Locale;
 import net.minecraft.ChatFormatting;
 
@@ -143,8 +144,9 @@ public final class GuildStatus {
 			} catch (IllegalArgumentException ignored) {
 			}
 		}
-		if (fmt != null && fmt.getColor() != null) {
-			return 0xFF000000 | fmt.getColor();
+		Integer rgb = LegacyChatFormatting.rgb(fmt);
+		if (rgb != null) {
+			return 0xFF000000 | rgb;
 		}
 		return PvDrawCompat.ACCENT;
 	}

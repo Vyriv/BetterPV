@@ -205,7 +205,7 @@ public final class SafariPage {
 		this.gridMaxScroll = Math.max(0, contentH - this.gridH);
 		this.gridScroll = Math.min(this.gridScroll, this.gridMaxScroll);
 
-		ItemStack fallback = new ItemStack(Items.PLAYER_HEAD);
+		ItemStack fallback = new ItemStack(Items.LIME_DYE);
 		g.enableScissor(this.gridX, this.gridY, this.gridX + this.gridW, this.gridY + this.gridH);
 		for (int i = 0; i < critters.size(); i++) {
 			int col = i % cols;
@@ -360,8 +360,15 @@ public final class SafariPage {
 	}
 
 	private static boolean usableIcon(ItemStack stack) {
-		return stack != null && !stack.isEmpty() && !stack.is(Items.PAPER) && !stack.is(Items.BARRIER)
-			&& !stack.is(Items.LIME_DYE);
+		if (stack == null || stack.isEmpty() || stack.is(Items.PAPER) || stack.is(Items.BARRIER)
+			|| stack.is(Items.LIME_DYE)) {
+			return false;
+		}
+		// Bare PLAYER_HEAD renders as Steve — only accept textured skulls.
+		if (stack.is(Items.PLAYER_HEAD)) {
+			return SkyBlockItemFactory.isTexturedPlayerHead(stack);
+		}
+		return true;
 	}
 
 	private static int ticketColor(String id) {

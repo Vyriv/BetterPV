@@ -809,69 +809,19 @@ public final class DungeonPage {
 		int c0 = x;
 		int c1 = x + colW + gap;
 		int c2 = c1 + colW + gap;
-		// Crisp 1:1 packing — no pose downscale (that softens icons/text in the short runs panel).
-		drawEssenceColumnPacked(g, font, this.data.iceShop(), c0, y, colW, h, ICE_COLOR, registerHovers);
+		int perkCount = Math.max(
+			Math.max(
+				this.data.iceShop() == null ? 0 : this.data.iceShop().perks().size(),
+				this.data.spiderShop() == null ? 0 : this.data.spiderShop().perks().size()
+			),
+			this.data.dragonShop() == null ? 0 : this.data.dragonShop().perks().size()
+		);
+		float fitScale = essenceFitScale(font, perkCount, h, 0);
+		drawEssenceColumnFit(g, font, this.data.iceShop(), c0, y, colW, h, ICE_COLOR, false, 0, fitScale, registerHovers);
 		PvDraw.fill(g, c0 + colW + gap / 2, y, 1, h, PvDraw.COLOR_BORDER);
-		drawEssenceColumnPacked(g, font, this.data.spiderShop(), c1, y, colW, h, SPIDER_COLOR, registerHovers);
+		drawEssenceColumnFit(g, font, this.data.spiderShop(), c1, y, colW, h, SPIDER_COLOR, false, 0, fitScale, registerHovers);
 		PvDraw.fill(g, c1 + colW + gap / 2, y, 1, h, PvDraw.COLOR_BORDER);
-		drawEssenceColumnPacked(g, font, this.data.dragonShop(), c2, y, colW, h, DRAGON_COLOR, registerHovers);
-	}
-
-	/**
-	 * Ice/Spider/Dragon columns: fit by packing integer row heights only.
-	 * Avoids fractional pose.scale which softens Minecraft item textures and text.
-	 */
-	private void drawEssenceColumnPacked(
-		GuiGraphicsExtractor g,
-		Font font,
-		DungeonSnapshot.EssenceShop shop,
-		int x,
-		int y,
-		int w,
-		int h,
-		int headerColor,
-		boolean registerHovers
-	) {
-		if (w <= 0 || h <= 0 || shop == null) {
-			return;
-		}
-		List<DungeonSnapshot.EssencePerk> perks = shop.perks();
-		int perkCount = Math.max(1, perks.size());
-		// Compact header + integer row packing; always draw native 16px icons (no pose downscale).
-		int headerH = Math.max(font.lineHeight + 2, 14);
-		int afterHeader = Math.max(0, h - headerH - 2);
-		int rowH = Math.max(font.lineHeight + 1, afterHeader / perkCount);
-		final int iconSize = 16;
-
-		PvDraw.IconTextAlign headerAlign = PvDraw.IconTextAlign.of(y, headerH, iconSize, font.lineHeight);
-		g.item(essenceIcon(shop.iconId()), x, headerAlign.iconY());
-		String name = shop.name() == null ? "" : shop.name();
-		String bal = FormatUtil.commas(shop.balance());
-		int headerLabelX = x + iconSize + 3;
-		int balW = PvDraw.widthBold(font, bal);
-		int nameMax = Math.max(4, w - (headerLabelX - x) - balW - 4);
-		PvDraw.textBold(g, font, trimToWidthBold(font, name, nameMax), headerLabelX, headerAlign.textY(), headerColor);
-		PvDraw.textBold(g, font, bal, x + w - balW, headerAlign.textY(), headerColor);
-
-		int ly = y + headerH + 2;
-		for (DungeonSnapshot.EssencePerk perk : perks) {
-			if (ly + font.lineHeight > y + h) {
-				break;
-			}
-			PvDraw.IconTextAlign rowAlign = PvDraw.IconTextAlign.of(ly, rowH, iconSize, font.lineHeight);
-			g.item(essencePerkIcon(perk.id()), x, rowAlign.iconY());
-			String right = perk.level() + "/" + perk.maxLevel();
-			int rightW = font.width(right);
-			int labelX = x + iconSize + 2;
-			String left = trimToWidth(font, perk.name(), Math.max(4, w - (labelX - x) - rightW - 2));
-			int valueColor = perk.maxed() ? COLOR_COMPLETIONS : PvDraw.COLOR_TEXT;
-			PvDraw.text(g, font, left, labelX, rowAlign.textY(), PvDraw.COLOR_MUTED);
-			PvDraw.textRight(g, font, right, x + w, rowAlign.textY(), valueColor);
-			if (registerHovers) {
-				this.zones.add(new HoverZone(x, ly, w, Math.max(1, Math.min(rowH, y + h - ly)), EssencePerkTips.tip(perk)));
-			}
-			ly += rowH;
-		}
+		drawEssenceColumnFit(g, font, this.data.dragonShop(), c2, y, colW, h, DRAGON_COLOR, false, 0, fitScale, registerHovers);
 	}
 
 	private static float essenceFitScale(Font font, int perkCount, int h, int rowGap) {

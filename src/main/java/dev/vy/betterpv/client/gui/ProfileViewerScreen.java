@@ -316,13 +316,8 @@ public final class ProfileViewerScreen extends Screen {
 		}
 		int maxPanelH = Math.max(200, this.height - topRoom - 24);
 		int panelH = Math.min(maxPanelH, Math.max(200, contentH + PAD * 2));
-		// Left frame tabs (esp. Museum's 9 sorts) must fit the panel height — gap-only compression
-		// cannot help when N×TAB already exceeds panelH.
-		Object[] leftTabs = this.tab.leftTabs();
-		if (leftTabs.length > 0) {
-			int leftNeed = IconButtonBar.leftTabsMinHeight(leftTabs.length);
-			panelH = Math.max(panelH, Math.min(leftNeed, maxPanelH));
-		}
+		// Never grow the panel for left subtabs (Museum sorts, etc.) — IconButtonBar
+		// shrinks tab size / gaps to fit panelH instead.
 
 		int panelX = (this.width - panelW) / 2 + leftRoom / 2;
 		int panelY = (this.height - panelH - topRoom) / 2 + topRoom;

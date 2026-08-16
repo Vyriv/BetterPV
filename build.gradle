@@ -1,5 +1,5 @@
 plugins {
-	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+	id 'net.fabricmc.fabric-loom'
 	id 'maven-publish'
 }
 
@@ -7,7 +7,7 @@ version = project.mod_version
 group = project.maven_group
 
 base {
-	archivesName = project.archives_base_name
+	archivesName = rootProject.property('archives_base_name')
 }
 
 repositories {
@@ -28,10 +28,10 @@ configurations {
 dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
-	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 
 	// Spark profiler for the Loom run folder - https://spark.lucko.me/
-	sparkRuntime "maven.modrinth:spark:${project.spark_version}"
+	sparkRuntime "maven.modrinth:spark:${rootProject.property('spark_version')}"
 }
 
 tasks.register("prepareSpark", Copy) {
@@ -53,7 +53,7 @@ def resolveWorkerHypixelSecret = {
 	if (fromEnv != null && !fromEnv.isBlank()) {
 		return fromEnv.trim()
 	}
-	def local = file("betterpv.local.properties")
+	def local = rootProject.file("betterpv.local.properties")
 	if (local.exists()) {
 		def props = new Properties()
 		local.withInputStream { props.load(it) }
@@ -108,32 +108,48 @@ tasks.named("compileJava").configure {
 	dependsOn("generateWorkerSecrets")
 }
 
+def javaVersionNumber = (project.property("java_version") as String).toInteger()
+
 processResources {
-	def version = project.version
-	inputs.property "version", version
+	def props = [
+		version  : project.version,
+		loader   : project.property("loader_dependency"),
+		minecraft: project.property("minecraft_dependency"),
+		java     : project.property("java_dependency")
+	]
+	inputs.properties(props)
 
 	filesMatching("fabric.mod.json") {
-		expand "version": version
+		expand(props)
 	}
 }
 
 tasks.withType(JavaCompile).configureEach {
-	it.options.release = 25
+	it.options.release = javaVersionNumber
 }
 
 java {
 	withSourcesJar()
 	toolchain {
-		languageVersion = JavaLanguageVersion.of(25)
+		languageVersion = JavaLanguageVersion.of(javaVersionNumber)
 	}
 
-	sourceCompatibility = JavaVersion.VERSION_25
-	targetCompatibility = JavaVersion.VERSION_25
+	def javaVersion = JavaVersion.toVersion(javaVersionNumber)
+	sourceCompatibility = javaVersion
+	targetCompatibility = javaVersion
 }
 
 tasks.named("sourcesJar", Jar).configure {
 	dependsOn("generateWorkerSecrets")
 	exclude("**/WorkerSecrets.java")
+}
+
+tasks.register("buildAndCollect", Copy) {
+	group = "build"
+	description = "Builds this version and copies jars to dist."
+	dependsOn("build")
+	from(tasks.named("jar"), tasks.named("sourcesJar"))
+	into(rootProject.layout.projectDirectory.dir("dist"))
 }
 
 publishing {

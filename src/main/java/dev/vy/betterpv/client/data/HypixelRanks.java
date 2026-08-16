@@ -3,6 +3,7 @@ package dev.vy.betterpv.client.data;
 import com.google.gson.JsonObject;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
+import dev.vy.betterpv.client.util.LegacyChatFormatting;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -83,16 +84,16 @@ public final class HypixelRanks {
 	}
 
 	private static int namedColor(JsonObject player, String key, ChatFormatting fallback) {
-		String raw = text(player, key, fallback.getName());
-		ChatFormatting formatting = ChatFormatting.getByName(raw);
-		if (formatting == null || !formatting.isColor()) {
+		String raw = text(player, key, LegacyChatFormatting.name(fallback));
+		ChatFormatting formatting = LegacyChatFormatting.byName(raw);
+		if (formatting == null || !LegacyChatFormatting.isColor(formatting)) {
 			return color(fallback);
 		}
 		return color(formatting);
 	}
 
 	private static int color(ChatFormatting formatting) {
-		Integer rgb = formatting.getColor();
+		Integer rgb = LegacyChatFormatting.rgb(formatting);
 		return rgb == null ? PvDraw.COLOR_TEXT : 0xFF000000 | rgb;
 	}
 

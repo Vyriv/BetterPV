@@ -6,6 +6,7 @@ import com.mojang.brigadier.tree.CommandNode;
 import com.mojang.brigadier.tree.LiteralCommandNode;
 import dev.vy.betterpv.BetterPV;
 import dev.vy.betterpv.client.api.BetterPVConfig;
+import dev.vy.betterpv.client.api.BetterPvSessionAuth;
 import dev.vy.betterpv.client.cosmetics.BetterPvCosmetics;
 import dev.vy.betterpv.client.gui.LoadingEggFinale;
 import dev.vy.betterpv.client.neu.NeuRepoCache;
@@ -13,17 +14,20 @@ import dev.vy.betterpv.client.neu.SkyBlockPackCache;
 import dev.vy.betterpv.client.price.ItemPricer;
 import java.lang.reflect.Field;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.event.Event;
+import net.minecraft.client.User;
 import net.minecraft.resources.Identifier;
 
 public final class BetterPVClient implements ClientModInitializer {
 	/** Runs after {@link Event#DEFAULT_PHASE} so we replace Skyblocker's {@code /pv}. */
 	private static final Identifier PV_COMMAND_PHASE = Identifier.fromNamespaceAndPath("betterpv", "override_pv");
+	private static final AtomicBoolean SESSION_AUTH_PREFETCHED = new AtomicBoolean(false);
 
 	@Override
 	public void onInitializeClient() {
@@ -74,7 +78,30 @@ public final class BetterPVClient implements ClientModInitializer {
 		PartyJoinPvNotifier.register();
 		ClientTickEvents.END_CLIENT_TICK.register(ProfileViewerOpener::tick);
 		ClientTickEvents.END_CLIENT_TICK.register(LoadingEggFinale::tick);
+		ClientTickEvents.END_CLIENT_TICK.register(BetterPVClient::prefetchSessionAuthOnce);
 		BetterPV.LOGGER.info("BetterPV client ready - /pv");
+	}
+
+	/**
+	 * After Minecraft exposes a real user session, warm the BetterPV JWT off-thread
+	 * so cold {@code /pv} is less likely to pay joinServer + /hypixel/auth on the critical path.
+	 */
+	private static void prefetchSessionAuthOnce(net.minecraft.client.Minecraft client) {
+		if (SESSION_AUTH_PREFETCHED.get() || client == null) {
+			return;
+		}
+		User user = client.getUser();
+		if (user == null) {
+			return;
+		}
+		String accessToken = user.getAccessToken();
+		if (accessToken == null || accessToken.isBlank() || user.getProfileId() == null) {
+			return;
+		}
+		if (!SESSION_AUTH_PREFETCHED.compareAndSet(false, true)) {
+			return;
+		}
+		BetterPvSessionAuth.prefetchAsync();
 	}
 
 	@SuppressWarnings("unchecked")

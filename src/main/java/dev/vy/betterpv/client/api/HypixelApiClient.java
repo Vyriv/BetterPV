@@ -49,6 +49,10 @@ public final class HypixelApiClient {
 		return PARSE_EXECUTOR;
 	}
 
+	public static ExecutorService networkExecutor() {
+		return EXECUTOR;
+	}
+
 	private static long nextRequestAtMillis;
 
 	private HypixelApiClient() {

@@ -47,6 +47,8 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import net.minecraft.world.item.ItemStack;
 
@@ -54,6 +56,12 @@ public final class ProfileFetcher {
 	/** Match worker profiles cache TTL (5 minutes). */
 	private static final long CACHE_TTL_MS = 5L * 60L * 1000L;
 	private static final ConcurrentHashMap<String, CacheEntry> CACHE = new ConcurrentHashMap<>();
+	/** Post-core enrichment / profile-switch parsing (bounded; avoids parse-pool deadlock). */
+	private static final ExecutorService ENRICH_EXECUTOR = Executors.newFixedThreadPool(3, r -> {
+		Thread t = new Thread(r, "BetterPV-Enrich");
+		t.setDaemon(true);
+		return t;
+	});
 
 	private static final String[] HOME_SKILLS = {
 		"combat", "foraging", "farming", "enchanting", "mining", "alchemy", "fishing", "carpentry", "taming", "hunting"
@@ -160,7 +168,9 @@ public final class ProfileFetcher {
 	}
 
 	/**
-	 * Loads the home/core profile first, then publishes a fully enriched profile through {@code onUpdate}.
+	 * Loads the home/core profile first (enough for Home + dismiss loading egg), then publishes
+	 * a fully enriched profile through {@code onUpdate}. Fatal failures return {@code !ok()} and
+	 * never become a successful core load.
 	 */
 	public static CompletableFuture<LoadedProfile> fetch(String playerName, Consumer<LoadedProfile> onUpdate) {
 		RepoData.ensureLoaded();
@@ -217,58 +227,135 @@ public final class ProfileFetcher {
 				putCache(nameKey(id.name()), byUuid);
 				return CompletableFuture.completedFuture(byUuid);
 			}
-			return HypixelApiClient.skyblockProfiles(id.uuid()).thenCompose(profilesOpt -> {
-				if (profilesOpt.isEmpty()) {
-					String authMessage = BetterPvSessionAuth.userFacingFailure()
-						.orElse("Profiles request failed");
-					BetterPvSessionAuth.notifyPlayerIfNeeded();
-					return CompletableFuture.completedFuture(fail(id.name(), authMessage));
-				}
-				JsonObject root = profilesOpt.get();
-				JsonObject best = selectedProfile(root);
-				String profileId = best != null && best.has("profile_id") ? best.get("profile_id").getAsString() : null;
-				CompletableFuture<Optional<JsonObject>> museumFut = HypixelApiClient.skyblockMuseum(id.uuid(), profileId);
-				CompletableFuture<Optional<JsonObject>> electionFut = HypixelApiClient.skyblockElection();
-				CompletableFuture<Optional<JsonObject>> auctionFut = HypixelApiClient.skyblockAuction(id.uuid());
-				CompletableFuture<Optional<JsonArray>> soldFut = CoflnetApiClient.playerAuctions(id.uuid(), 0);
-				CompletableFuture<Optional<JsonArray>> bidsFut = CoflnetApiClient.playerBids(id.uuid(), 0);
 
-				CompletableFuture<LoadedProfile> coreFuture = CompletableFuture.supplyAsync(
-					() -> parseHomeCore(id.name(), id.uuid(), root),
-					HypixelApiClient.parseExecutor()
-				);
-				coreFuture.thenCompose(core -> CompletableFuture.allOf(museumFut, electionFut, auctionFut, soldFut, bidsFut)
-					.thenApplyAsync(ignored -> {
-						LoadedProfile loaded = parse(
-							id.name(),
-							id.uuid(),
-							root,
-							museumFut.join().orElse(null),
-							electionFut.join().orElse(null),
-							AuctionSnapshot.build(
-								id.uuid(),
-								auctionFut.join().orElse(null),
-								soldFut.join().orElse(null),
-								bidsFut.join().orElse(null)
-							)
-						);
-						if (loaded.ok()) {
-							putCache(uuidKey(id.uuid()), loaded);
-							putCache(nameKey(id.name()), loaded);
-							putCache(nameKey(cleaned), loaded);
+			return CompletableFuture
+				.supplyAsync(BetterPvSessionAuth::ensureBearerToken, HypixelApiClient.networkExecutor())
+				.thenCompose(ignored -> HypixelApiClient.skyblockProfiles(id.uuid()).thenCompose(profilesOpt -> {
+						if (profilesOpt.isEmpty()) {
+							String authMessage = BetterPvSessionAuth.userFacingFailure()
+								.orElse("Profiles request failed");
+							BetterPvSessionAuth.notifyPlayerIfNeeded();
+							return CompletableFuture.completedFuture(fail(id.name(), authMessage));
 						}
-						return loaded;
-					}, HypixelApiClient.parseExecutor())
-				).whenComplete((loaded, error) -> {
-					if (error != null) {
-						BetterPV.LOGGER.warn("Background profile enrichment failed for {}", id.name(), error);
-					} else if (loaded != null && onUpdate != null) {
-						onUpdate.accept(loaded);
-					}
-				});
-				return coreFuture;
-			});
+						JsonObject root = profilesOpt.get();
+						JsonObject best = selectedProfile(root);
+						String profileId = best != null && best.has("profile_id")
+							? best.get("profile_id").getAsString()
+							: null;
+						CompletableFuture<Optional<JsonObject>> museumFut =
+							HypixelApiClient.skyblockMuseum(id.uuid(), profileId);
+						CompletableFuture<Optional<JsonObject>> electionFut =
+							HypixelApiClient.skyblockElection();
+						CompletableFuture<Optional<JsonObject>> auctionFut =
+							HypixelApiClient.skyblockAuction(id.uuid());
+						CompletableFuture<Optional<JsonArray>> soldFut =
+							CoflnetApiClient.playerAuctions(id.uuid(), 0);
+						CompletableFuture<Optional<JsonArray>> bidsFut =
+							CoflnetApiClient.playerBids(id.uuid(), 0);
+
+						CompletableFuture<LoadedProfile> coreFuture = CompletableFuture.supplyAsync(
+							() -> parseHomeCore(id.name(), id.uuid(), root),
+							HypixelApiClient.parseExecutor()
+						);
+
+						coreFuture.thenAccept(core -> {
+							if (core != null && core.ok()) {
+								// Cache core immediately so a quick second /pv is warm for first paint.
+								putCache(uuidKey(id.uuid()), core);
+								putCache(nameKey(id.name()), core);
+								putCache(nameKey(cleaned), core);
+							}
+						});
+
+						coreFuture.thenCompose(core -> {
+							if (core == null || !core.ok()) {
+								return CompletableFuture.completedFuture(core);
+							}
+							return CompletableFuture.allOf(museumFut, electionFut, auctionFut, soldFut, bidsFut)
+								.thenApplyAsync(ignored2 -> {
+									LoadedProfile loaded = InventoryDecoder.withSharedDecode(() -> parse(
+										id.name(),
+										id.uuid(),
+										root,
+										museumFut.join().orElse(null),
+										electionFut.join().orElse(null),
+										AuctionSnapshot.build(
+											id.uuid(),
+											auctionFut.join().orElse(null),
+											soldFut.join().orElse(null),
+											bidsFut.join().orElse(null)
+										)
+									));
+									if (loaded.ok()) {
+										putCache(uuidKey(id.uuid()), loaded);
+										putCache(nameKey(id.name()), loaded);
+										putCache(nameKey(cleaned), loaded);
+									}
+									return loaded;
+								}, ENRICH_EXECUTOR);
+						}).whenComplete((loaded, error) -> {
+							if (error != null) {
+								BetterPV.LOGGER.warn("Background profile enrichment failed for {}", id.name(), error);
+							} else if (loaded != null && onUpdate != null) {
+								onUpdate.accept(loaded);
+							}
+						});
+						return coreFuture;
+					}));
 		});
+	}
+
+	/**
+	 * Async re-parse for profile switching. Publishes core first when {@code onUpdate} is set,
+	 * then enrichment. Caller must ignore stale results via its own generation counter.
+	 */
+	public static CompletableFuture<LoadedProfile> switchToProfile(
+		String name,
+		UUID uuid,
+		JsonObject root,
+		String profileId,
+		Consumer<LoadedProfile> onUpdate
+	) {
+		CompletableFuture<LoadedProfile> coreFuture = CompletableFuture.supplyAsync(
+			() -> parseHomeCore(name, uuid, root, profileId),
+			HypixelApiClient.parseExecutor()
+		);
+		coreFuture.thenCompose(core -> {
+			if (core == null || !core.ok()) {
+				return CompletableFuture.completedFuture(core);
+			}
+			String pid = core.profileId();
+			CompletableFuture<Optional<JsonObject>> museumFut = HypixelApiClient.skyblockMuseum(uuid, pid);
+			CompletableFuture<Optional<JsonObject>> electionFut = HypixelApiClient.skyblockElection();
+			CompletableFuture<Optional<JsonObject>> auctionFut = HypixelApiClient.skyblockAuction(uuid);
+			CompletableFuture<Optional<JsonArray>> soldFut = CoflnetApiClient.playerAuctions(uuid, 0);
+			CompletableFuture<Optional<JsonArray>> bidsFut = CoflnetApiClient.playerBids(uuid, 0);
+			return CompletableFuture.allOf(museumFut, electionFut, auctionFut, soldFut, bidsFut)
+				.thenApplyAsync(ignored -> {
+					LoadedProfile loaded = InventoryDecoder.withSharedDecode(() -> parse(
+						name,
+						uuid,
+						root,
+						museumFut.join().orElse(null),
+						electionFut.join().orElse(null),
+						AuctionSnapshot.build(
+							uuid,
+							auctionFut.join().orElse(null),
+							soldFut.join().orElse(null),
+							bidsFut.join().orElse(null)
+						),
+						pid
+					));
+					return loaded;
+				}, ENRICH_EXECUTOR);
+		}).whenComplete((loaded, error) -> {
+			if (error != null) {
+				BetterPV.LOGGER.warn("Profile switch enrichment failed for {} ({})", name, profileId, error);
+			} else if (loaded != null && onUpdate != null) {
+				onUpdate.accept(loaded);
+			}
+		});
+		return coreFuture;
 	}
 
 	private static String nameKey(String name) {
@@ -380,8 +467,20 @@ public final class ProfileFetcher {
 		JsonObject electionRoot,
 		AuctionSnapshot auctions
 	) {
+		return parse(name, uuid, root, museumRoot, electionRoot, auctions, null);
+	}
+
+	private static LoadedProfile parse(
+		String name,
+		UUID uuid,
+		JsonObject root,
+		JsonObject museumRoot,
+		JsonObject electionRoot,
+		AuctionSnapshot auctions,
+		String preferredProfileId
+	) {
 		try {
-			return parseUnsafe(name, uuid, root, museumRoot, electionRoot, auctions, true, null);
+			return parseUnsafe(name, uuid, root, museumRoot, electionRoot, auctions, true, preferredProfileId);
 		} catch (Exception exception) {
 			BetterPV.LOGGER.warn("Profile parse failed for {}", name, exception);
 			return fail(name, exception.getMessage() == null ? "Parse failed" : exception.getMessage());
@@ -393,7 +492,9 @@ public final class ProfileFetcher {
 			return fail(name, "Missing profile");
 		}
 		try {
-			return parseUnsafe(name, uuid, root, null, null, AuctionSnapshot.empty(), true, profileId);
+			return InventoryDecoder.withSharedDecode(() -> parseUnsafe(
+				name, uuid, root, null, null, AuctionSnapshot.empty(), true, profileId
+			));
 		} catch (Exception exception) {
 			BetterPV.LOGGER.warn("Profile re-parse failed for {} ({})", name, profileId, exception);
 			return fail(name, exception.getMessage() == null ? "Parse failed" : exception.getMessage());
@@ -401,21 +502,197 @@ public final class ProfileFetcher {
 	}
 
 	private static LoadedProfile parseHomeCore(String name, UUID uuid, JsonObject root) {
+		return parseHomeCore(name, uuid, root, null);
+	}
+
+	/**
+	 * Minimum valid Home snapshot only. No inventory UI, tab snapshots, museum, or networth.
+	 * Fatal validation failures return {@code !ok()} so the loading egg stays up.
+	 */
+	private static LoadedProfile parseHomeCore(String name, UUID uuid, JsonObject root, String preferredProfileId) {
 		try {
-			return parseUnsafe(
-				name,
-				uuid,
-				root,
-				null,
-				null,
-				AuctionSnapshot.empty(),
-				false,
-				null
-			);
+			return parseHomeCoreUnsafe(name, uuid, root, preferredProfileId);
 		} catch (Exception exception) {
 			BetterPV.LOGGER.warn("Core profile parse failed for {}", name, exception);
 			return fail(name, exception.getMessage() == null ? "Parse failed" : exception.getMessage());
 		}
+	}
+
+	private static LoadedProfile parseHomeCoreUnsafe(
+		String name,
+		UUID uuid,
+		JsonObject root,
+		String preferredProfileId
+	) {
+		JsonArray profiles = root.has("profiles") && root.get("profiles").isJsonArray()
+			? root.getAsJsonArray("profiles")
+			: null;
+		if (profiles == null || profiles.isEmpty()) {
+			return fail(name, "No SkyBlock profiles");
+		}
+		JsonObject best = pickProfile(profiles, preferredProfileId);
+		String cuteName = "Unknown";
+		String undashed = HypixelApiClient.undashed(uuid);
+		String profileId = null;
+		if (best != null) {
+			cuteName = best.has("cute_name") ? best.get("cute_name").getAsString() : cuteName;
+			profileId = best.has("profile_id") ? best.get("profile_id").getAsString() : profileId;
+		}
+		List<ProfileChoice> choices = listProfileChoices(profiles, profileId);
+		if (best == null) {
+			return fail(name, "No usable profile");
+		}
+		JsonObject members = best.has("members") && best.get("members").isJsonObject()
+			? best.getAsJsonObject("members")
+			: null;
+		JsonObject member = findMember(members, undashed);
+		if (member == null) {
+			return fail(name, "Member data missing");
+		}
+
+		BetterPV.LOGGER.info("Parsing home core for {} ({})", name, cuteName);
+
+		Map<String, Leveling.Progress> weightLevels = WeightCalculator.buildLevels(member);
+		WeightBreakdown senither = WeightCalculator.senither(member, weightLevels);
+		WeightBreakdown lily = WeightCalculator.lily(member, weightLevels);
+
+		List<ProfileSnapshot.SkillEntry> skills = buildHomeSkills(member);
+		ProfileSnapshot.SkillEntry social = buildSocial(member);
+		List<ProfileSnapshot.SlayerEntry> slayers = buildHomeSlayers(member);
+
+		int sbLevel = 0;
+		int sbXp = 0;
+		JsonObject leveling = Leveling.obj(member.get("leveling"));
+		if (leveling != null) {
+			Float experience = Leveling.num(leveling.get("experience"));
+			if (experience != null) {
+				sbLevel = (int) Math.floor(experience / 100F);
+				sbXp = Math.round(experience % 100F);
+			}
+		}
+
+		double purseCoins = NetworthCalculator.purse(member);
+		double bankCoins = NetworthCalculator.bank(best, member);
+		List<ProfileSnapshot.BankTransaction> bankTransactions = parseBankTransactions(best);
+
+		ProfileSnapshot snapshot = new ProfileSnapshot(
+			name,
+			uuid,
+			cuteName,
+			sbLevel,
+			sbXp,
+			FormatUtil.weight(senither.total()),
+			"…",
+			purseCoins,
+			bankCoins,
+			bankTransactions,
+			skills,
+			slayers,
+			social
+		);
+
+		Map<String, List<InventoryDecoder.Stack>> homeGear = InventoryDecoder.parseHomeGear(member);
+		PlayerStatsSnapshot playerStats = PlayerStatsCalculator.fromMember(member, homeGear);
+		ItemStack[] armor = ArmorStacks.fromMember(member);
+
+		MiscStatsSnapshot misc;
+		try {
+			misc = MiscStatsSnapshot.from(best, member);
+		} catch (Exception exception) {
+			BetterPV.LOGGER.warn("Misc stats parse failed for {}", name, exception);
+			misc = MiscStatsSnapshot.empty();
+		}
+
+		return new LoadedProfile(
+			snapshot,
+			DungeonSnapshot.empty(),
+			InventorySnapshot.empty(),
+			PetSnapshot.empty(),
+			AuctionSnapshot.empty(),
+			CollectionSnapshot.empty(),
+			GardenSnapshot.empty(),
+			MiningSnapshot.empty(),
+			ForagingSnapshot.empty(),
+			FishingSnapshot.empty(),
+			CrimsonSnapshot.empty().withPlayerStats(playerStats),
+			RiftSnapshot.empty(),
+			BestiarySnapshot.empty(),
+			EventsSnapshot.empty(),
+			misc,
+			null,
+			profileId,
+			root,
+			choices,
+			senither,
+			lily,
+			NetworthBreakdown.empty("Loading networth"),
+			NetworthBreakdown.empty("Loading networth"),
+			NetworthBreakdown.empty("Loading networth"),
+			NetworthBreakdown.empty("Loading networth"),
+			armor,
+			playerStats,
+			null
+		);
+	}
+
+	private static List<ProfileSnapshot.SkillEntry> buildHomeSkills(JsonObject member) {
+		List<ProfileSnapshot.SkillEntry> skills = new ArrayList<>();
+		for (String skill : HOME_SKILLS) {
+			float xp = Leveling.readSkillXp(member, skill);
+			int cap = Leveling.skillCap(skill, member);
+			Leveling.Progress progress = Leveling.getLevel(Leveling.skillTable(skill), xp, cap, false);
+			skills.add(new ProfileSnapshot.SkillEntry(
+				skill,
+				title(skill),
+				(int) Math.floor(progress.level()),
+				progress.fill(),
+				progress.maxed(),
+				progress.skillHover(title(skill)),
+				progress.skillHoverLines(title(skill))
+			));
+		}
+		return skills;
+	}
+
+	private static ProfileSnapshot.SkillEntry buildSocial(JsonObject member) {
+		float socialXp = Leveling.readSkillXp(member, "social");
+		int socialCap = Leveling.skillCap("social", member);
+		Leveling.Progress socialProgress = Leveling.getLevel(Leveling.skillTable("social"), socialXp, socialCap, false);
+		return new ProfileSnapshot.SkillEntry(
+			"social",
+			"Social",
+			(int) Math.floor(socialProgress.level()),
+			socialProgress.fill(),
+			socialProgress.maxed(),
+			socialProgress.skillHover("Social"),
+			socialProgress.skillHoverLines("Social")
+		);
+	}
+
+	private static List<ProfileSnapshot.SlayerEntry> buildHomeSlayers(JsonObject member) {
+		List<ProfileSnapshot.SlayerEntry> slayers = new ArrayList<>();
+		for (String[] pair : HOME_SLAYERS) {
+			float xp = Leveling.readSlayerXp(member, pair[0]);
+			JsonArray slayerTable = RepoData.slayerXp(pair[0]);
+			int slayerCap = slayerTable == null || slayerTable.isEmpty() ? 9 : slayerTable.size();
+			Leveling.Progress progress = Leveling.getLevel(slayerTable, xp, slayerCap, true);
+			int[] kills = Leveling.readSlayerBossKills(member, pair[0]);
+			List<Integer> killList = new ArrayList<>(kills.length);
+			for (int kill : kills) {
+				killList.add(kill);
+			}
+			slayers.add(new ProfileSnapshot.SlayerEntry(
+				pair[0],
+				pair[1],
+				(int) Math.floor(progress.level()),
+				progress.fill(),
+				progress.maxed(),
+				progress.slayerHoverWithKills(pair[1], pair[0], kills),
+				killList,
+				progress.slayerHoverLinesWithKills(pair[1], pair[0], kills)
+			));
+		}
+		return slayers;
 	}
 
 	private static LoadedProfile parseUnsafe(
@@ -459,77 +736,35 @@ public final class ProfileFetcher {
 		WeightBreakdown senither = WeightCalculator.senither(member, weightLevels);
 		WeightBreakdown lily = WeightCalculator.lily(member, weightLevels);
 
+		// Never block first paint on prices. Brief wait only during enrichment.
 		if (includeNetworth && !ItemPricer.isReady()) {
-			ItemPricer.awaitReady(12_000L);
+			ItemPricer.awaitReady(1_500L);
 		}
 		JsonObject museumMember = includeNetworth ? findMuseumMember(museumRoot, profileId, undashed) : null;
 		BetterPV.LOGGER.info("Parsing profile {} ({})", name, cuteName);
+
 		Map<String, List<InventoryDecoder.Stack>> inventoryCategories =
 			InventoryDecoder.parseCategories(member, museumMember);
-		NetworthBreakdown networthNormal = includeNetworth
+
+		boolean pricesReady = includeNetworth && ItemPricer.isReady();
+		NetworthBreakdown networthNormal = pricesReady
 			? NetworthCalculator.calculate(member, best, museumMember, inventoryCategories, NetworthMode.NORMAL)
 			: NetworthBreakdown.empty("Loading networth");
-		NetworthBreakdown networthNonCosmetic = includeNetworth
+		NetworthBreakdown networthNonCosmetic = pricesReady
 			? NetworthCalculator.calculate(member, best, museumMember, inventoryCategories, NetworthMode.NON_COSMETIC)
 			: NetworthBreakdown.empty("Loading networth");
-		NetworthBreakdown networthUnsoulbound = includeNetworth
+		NetworthBreakdown networthUnsoulbound = pricesReady
 			? NetworthCalculator.calculate(member, best, museumMember, inventoryCategories, NetworthMode.UNSOULBOUND)
 			: NetworthBreakdown.empty("Loading networth");
-		NetworthBreakdown networthUnsoulboundNonCosmetic = includeNetworth
-			? NetworthCalculator.calculate(member, best, museumMember, inventoryCategories, NetworthMode.UNSOULBOUND_NON_COSMETIC)
+		NetworthBreakdown networthUnsoulboundNonCosmetic = pricesReady
+			? NetworthCalculator.calculate(
+				member, best, museumMember, inventoryCategories, NetworthMode.UNSOULBOUND_NON_COSMETIC
+			)
 			: NetworthBreakdown.empty("Loading networth");
 
-		List<ProfileSnapshot.SkillEntry> skills = new ArrayList<>();
-		for (String skill : HOME_SKILLS) {
-			float xp = Leveling.readSkillXp(member, skill);
-			int cap = Leveling.skillCap(skill, member);
-			Leveling.Progress progress = Leveling.getLevel(Leveling.skillTable(skill), xp, cap, false);
-			skills.add(new ProfileSnapshot.SkillEntry(
-				skill,
-				title(skill),
-				(int) Math.floor(progress.level()),
-				progress.fill(),
-				progress.maxed(),
-				progress.skillHover(title(skill)),
-				progress.skillHoverLines(title(skill))
-			));
-		}
-
-		float socialXp = Leveling.readSkillXp(member, "social");
-		int socialCap = Leveling.skillCap("social", member);
-		Leveling.Progress socialProgress = Leveling.getLevel(Leveling.skillTable("social"), socialXp, socialCap, false);
-		ProfileSnapshot.SkillEntry social = new ProfileSnapshot.SkillEntry(
-			"social",
-			"Social",
-			(int) Math.floor(socialProgress.level()),
-			socialProgress.fill(),
-			socialProgress.maxed(),
-			socialProgress.skillHover("Social"),
-			socialProgress.skillHoverLines("Social")
-		);
-
-		List<ProfileSnapshot.SlayerEntry> slayers = new ArrayList<>();
-		for (String[] pair : HOME_SLAYERS) {
-			float xp = Leveling.readSlayerXp(member, pair[0]);
-			JsonArray slayerTable = RepoData.slayerXp(pair[0]);
-			int slayerCap = slayerTable == null || slayerTable.isEmpty() ? 9 : slayerTable.size();
-			Leveling.Progress progress = Leveling.getLevel(slayerTable, xp, slayerCap, true);
-			int[] kills = Leveling.readSlayerBossKills(member, pair[0]);
-			List<Integer> killList = new ArrayList<>(kills.length);
-			for (int kill : kills) {
-				killList.add(kill);
-			}
-			slayers.add(new ProfileSnapshot.SlayerEntry(
-				pair[0],
-				pair[1],
-				(int) Math.floor(progress.level()),
-				progress.fill(),
-				progress.maxed(),
-				progress.slayerHoverWithKills(pair[1], pair[0], kills),
-				killList,
-				progress.slayerHoverLinesWithKills(pair[1], pair[0], kills)
-			));
-		}
+		List<ProfileSnapshot.SkillEntry> skills = buildHomeSkills(member);
+		ProfileSnapshot.SkillEntry social = buildSocial(member);
+		List<ProfileSnapshot.SlayerEntry> slayers = buildHomeSlayers(member);
 
 		int sbLevel = 0;
 		int sbXp = 0;
@@ -542,7 +777,7 @@ public final class ProfileFetcher {
 			}
 		}
 
-		String nwText = !includeNetworth
+		String nwText = !includeNetworth || !pricesReady
 			? "…"
 			: networthNormal.total() > 0
 			? FormatUtil.shortCoins(networthNormal.total())
@@ -567,7 +802,9 @@ public final class ProfileFetcher {
 			slayers,
 			social
 		);
+
 		DungeonSnapshot dungeons = parseDungeons(member, museumMember, electionRoot, inventoryCategories);
+
 		InventorySnapshot inventories;
 		try {
 			inventories = InventoryDecoder.parseUi(member);
@@ -576,6 +813,7 @@ public final class ProfileFetcher {
 			BetterPV.LOGGER.warn("Inventory decode failed for {}", name, exception);
 			inventories = InventorySnapshot.empty();
 		}
+
 		PetSnapshot pets;
 		try {
 			pets = PetSnapshot.fromMember(member);
@@ -584,6 +822,7 @@ public final class ProfileFetcher {
 			BetterPV.LOGGER.warn("Pets decode failed for {}", name, exception);
 			pets = PetSnapshot.empty();
 		}
+
 		CollectionSnapshot collections;
 		try {
 			collections = CollectionSnapshot.fromProfile(members, uuid, name);
@@ -591,6 +830,7 @@ public final class ProfileFetcher {
 			BetterPV.LOGGER.warn("Collections decode failed for {}", name, exception);
 			collections = CollectionSnapshot.empty();
 		}
+
 		GardenSnapshot garden;
 		try {
 			garden = GardenSnapshot.fromMember(member);
@@ -598,6 +838,7 @@ public final class ProfileFetcher {
 			BetterPV.LOGGER.warn("Garden member parse failed for {}", name, exception);
 			garden = GardenSnapshot.empty();
 		}
+
 		MiningSnapshot mining;
 		try {
 			mining = MiningSnapshot.fromMember(member);
@@ -660,7 +901,8 @@ public final class ProfileFetcher {
 		auctionSnapshot = auctionSnapshot.withStats(AuctionSnapshot.Stats.fromMember(member));
 		PlayerStatsSnapshot playerStats = PlayerStatsCalculator.fromMember(member, inventoryCategories);
 		crimson = crimson.withPlayerStats(playerStats);
-		return new LoadedProfile(
+
+		LoadedProfile loaded = new LoadedProfile(
 			snapshot,
 			dungeons,
 			inventories,
@@ -690,6 +932,106 @@ public final class ProfileFetcher {
 			playerStats,
 			null
 		);
+
+		if (includeNetworth && !pricesReady) {
+			scheduleNetworthRefresh(loaded, member, best, museumMember, inventoryCategories, null);
+		}
+		return loaded;
+	}
+
+	private static void scheduleNetworthRefresh(
+		LoadedProfile base,
+		JsonObject member,
+		JsonObject profile,
+		JsonObject museumMember,
+		Map<String, List<InventoryDecoder.Stack>> inventoryCategories,
+		Consumer<LoadedProfile> onUpdate
+	) {
+		if (base == null || !base.ok() || base.snapshot() == null || base.snapshot().playerUuid() == null) {
+			return;
+		}
+		UUID uuid = base.snapshot().playerUuid();
+		String name = base.snapshot().playerName();
+		CompletableFuture.runAsync(() -> {
+			ItemPricer.awaitReady(30_000L);
+			if (!ItemPricer.isReady()) {
+				return;
+			}
+			try {
+				NetworthBreakdown normal = NetworthCalculator.calculate(
+					member, profile, museumMember, inventoryCategories, NetworthMode.NORMAL
+				);
+				NetworthBreakdown nonCosmetic = NetworthCalculator.calculate(
+					member, profile, museumMember, inventoryCategories, NetworthMode.NON_COSMETIC
+				);
+				NetworthBreakdown unsoulbound = NetworthCalculator.calculate(
+					member, profile, museumMember, inventoryCategories, NetworthMode.UNSOULBOUND
+				);
+				NetworthBreakdown unsoulboundNonCosmetic = NetworthCalculator.calculate(
+					member, profile, museumMember, inventoryCategories, NetworthMode.UNSOULBOUND_NON_COSMETIC
+				);
+				String nwText = normal.total() > 0 ? FormatUtil.shortCoins(normal.total()) : "-";
+				LoadedProfile refreshed = new LoadedProfile(
+					base.snapshot().withNetworthText(nwText),
+					base.dungeons(),
+					base.inventories(),
+					base.pets(),
+					base.auctions(),
+					base.collections(),
+					base.garden(),
+					base.mining(),
+					base.foraging(),
+					base.fishing(),
+					base.crimson(),
+					base.rift(),
+					base.bestiary(),
+					base.events(),
+					base.misc(),
+					base.museumMember(),
+					base.profileId(),
+					base.profilesRoot(),
+					base.profiles(),
+					base.senither(),
+					base.lily(),
+					normal,
+					nonCosmetic,
+					unsoulbound,
+					unsoulboundNonCosmetic,
+					base.armor(),
+					base.playerStats(),
+					null
+				);
+				putCache(uuidKey(uuid), refreshed);
+				putCache(nameKey(name), refreshed);
+				if (onUpdate != null) {
+					onUpdate.accept(refreshed);
+				}
+				for (Consumer<LoadedProfile> listener : NETWORTH_LISTENERS) {
+					try {
+						listener.accept(refreshed);
+					} catch (Exception ignored) {
+					}
+				}
+			} catch (Exception exception) {
+				BetterPV.LOGGER.warn("Deferred networth refresh failed for {}", name, exception);
+			}
+		}, ENRICH_EXECUTOR);
+	}
+
+	private static final java.util.concurrent.CopyOnWriteArrayList<Consumer<LoadedProfile>> NETWORTH_LISTENERS =
+		new java.util.concurrent.CopyOnWriteArrayList<>();
+
+	/** Registers a listener for deferred networth refreshes (screen generation must filter stale). */
+	public static void addNetworthListener(Consumer<LoadedProfile> listener) {
+		if (listener != null) {
+			NETWORTH_LISTENERS.add(listener);
+		}
+	}
+
+	public static void removeNetworthListener(Consumer<LoadedProfile> listener) {
+		if (listener != null) {
+			NETWORTH_LISTENERS.remove(listener);
+		}
 	}
 
 	/** Prefer {@code preferredProfileId}, else Hypixel-selected, else first usable profile. */

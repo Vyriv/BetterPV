@@ -152,6 +152,26 @@ public final class BetterPvSessionAuth {
 		});
 	}
 
+	/**
+	 * Non-blocking warm of the session JWT once a real Minecraft login is present.
+	 * Reuses in-flight auth; no-ops when a usable JWT is already cached.
+	 */
+	public static void prefetchAsync() {
+		if (isUsable()) {
+			lastFailure = Failure.NONE;
+			return;
+		}
+		synchronized (LOCK) {
+			if (isUsable()) {
+				lastFailure = Failure.NONE;
+				return;
+			}
+			if (inFlight == null || inFlight.isDone()) {
+				inFlight = CompletableFuture.supplyAsync(BetterPvSessionAuth::authenticateOnce, AUTH_EXECUTOR);
+			}
+		}
+	}
+
 	/** Blocking; call only from worker threads, never the render thread. */
 	public static Optional<String> ensureBearerToken() {
 		if (isUsable()) {

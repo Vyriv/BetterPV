@@ -210,6 +210,14 @@ public final class ProfileSnapshot {
 		);
 	}
 
+	public ProfileSnapshot withNetworthText(String networthText) {
+		return new ProfileSnapshot(
+			this.playerName, this.playerUuid, this.profileName, this.skyBlockLevel, this.skyBlockXpIntoLevel,
+			this.weightText, networthText, this.purseCoins, this.bankCoins, this.bankTransactions,
+			this.skills, this.slayers, this.social
+		);
+	}
+
 	public static ProfileSnapshot loading(String name) {
 		String player = name == null || name.isBlank() ? "Player" : name.trim();
 		List<SkillEntry> skills = List.of(

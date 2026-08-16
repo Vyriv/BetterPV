@@ -45,6 +45,7 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Consumer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.EditBox;
@@ -93,6 +94,9 @@ public final class ProfileViewerScreen extends Screen {
 	private MuseumSort museumSort = MuseumSort.COMBAT;
 	private boolean fetchStarted;
 	private boolean dataReady;
+	/** Bumps on each fetch/switch so stale async results cannot overwrite newer state. */
+	private int loadGeneration;
+	private final Consumer<ProfileFetcher.LoadedProfile> networthListener = this::onDeferredNetworth;
 	private boolean breakScheduled;
 	private String profileId;
 	private UUID playerUuid;
@@ -193,13 +197,18 @@ public final class ProfileViewerScreen extends Screen {
 			return;
 		}
 		this.fetchStarted = true;
+		int generation = ++this.loadGeneration;
+		ProfileFetcher.addNetworthListener(this.networthListener);
 		ProfileFetcher.fetch(this.requestedName, updated -> {
 			Minecraft client = Minecraft.getInstance();
 			if (client == null) {
 				return;
 			}
 			client.execute(() -> {
-				if (client.screen != this) {
+				if (client.screen != this || generation != this.loadGeneration) {
+					return;
+				}
+				if (updated == null || !updated.ok()) {
 					return;
 				}
 				applyLoadedProfile(updated);
@@ -210,7 +219,7 @@ public final class ProfileViewerScreen extends Screen {
 				return;
 			}
 			client.execute(() -> {
-				if (client.screen != this) {
+				if (client.screen != this || generation != this.loadGeneration) {
 					return;
 				}
 				ProfileFetcher.LoadedProfile displayed = loaded;
@@ -229,12 +238,36 @@ public final class ProfileViewerScreen extends Screen {
 					BetterPV.LOGGER.warn("Profile fetch failed for {}: {}", this.requestedName, displayed.error());
 					BetterPvSessionAuth.notifyPlayerIfNeeded();
 					// Stay on the loading face (easter egg) instead of an empty template.
+					// Intentionally do NOT set dataReady — Loading... + eventual kick remain.
 					return;
 				}
 				applyLoadedProfile(displayed);
 				this.dataReady = true;
 			});
 		});
+	}
+
+	private void onDeferredNetworth(ProfileFetcher.LoadedProfile updated) {
+		Minecraft client = Minecraft.getInstance();
+		if (client == null || updated == null || !updated.ok()) {
+			return;
+		}
+		client.execute(() -> {
+			if (client.screen != this || !this.dataReady) {
+				return;
+			}
+			if (this.playerUuid != null && updated.snapshot() != null
+				&& this.playerUuid.equals(updated.snapshot().playerUuid())
+				&& (this.profileId == null || this.profileId.equals(updated.profileId()))) {
+				applyLoadedProfile(updated);
+			}
+		});
+	}
+
+	@Override
+	public void removed() {
+		ProfileFetcher.removeNetworthListener(this.networthListener);
+		super.removed();
 	}
 
 	private void applyLoadedProfile(ProfileFetcher.LoadedProfile loaded) {
@@ -1124,11 +1157,46 @@ public final class ProfileViewerScreen extends Screen {
 			return;
 		}
 		String name = this.homePage.playerName();
-		ProfileFetcher.LoadedProfile loaded = ProfileFetcher.parseByProfileId(
-			name, this.playerUuid, this.profilesRoot, nextProfileId
-		);
-		applyLoadedProfile(loaded);
-		this.dataReady = true;
+		UUID uuid = this.playerUuid;
+		JsonObject root = this.profilesRoot;
+		int generation = ++this.loadGeneration;
+		ProfileFetcher.switchToProfile(name, uuid, root, nextProfileId, updated -> {
+			Minecraft client = Minecraft.getInstance();
+			if (client == null) {
+				return;
+			}
+			client.execute(() -> {
+				if (client.screen != this || generation != this.loadGeneration) {
+					return;
+				}
+				if (updated == null || !updated.ok()) {
+					return;
+				}
+				applyLoadedProfile(updated);
+			});
+		}).whenComplete((loaded, error) -> {
+			Minecraft client = Minecraft.getInstance();
+			if (client == null) {
+				return;
+			}
+			client.execute(() -> {
+				if (client.screen != this || generation != this.loadGeneration) {
+					return;
+				}
+				if (error != null || loaded == null || !loaded.ok()) {
+					BetterPV.LOGGER.warn(
+						"Profile switch failed for {} -> {}",
+						name,
+						nextProfileId,
+						error
+					);
+					// Keep prior Home visible; do not force loading-egg for a failed switch.
+					return;
+				}
+				applyLoadedProfile(loaded);
+				this.dataReady = true;
+			});
+		});
 	}
 
 	private void submitPlayerSearch() {

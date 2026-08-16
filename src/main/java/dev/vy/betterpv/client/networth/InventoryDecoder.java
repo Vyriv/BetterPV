@@ -32,6 +32,13 @@ public final class InventoryDecoder {
 	private static final int WARDROBE_SETS_PER_PAGE = 9;
 	private static final int LOADOUT_SLOT_COUNT = 27;
 
+	/**
+	 * Session-scoped NBT decode cache so {@link #parseCategories} and {@link #parseUi}
+	 * (and repeated field reads) share one gzip/NBT pass per base64 blob.
+	 */
+	private static final ThreadLocal<Map<String, List<Stack>>> DECODE_KEEPING_EMPTY_CACHE = new ThreadLocal<>();
+	private static final ThreadLocal<Map<String, List<Stack>>> DECODE_COMPACT_CACHE = new ThreadLocal<>();
+
 	public record Stack(
 		String id,
 		int count,
@@ -60,6 +67,53 @@ public final class InventoryDecoder {
 	}
 
 	private InventoryDecoder() {
+	}
+
+	/**
+	 * Runs work with a thread-local NBT decode cache. Nested calls reuse the outer cache.
+	 * Decoded lists are treated as immutable by callers.
+	 */
+	public static <T> T withSharedDecode(java.util.function.Supplier<T> work) {
+		boolean outer = DECODE_KEEPING_EMPTY_CACHE.get() == null;
+		if (outer) {
+			DECODE_KEEPING_EMPTY_CACHE.set(new java.util.HashMap<>());
+			DECODE_COMPACT_CACHE.set(new java.util.HashMap<>());
+		}
+		try {
+			return work.get();
+		} finally {
+			if (outer) {
+				DECODE_KEEPING_EMPTY_CACHE.remove();
+				DECODE_COMPACT_CACHE.remove();
+			}
+		}
+	}
+
+	public static void withSharedDecode(Runnable work) {
+		withSharedDecode(() -> {
+			work.run();
+			return null;
+		});
+	}
+
+	/**
+	 * Home-first-paint gear only: armor, equipment, accessories.
+	 * Avoids full inventory / backpack / wardrobe NBT work.
+	 */
+	public static Map<String, List<Stack>> parseHomeGear(JsonObject member) {
+		Map<String, List<Stack>> categories = new LinkedHashMap<>();
+		if (member == null) {
+			return categories;
+		}
+		JsonObject inventory = obj(member.get("inventory"));
+		if (inventory == null) {
+			inventory = obj(member.get("inventories"));
+		}
+		JsonObject bags = inventory == null ? null : obj(inventory.get("bag_contents"));
+		put(categories, "armor", decodeField(inventory, "inv_armor"));
+		put(categories, "equipment", decodeField(inventory, "equipment_contents"));
+		put(categories, "accessories", bags == null ? List.of() : decodeField(bags, "talisman_bag"));
+		return categories;
 	}
 
 	public static Map<String, List<Stack>> parseCategories(JsonObject member, JsonObject museumMember) {
@@ -1240,6 +1294,34 @@ public final class InventoryDecoder {
 	}
 
 	private static List<Stack> decodeKeepingEmpty(String encoded, int minSlots) throws IOException {
+		Map<String, List<Stack>> cache = DECODE_KEEPING_EMPTY_CACHE.get();
+		if (cache != null) {
+			List<Stack> natural = cache.get(encoded);
+			if (natural == null) {
+				natural = decodeKeepingEmptyUncached(encoded, 0);
+				cache.put(encoded, natural);
+			}
+			return padSlots(natural, minSlots);
+		}
+		return decodeKeepingEmptyUncached(encoded, minSlots);
+	}
+
+	private static List<Stack> padSlots(List<Stack> slots, int minSlots) {
+		if (slots == null) {
+			return emptySlots(minSlots);
+		}
+		if (minSlots <= slots.size()) {
+			return slots;
+		}
+		List<Stack> out = new ArrayList<>(minSlots);
+		out.addAll(slots);
+		while (out.size() < minSlots) {
+			out.add(null);
+		}
+		return out;
+	}
+
+	private static List<Stack> decodeKeepingEmptyUncached(String encoded, int minSlots) throws IOException {
 		byte[] bytes = Base64.getDecoder().decode(encoded);
 		try (ByteArrayInputStream input = new ByteArrayInputStream(bytes)) {
 			CompoundTag root = NbtIo.readCompressed(input, NbtAccounter.unlimitedHeap());
@@ -1308,6 +1390,41 @@ public final class InventoryDecoder {
 	}
 
 	private static List<Stack> decode(String encoded) throws IOException {
+		Map<String, List<Stack>> cache = DECODE_COMPACT_CACHE.get();
+		if (cache != null) {
+			List<Stack> cached = cache.get(encoded);
+			if (cached != null) {
+				return cached;
+			}
+		}
+		if (DECODE_KEEPING_EMPTY_CACHE.get() != null) {
+			List<Stack> compact = compactNonNull(decodeKeepingEmpty(encoded, 0));
+			if (cache != null) {
+				cache.put(encoded, compact);
+			}
+			return compact;
+		}
+		List<Stack> decoded = decodeUncached(encoded);
+		if (cache != null) {
+			cache.put(encoded, decoded);
+		}
+		return decoded;
+	}
+
+	private static List<Stack> compactNonNull(List<Stack> slots) {
+		if (slots == null || slots.isEmpty()) {
+			return List.of();
+		}
+		List<Stack> out = new ArrayList<>(slots.size());
+		for (Stack stack : slots) {
+			if (stack != null) {
+				out.add(stack);
+			}
+		}
+		return out;
+	}
+
+	private static List<Stack> decodeUncached(String encoded) throws IOException {
 		byte[] bytes = Base64.getDecoder().decode(encoded);
 		try (ByteArrayInputStream input = new ByteArrayInputStream(bytes)) {
 			CompoundTag root = NbtIo.readCompressed(input, NbtAccounter.unlimitedHeap());

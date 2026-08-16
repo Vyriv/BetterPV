@@ -171,7 +171,8 @@ public final class ForagingSnapshot {
 	private final DungeonSnapshot.EssenceShop forestShop;
 	private final SafariInfo safari;
 	private final long uniqueShards;
-	private final long safariEssence;
+	private final DungeonSnapshot.EssenceShop safariShop;
+	private final long peltCount;
 
 	private ForagingSnapshot(
 		int foragingLevel, float foragingFill, boolean foragingMaxed, String foragingHover,
@@ -193,7 +194,8 @@ public final class ForagingSnapshot {
 		DungeonSnapshot.EssenceShop forestShop,
 		SafariInfo safari,
 		long uniqueShards,
-		long safariEssence
+		DungeonSnapshot.EssenceShop safariShop,
+		long peltCount
 	) {
 		this.foragingLevel = foragingLevel;
 		this.foragingFill = Math.max(0f, Math.min(1f, foragingFill));
@@ -243,7 +245,10 @@ public final class ForagingSnapshot {
 			: forestShop;
 		this.safari = safari == null ? SafariInfo.empty() : safari;
 		this.uniqueShards = Math.max(0L, uniqueShards);
-		this.safariEssence = Math.max(0L, safariEssence);
+		this.safariShop = safariShop == null
+			? DungeonSnapshot.EssenceShop.empty("safari", "Safari")
+			: safariShop;
+		this.peltCount = Math.max(0L, peltCount);
 	}
 
 	public static ForagingSnapshot empty() {
@@ -258,7 +263,9 @@ public final class ForagingSnapshot {
 			0L, List.of(), Map.of(), false, List.of(), List.of(),
 			DungeonSnapshot.EssenceShop.empty("forest", "Forest"),
 			SafariInfo.empty(),
-			0L, 0L
+			0L,
+			DungeonSnapshot.EssenceShop.empty("safari", "Safari"),
+			0L
 		);
 	}
 
@@ -372,6 +379,8 @@ public final class ForagingSnapshot {
 		boolean toolkitUnlocked = boolOf(toolkit, "IS_UNLOCKED");
 		List<ToolkitSlot> toolkitSlots = parseToolkit(toolkit);
 		SafariInfo safari = parseSafari(Leveling.obj(member.get("safari")));
+		JsonObject trapper = Leveling.obj(quests == null ? null : quests.get("trapper_quest"));
+		long pelts = longOf(trapper, "pelt_count");
 
 		return new ForagingSnapshot(
 			(int) Math.floor(foraging.level()), foraging.fill(), foraging.maxed(), foraging.skillHover("Foraging"),
@@ -387,7 +396,8 @@ public final class ForagingSnapshot {
 			EssenceShopData.forest(member),
 			safari,
 			longOf(stats, "unique_shards"),
-			EssenceShopData.balance(member, "SAFARI")
+			EssenceShopData.safari(member),
+			pelts
 		);
 	}
 
@@ -1101,7 +1111,10 @@ public final class ForagingSnapshot {
 	public DungeonSnapshot.EssenceShop forestShop() { return forestShop; }
 	public SafariInfo safari() { return safari; }
 	public long uniqueShards() { return uniqueShards; }
-	public long safariEssence() { return safariEssence; }
+	public DungeonSnapshot.EssenceShop safariShop() { return safariShop; }
+	public long safariEssence() { return safariShop.balance(); }
+
+	public long peltCount() { return peltCount; }
 
 	public int hotfNodeLevel(String id) {
 		if (id == null || id.isBlank()) {

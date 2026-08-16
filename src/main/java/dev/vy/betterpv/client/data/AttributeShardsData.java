@@ -71,6 +71,30 @@ public final class AttributeShardsData {
 		return byStackId.get(stackId.toLowerCase(Locale.ROOT));
 	}
 
+	/** Match by display name or {@code SHARD_<NAME>} bazaar id (safari critters). */
+	public static Def byCritterId(String critterId) {
+		ensureLoaded();
+		if (critterId == null || critterId.isBlank()) {
+			return null;
+		}
+		String key = critterId.trim().toLowerCase(Locale.ROOT).replace(' ', '_');
+		String bazaar = "shard_" + key;
+		String pretty = key.replace('_', ' ');
+		for (Def def : defs) {
+			if (def.bazaarName() != null && def.bazaarName().equalsIgnoreCase(bazaar)) {
+				return def;
+			}
+			if (def.displayName() != null && def.displayName().equalsIgnoreCase(pretty)) {
+				return def;
+			}
+			if (def.displayName() != null
+				&& def.displayName().replace(" ", "").equalsIgnoreCase(key.replace("_", ""))) {
+				return def;
+			}
+		}
+		return null;
+	}
+
 	public static int maxLevel(String rarity) {
 		int[] costs = costs(rarity);
 		return costs.length;

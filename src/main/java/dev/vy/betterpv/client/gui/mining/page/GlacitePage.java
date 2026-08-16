@@ -15,25 +15,57 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
-/** Glacite tunnels subtab: mineshafts, fossils, corpses, milestones. */
+/** Glacite tunnels subtab: mineshafts, fossils, corpses, milestones / fossil essence flip. */
 public final class GlacitePage {
 	private static final int BAR_CORPSE = 0xFF6B9BD1;
 	private static final int CORPSE_LAPIS = 0xFF5555FF;
 	private static final int CORPSE_UMBER = 0xFFC4A35A;
 	private static final int CORPSE_TUNGSTEN = 0xFFB0B0B8;
 	private static final int CORPSE_VANGUARD = 0xFF55FFFF;
+	private static final int FOSSIL_COLOR = 0xFFE8D5A3;
+	private static final int COLOR_MAXED = 0xFF7CFF9A;
+	private static final int PANEL_HOVER = 0x0AFFFFFF;
+	private static final int FLIP_MS = 480;
 
 	private int scroll;
 	private int maxScroll;
 	private int scrollTop;
 	private int scrollH;
 
+	private boolean milestonesEssenceFace;
+	private long milestonesFlipStartMs;
+	private boolean milestonesFlipTarget;
+	private int milestonesHitX;
+	private int milestonesHitY;
+	private int milestonesHitW;
+	private int milestonesHitH;
+
 	public void reset() {
 		this.scroll = 0;
+		this.milestonesEssenceFace = false;
+		this.milestonesFlipStartMs = 0L;
+		this.milestonesHitW = 0;
+		this.milestonesHitH = 0;
 	}
 
 	public void onEnter() {
 		this.scroll = 0;
+	}
+
+	public boolean mouseClicked(double mx, double my) {
+		if (this.milestonesHitW <= 0 || this.milestonesHitH <= 0) {
+			return false;
+		}
+		if (mx < this.milestonesHitX || mx >= this.milestonesHitX + this.milestonesHitW
+			|| my < this.milestonesHitY || my >= this.milestonesHitY + this.milestonesHitH) {
+			return false;
+		}
+		if (this.milestonesFlipStartMs != 0L) {
+			return true;
+		}
+		this.milestonesFlipTarget = !this.milestonesEssenceFace;
+		this.milestonesFlipStartMs = System.currentTimeMillis();
+		return true;
 	}
 
 	public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
@@ -58,7 +90,6 @@ public final class GlacitePage {
 		int rightW = Math.max(200, w * 55 / 100);
 		int leftW = w - rightW - MiningUi.GAP;
 		PvDraw.innerPanel(g, x, y, leftW, h);
-		PvDraw.innerPanel(g, x + leftW + MiningUi.GAP, y, rightW, h);
 
 		int lx = x + MiningUi.PAD;
 		int ly = y + MiningUi.PAD;
@@ -87,8 +118,6 @@ public final class GlacitePage {
 		}
 		ly = MiningUi.sectionSeparator(g, font, x, ly, leftW);
 
-		ly = drawCompactEssenceShop(g, font, snapshot.iceShop(), lx, ly, lw, y + h - MiningUi.PAD);
-
 		MiningSnapshot.CorpseCounts counts = snapshot.corpses();
 		PvDraw.text(g, font, "Corpses looted", lx, ly, PvDraw.COLOR_MUTED);
 		ly += font.lineHeight + 3;
@@ -107,7 +136,62 @@ public final class GlacitePage {
 		String tierLabel = current <= 0 ? "None" : ("Tier " + current + (current >= 7 ? " (max)" : ""));
 		MiningUi.statLine(g, font, "Milestone", tierLabel, lx, ly, lw, PvDraw.COLOR_ACCENT);
 
-		renderCorpseMilestones(g, font, snapshot, zones, x + leftW + MiningUi.GAP, y, rightW, h, mx, my);
+		drawMilestonesPanel(g, font, snapshot, zones, x + leftW + MiningUi.GAP, y, rightW, h, mx, my);
+	}
+
+	private void drawMilestonesPanel(
+		GuiGraphicsExtractor g, Font font, MiningSnapshot snapshot, List<HoverZone> zones,
+		int x, int y, int w, int h, int mx, int my
+	) {
+		this.milestonesHitX = x;
+		this.milestonesHitY = y;
+		this.milestonesHitW = w;
+		this.milestonesHitH = h;
+
+		boolean hovered = mx >= x && mx < x + w && my >= y && my < y + h;
+		float flipProgress = 0F;
+		boolean animating = this.milestonesFlipStartMs != 0L;
+		if (animating) {
+			flipProgress = Math.min(1F, (System.currentTimeMillis() - this.milestonesFlipStartMs) / (float) FLIP_MS);
+			if (flipProgress >= 1F) {
+				this.milestonesEssenceFace = this.milestonesFlipTarget;
+				this.milestonesFlipStartMs = 0L;
+				animating = false;
+				flipProgress = 0F;
+			}
+		}
+		float eased = animating ? easeInOutCubic(flipProgress) : 0F;
+		float angle = eased * (float) Math.PI;
+		boolean showEssence = animating
+			? (Math.cos(angle) < 0.0 ? this.milestonesFlipTarget : this.milestonesEssenceFace)
+			: this.milestonesEssenceFace;
+		float scaleX = 1F;
+		float scaleY = 1F;
+		if (animating) {
+			scaleX = Math.max(0.04F, Math.abs((float) Math.cos(angle)));
+			scaleY = 1F - (1F - scaleX) * 0.06F;
+		}
+
+		float cxFlip = x + w / 2F;
+		float cyFlip = y + h / 2F;
+		g.pose().pushMatrix();
+		g.pose().translate(cxFlip, cyFlip);
+		g.pose().scale(scaleX, scaleY);
+		g.pose().translate(-cxFlip, -cyFlip);
+
+		PvDraw.innerPanel(g, x, y, w, h);
+		if (hovered && !animating) {
+			PvDraw.fill(g, x + 1, y + 1, w - 2, h - 2, PANEL_HOVER);
+		}
+
+		if (showEssence) {
+			this.maxScroll = 0;
+			drawFossilEssenceFace(g, font, snapshot.fossilShop(), x, y, w, h);
+		} else {
+			renderCorpseMilestones(g, font, snapshot, zones, x, y, w, h, mx, my);
+		}
+
+		g.pose().popMatrix();
 	}
 
 	private void renderCorpseMilestones(
@@ -149,6 +233,54 @@ public final class GlacitePage {
 		g.disableScissor();
 	}
 
+	private void drawFossilEssenceFace(
+		GuiGraphicsExtractor g, Font font, DungeonSnapshot.EssenceShop shop, int x, int y, int w, int h
+	) {
+		int pad = MiningUi.PAD;
+		int cx = x + pad;
+		int cy = y + pad;
+		int innerW = w - pad * 2;
+		int bottom = y + h - pad;
+
+		int headerH = Math.max(16, font.lineHeight + 2);
+		PvDraw.IconTextAlign headerAlign = PvDraw.IconTextAlign.of(cy, headerH, 16, font.lineHeight);
+		g.item(fossilIcon(shop.iconId()), cx, headerAlign.iconY());
+		String bal = FormatUtil.commas(shop.balance());
+		int balW = PvDraw.widthBold(font, bal);
+		int headerLabelX = cx + 16 + 4;
+		int nameMax = Math.max(8, innerW - (headerLabelX - cx) - balW - 4);
+		PvDraw.textBold(g, font, MiningUi.trim(font, shop.name() + " Essence", nameMax),
+			headerLabelX, headerAlign.textY(), FOSSIL_COLOR);
+		PvDraw.textBold(g, font, bal, cx + innerW - balW, headerAlign.textY(), FOSSIL_COLOR);
+
+		int ly = cy + headerH + 6;
+		List<DungeonSnapshot.EssencePerk> perks = shop.perks();
+		int colGap = 10;
+		int colW = Math.max(80, (innerW - colGap) / 2);
+		int perkRows = Math.max(1, (perks.size() + 1) / 2);
+		int availPerkH = Math.max(font.lineHeight + 2, bottom - ly);
+		int rowH = Math.max(16, Math.max(font.lineHeight + 2, Math.min(20, availPerkH / perkRows)));
+		for (int i = 0; i < perks.size(); i++) {
+			DungeonSnapshot.EssencePerk perk = perks.get(i);
+			int col = i % 2;
+			int row = i / 2;
+			int px = cx + col * (colW + colGap);
+			int py = ly + row * rowH;
+			if (py + font.lineHeight > bottom) {
+				break;
+			}
+			PvDraw.IconTextAlign rowAlign = PvDraw.IconTextAlign.of(py, rowH, 16, font.lineHeight);
+			g.item(fossilPerkIcon(perk.id()), px, rowAlign.iconY());
+			String right = perk.level() + "/" + perk.maxLevel();
+			int rightW = font.width(right);
+			int labelX = px + 16 + 3;
+			String left = MiningUi.trim(font, perk.name(), Math.max(8, colW - 16 - 3 - rightW - 4));
+			int valueColor = perk.maxed() ? COLOR_MAXED : PvDraw.COLOR_TEXT;
+			PvDraw.text(g, font, left, labelX, rowAlign.textY(), PvDraw.COLOR_MUTED);
+			PvDraw.textRight(g, font, right, px + colW, rowAlign.textY(), valueColor);
+		}
+	}
+
 	private static String requirementShort(MiningSnapshot.CorpseMilestone tier, MiningSnapshot.CorpseCounts counts) {
 		List<String> parts = new ArrayList<>();
 		if (tier.needLapis() > 0) {
@@ -188,83 +320,27 @@ public final class GlacitePage {
 		return sb.toString();
 	}
 
-	/** Compact ice essence shop: header bal + 2-col perk rows. */
-	private static int drawCompactEssenceShop(
-		GuiGraphicsExtractor g, Font font, DungeonSnapshot.EssenceShop shop,
-		int x, int y, int w, int bottom
-	) {
-		if (shop == null || (shop.perks().isEmpty() && shop.balance() <= 0L)) {
-			return y;
-		}
-		int headerIcon = 14;
-		int headerH = Math.max(headerIcon, font.lineHeight + 2);
-		int headerIconMid = Math.max(0, (headerH - headerIcon) / 2);
-		int headerTextMid = Math.max(0, (headerH - font.lineHeight) / 2);
-		MiningUi.drawItemIcon(g, iceIcon(shop.iconId()), x, y + headerIconMid, headerIcon);
-		int labelX = x + headerIcon + 3;
-		String bal = FormatUtil.commas(shop.balance());
-		int balW = PvDraw.widthBold(font, bal);
-		PvDraw.textBold(g, font, MiningUi.trim(font, shop.name(), Math.max(8, w - (labelX - x) - balW - 4)),
-			labelX, y + headerTextMid, MiningUi.BAR_GLACITE);
-		PvDraw.textBold(g, font, bal, x + w - balW, y + headerTextMid, MiningUi.BAR_GLACITE);
-
-		int perkIcon = 10;
-		int rowH = Math.max(font.lineHeight + 1, perkIcon + 2);
-		int colGap = 8;
-		int colW = Math.max(40, (w - colGap) / 2);
-		List<DungeonSnapshot.EssencePerk> perks = shop.perks();
-		int mid = (perks.size() + 1) / 2;
-		int leftY = y + headerH + 3;
-		int rightY = leftY;
-		leftY = drawIcePerkColumn(g, font, perks.subList(0, Math.min(mid, perks.size())),
-			x, leftY, colW, rowH, perkIcon, bottom);
-		if (mid < perks.size()) {
-			rightY = drawIcePerkColumn(g, font, perks.subList(mid, perks.size()),
-				x + colW + colGap, rightY, colW, rowH, perkIcon, bottom);
-		}
-		return Math.max(leftY, rightY) + 4;
+	private static ItemStack fossilIcon(String id) {
+		ItemStack stack = SkyBlockItemFactory.iconStack(id == null ? "ESSENCE_FOSSIL" : id);
+		return stack == null || stack.isEmpty() ? new ItemStack(Items.BONE) : stack;
 	}
 
-	private static int drawIcePerkColumn(
-		GuiGraphicsExtractor g, Font font, List<DungeonSnapshot.EssencePerk> perks,
-		int x, int y, int w, int rowH, int perkIcon, int bottom
-	) {
-		int labelX = x + perkIcon + 2;
-		int iconMid = Math.max(0, (rowH - perkIcon) / 2);
-		int textMid = Math.max(0, (rowH - font.lineHeight) / 2);
-		int ry = y;
-		for (DungeonSnapshot.EssencePerk perk : perks) {
-			if (ry + font.lineHeight > bottom) {
-				break;
-			}
-			MiningUi.drawItemIcon(g, icePerkIcon(perk.id()), x, ry + iconMid, perkIcon);
-			String right = perk.level() + "/" + perk.maxLevel();
-			int rightW = font.width(right);
-			PvDraw.text(g, font, MiningUi.trim(font, perk.name(), Math.max(8, w - (labelX - x) - rightW - 4)),
-				labelX, ry + textMid, PvDraw.COLOR_MUTED);
-			PvDraw.textRight(g, font, right, x + w, ry + textMid,
-				perk.maxed() ? MiningUi.PLACED : PvDraw.COLOR_TEXT);
-			ry += rowH;
-		}
-		return ry;
-	}
-
-	private static ItemStack iceIcon(String id) {
-		ItemStack stack = SkyBlockItemFactory.iconStack(id == null ? "ESSENCE_ICE" : id);
-		return stack == null || stack.isEmpty() ? new ItemStack(Items.BLUE_ICE) : stack;
-	}
-
-	private static ItemStack icePerkIcon(String perkId) {
+	private static ItemStack fossilPerkIcon(String perkId) {
 		if (perkId == null) {
 			return new ItemStack(Items.PAPER);
 		}
 		return switch (perkId) {
-			case "cold_efficiency" -> new ItemStack(Items.IRON_PICKAXE);
-			case "cooled_forges" -> new ItemStack(Items.BLAST_FURNACE);
-			case "frozen_skin" -> new ItemStack(Items.LEATHER_CHESTPLATE);
-			case "season_of_joy" -> new ItemStack(Items.SNOWBALL);
-			case "drake_piper" -> new ItemStack(Items.EGG);
+			case "prehistorian" -> new ItemStack(Items.BONE);
+			case "resourceful" -> new ItemStack(Items.CHEST);
+			case "chilled_to_the_bone" -> new ItemStack(Items.BLUE_ICE);
+			case "dwarven_expertise" -> new ItemStack(Items.IRON_PICKAXE);
+			case "sleight_of_hand" -> new ItemStack(Items.GOLDEN_PICKAXE);
+			case "cut_loose" -> new ItemStack(Items.SHEARS);
 			default -> new ItemStack(Items.PAPER);
 		};
+	}
+
+	private static float easeInOutCubic(float t) {
+		return t < 0.5F ? 4F * t * t * t : 1F - (float) Math.pow(-2F * t + 2F, 3) / 2F;
 	}
 }

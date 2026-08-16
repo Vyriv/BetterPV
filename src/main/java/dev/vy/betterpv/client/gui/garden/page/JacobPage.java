@@ -236,7 +236,6 @@ public final class JacobPage {
 				if (c.timestampSeconds() > 0L) {
 					tip.add(PvTooltip.Line.of(contestWhen(c.timestampSeconds()), PvDraw.COLOR_MUTED));
 				}
-				tip.add(PvTooltip.Line.of("Click to flip", PvDraw.COLOR_MUTED));
 				ui.zones.add(new GardenUi.HoverZone(rx, yy, rw, rowH, tip));
 			}
 			yy += rowH;
@@ -301,8 +300,7 @@ public final class JacobPage {
 					yy + (rowH - font.lineHeight) / 2, textW, PvDraw.COLOR_TEXT, PvDraw.COLOR_ACCENT);
 				ui.zones.add(new GardenUi.HoverZone(rx, yy, rw, rowH, List.of(
 					PvTooltip.Line.of(pb.name(), PvDraw.COLOR_TEXT),
-					PvTooltip.Line.of(FormatUtil.commas(pb.amount()) + " collected", PvDraw.COLOR_MUTED),
-					PvTooltip.Line.of("Click to flip", PvDraw.COLOR_MUTED)
+					PvTooltip.Line.of(FormatUtil.commas(pb.amount()) + " collected", PvDraw.COLOR_MUTED)
 				)));
 			}
 			yy += rowH;

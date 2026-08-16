@@ -213,15 +213,6 @@ public final class FishingPage {
 			lx, ly, lw, PvDraw.COLOR_ACCENT);
 		ly = statLine(g, font, "Festival sharks", FormatUtil.commas(this.snapshot.festivalSharksKilled()),
 			lx, ly, lw, TIER_GOLD);
-		if (this.snapshot.peltCount() > 0L) {
-			ly = statLine(g, font, "Pelts", FormatUtil.commas(this.snapshot.peltCount()),
-				lx, ly, lw, PvDraw.COLOR_GOLD);
-		}
-
-		if (ly + font.lineHeight + 4 < bottom) {
-			PvDraw.textCentered(g, font, "Click for frogs",
-				x + w / 2, bottom - font.lineHeight, PvDraw.COLOR_MUTED);
-		}
 	}
 
 	private void drawTrophyPanel(

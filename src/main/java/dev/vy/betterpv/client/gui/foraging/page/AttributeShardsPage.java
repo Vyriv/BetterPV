@@ -214,22 +214,23 @@ public final class AttributeShardsPage {
 			int need = Math.max(0, row.shardsForMax() - row.shardsOwned());
 			ItemStack stack = attributeIcon(row);
 			Identifier custom = SkyBlockItemFactory.customIcon(row.iconId());
+			PvDraw.IconTextAlign rowAlign = PvDraw.IconTextAlign.of(yy, rowH, ICON, font.lineHeight);
 			if (custom != null) {
 				int tex = SkyBlockItemFactory.customIconSize(row.iconId());
 				int draw = Math.min(ICON, Math.max(1, tex));
-				g.blit(RenderPipelines.GUI_TEXTURED, custom, rx, yy, 0, 0, draw, draw, tex, tex, tex, tex);
+				g.blit(RenderPipelines.GUI_TEXTURED, custom, rx, rowAlign.iconY(), 0, 0, draw, draw, tex, tex, tex, tex);
 			} else {
-				g.item(stack, rx, yy);
+				g.item(stack, rx, rowAlign.iconY());
 			}
 			String qty = "x" + FormatUtil.commas(need);
 			int qtyW = font.width(qty);
 			int nameColor = rarityColor(row.rarity());
 			PvDraw.text(g, font, ForagingUi.trim(font, row.name(), Math.max(8, rw - ICON - 8 - qtyW)),
-				rx + ICON + 4, yy, nameColor);
-			PvDraw.textRight(g, font, qty, rx + rw, yy, PvDraw.COLOR_ACCENT);
+				rx + ICON + 4, rowAlign.textY(), nameColor);
+			PvDraw.textRight(g, font, qty, rx + rw, rowAlign.textY(), PvDraw.COLOR_ACCENT);
 			double cost = shardMaxCost(row);
 			String costText = cost > 0 ? FormatUtil.shortCoins(cost) : "-";
-			PvDraw.text(g, font, costText, rx + ICON + 4, yy + font.lineHeight + 1, PvDraw.COLOR_GOLD);
+			PvDraw.text(g, font, costText, rx + ICON + 4, rowAlign.textY() + font.lineHeight + 1, PvDraw.COLOR_GOLD);
 			ForagingUi.addClippedHover(this.zones, rx, yy, rw, rowH, rx, this.attrListY, rw, this.attrListH,
 				attributeTooltip(row));
 			yy += rowH;

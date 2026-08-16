@@ -956,6 +956,9 @@ public final class ProfileFetcher {
 			mayorName,
 			EssenceShopData.wither(member),
 			EssenceShopData.undead(member),
+			EssenceShopData.ice(member),
+			EssenceShopData.spider(member),
+			EssenceShopData.dragon(member),
 			dailyCount,
 			journals
 		);

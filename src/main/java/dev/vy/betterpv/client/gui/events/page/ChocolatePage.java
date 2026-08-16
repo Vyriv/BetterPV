@@ -241,15 +241,16 @@ public final class ChocolatePage {
 		g.outline(x, y + 1, RABBIT_SLOT, RABBIT_SLOT, SLOT_BORDER);
 
 		ItemStack icon = employeeIcon(emp.id());
-		g.item(icon, x, y + 1);
+		PvDraw.IconTextAlign rowAlign = PvDraw.IconTextAlign.of(y + 1, RABBIT_SLOT, 16, font.lineHeight);
+		g.item(icon, x, rowAlign.iconY());
 
 		String name = ChocolateEmployees.displayName(emp.id(), emp.name());
 		String level = "Lvl " + emp.level();
 		int textX = x + RABBIT_SLOT + 4;
 		int textW = Math.max(8, w - RABBIT_SLOT - 4);
 		int leftMax = Math.max(8, textW - font.width(level) - 6);
-		PvDraw.text(g, font, trim(font, name, leftMax), textX, y + 4, rarityColor);
-		PvDraw.textRight(g, font, level, x + w, y + 4, PvDraw.COLOR_TEXT);
+		PvDraw.text(g, font, trim(font, name, leftMax), textX, rowAlign.textY(), rarityColor);
+		PvDraw.textRight(g, font, level, x + w, rowAlign.textY(), PvDraw.COLOR_TEXT);
 
 		ui.addClippedHover(x, y, w, RABBIT_ROW, ui.contentX, ui.contentY, ui.contentW, ui.contentH,
 			tipTitle(name, rarityColor,

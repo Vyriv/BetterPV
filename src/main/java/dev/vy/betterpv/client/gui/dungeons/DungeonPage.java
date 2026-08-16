@@ -6,6 +6,7 @@ import dev.vy.betterpv.client.dungeons.CataXpCalculator;
 import dev.vy.betterpv.client.dungeons.CataXpMath;
 import dev.vy.betterpv.client.dungeons.ClassLevelQuery;
 import dev.vy.betterpv.client.dungeons.ClassXpCalculator;
+import dev.vy.betterpv.client.dungeons.EssencePerkTips;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
@@ -46,10 +47,9 @@ public final class DungeonPage {
 	private static final int WITHER_COLOR = 0xFF555555;
 	/** Undead essence - pink. */
 	private static final int UNDEAD_COLOR = 0xFFFF8EC8;
-	/** Half-size perk icons (0.5×) stay crisp. */
-	private static final int ESSENCE_PERK_ICON = 8;
-	/** Full-size essence skulls for Wither / Undead headers only. */
-	private static final int ESSENCE_HEADER_ICON = 16;
+	private static final int ICE_COLOR = 0xFF55FFFF;
+	private static final int SPIDER_COLOR = 0xFF55FF55;
+	private static final int DRAGON_COLOR = 0xFFFF5555;
 
 	private DungeonSnapshot data = DungeonSnapshot.empty();
 	private final List<HoverZone> zones = new ArrayList<>();
@@ -70,6 +70,14 @@ public final class DungeonPage {
 	private int runsHitY;
 	private int runsHitW;
 	private int runsHitH;
+
+	private boolean classEssenceFace;
+	private long classFlipStartMs;
+	private boolean classFlipTarget;
+	private int classHitX;
+	private int classHitY;
+	private int classHitW;
+	private int classHitH;
 
 	public void apply(DungeonSnapshot data) {
 		this.data = data == null ? DungeonSnapshot.empty() : data;
@@ -143,6 +151,9 @@ public final class DungeonPage {
 		if (clickRunsPanel(mx, my)) {
 			return true;
 		}
+		if (clickClassPanel(mx, my)) {
+			return true;
+		}
 		return false;
 	}
 
@@ -159,6 +170,22 @@ public final class DungeonPage {
 		}
 		this.runsFlipTarget = !this.runsEssenceFace;
 		this.runsFlipStartMs = System.currentTimeMillis();
+		return true;
+	}
+
+	private boolean clickClassPanel(double mouseX, double mouseY) {
+		if (this.classHitW <= 0 || this.classHitH <= 0) {
+			return false;
+		}
+		if (mouseX < this.classHitX || mouseX >= this.classHitX + this.classHitW
+			|| mouseY < this.classHitY || mouseY >= this.classHitY + this.classHitH) {
+			return false;
+		}
+		if (this.classFlipStartMs != 0L) {
+			return true;
+		}
+		this.classFlipTarget = !this.classEssenceFace;
+		this.classFlipStartMs = System.currentTimeMillis();
 		return true;
 	}
 
@@ -363,10 +390,10 @@ public final class DungeonPage {
 		int totalY = firstFloorY + 7 * lineH + 6 * gap + totalGap;
 		FloorLayout floors = new FloorLayout(firstFloorY, lineH, gap, totalY);
 		drawRunsPanel(g, font, leftX, runsY, leftW, runsH, floors, mouseX, mouseY);
-		drawRightColumn(g, font, rightX, y, rightW, h, floors.totalY());
+		drawRightColumn(g, font, rightX, y, rightW, h, floors.totalY(), mouseX, mouseY);
 
 		List<PvTooltip.Line> tip = null;
-		if (this.runsFlipStartMs == 0L) {
+		if (this.runsFlipStartMs == 0L && this.classFlipStartMs == 0L) {
 			for (HoverZone zone : this.zones) {
 				if (mouseX >= zone.x && mouseX < zone.x + zone.w && mouseY >= zone.y && mouseY < zone.y + zone.h) {
 					tip = zone.lines;
@@ -542,6 +569,29 @@ public final class DungeonPage {
 		return out + ellipsis;
 	}
 
+	private static String trimToWidthBold(Font font, String text, int maxW) {
+		if (text == null) {
+			return "";
+		}
+		if (PvDraw.widthBold(font, text) <= maxW) {
+			return text;
+		}
+		String ellipsis = "...";
+		int budget = maxW - PvDraw.widthBold(font, ellipsis);
+		if (budget <= 0) {
+			return ellipsis;
+		}
+		StringBuilder out = new StringBuilder();
+		for (int i = 0; i < text.length(); i++) {
+			char c = text.charAt(i);
+			if (PvDraw.widthBold(font, out.toString() + c) > budget) {
+				break;
+			}
+			out.append(c);
+		}
+		return out + ellipsis;
+	}
+
 	private String buildModsHint() {
 		List<String> bits = new ArrayList<>();
 		if (this.data.expertRing()) {
@@ -596,8 +646,60 @@ public final class DungeonPage {
 		}
 	}
 
-	private void drawRightColumn(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, int totalY) {
+	private void drawRightColumn(
+		GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, int totalY, int mouseX, int mouseY
+	) {
+		this.classHitX = x;
+		this.classHitY = y;
+		this.classHitW = w;
+		this.classHitH = h;
+
+		boolean hovered = mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + h;
+		float flipProgress = 0F;
+		boolean animating = this.classFlipStartMs != 0L;
+		if (animating) {
+			flipProgress = Math.min(1F, (System.currentTimeMillis() - this.classFlipStartMs) / (float) FLIP_MS);
+			if (flipProgress >= 1F) {
+				this.classEssenceFace = this.classFlipTarget;
+				this.classFlipStartMs = 0L;
+				animating = false;
+				flipProgress = 0F;
+			}
+		}
+		float eased = animating ? easeInOutCubic(flipProgress) : 0F;
+		float angle = eased * (float) Math.PI;
+		boolean showEssence = animating
+			? (Math.cos(angle) < 0.0 ? this.classFlipTarget : this.classEssenceFace)
+			: this.classEssenceFace;
+		float scaleX = 1F;
+		float scaleY = 1F;
+		if (animating) {
+			scaleX = Math.max(0.04F, Math.abs((float) Math.cos(angle)));
+			scaleY = 1F - (1F - scaleX) * 0.06F;
+		}
+
+		float cxFlip = x + w / 2F;
+		float cyFlip = y + h / 2F;
+		g.pose().pushMatrix();
+		g.pose().translate(cxFlip, cyFlip);
+		g.pose().scale(scaleX, scaleY);
+		g.pose().translate(-cxFlip, -cyFlip);
+
 		PvDraw.innerPanel(g, x, y, w, h);
+		if (hovered && !animating) {
+			PvDraw.fill(g, x + 1, y + 1, w - 2, h - 2, PANEL_HOVER);
+		}
+
+		if (showEssence) {
+			drawWitherUndeadEssenceFace(g, font, x + PAD, y + PAD, w - PAD * 2, h - PAD * 2, !animating);
+		} else {
+			drawClassStatsFace(g, font, x, y, w, h, totalY);
+		}
+
+		g.pose().popMatrix();
+	}
+
+	private void drawClassStatsFace(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, int totalY) {
 		int cx = x + PAD;
 		int barW = w - PAD * 2;
 		int labeledH = font.lineHeight + 2 + PvDraw.BAR_HEIGHT;
@@ -679,6 +781,190 @@ public final class DungeonPage {
 		}
 	}
 
+	private void drawWitherUndeadEssenceFace(
+		GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, boolean registerHovers
+	) {
+		int gap = 20;
+		int colW = Math.max(40, (w - gap) / 2);
+		int sepX = x + colW + gap / 2;
+		// Same fit-scale for both columns so layout matches; size for the taller (Undead) list.
+		float fitScale = essenceFitScale(font, Math.max(
+			this.data.witherShop() == null ? 0 : this.data.witherShop().perks().size(),
+			this.data.undeadShop() == null ? 0 : this.data.undeadShop().perks().size()
+		), h, /*rowGap*/ 3);
+		drawEssenceColumnFit(
+			g, font, this.data.witherShop(), x, y, colW, h, WITHER_COLOR, true, 3, fitScale, registerHovers
+		);
+		PvDraw.fill(g, sepX, y, 1, h, PvDraw.COLOR_BORDER);
+		drawEssenceColumnFit(
+			g, font, this.data.undeadShop(), x + colW + gap, y, colW, h, UNDEAD_COLOR, true, 3, fitScale, registerHovers
+		);
+	}
+
+	private void drawIceSpiderDragonEssenceFace(
+		GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, boolean registerHovers
+	) {
+		int gap = 8;
+		int colW = Math.max(40, (w - gap * 2) / 3);
+		int c0 = x;
+		int c1 = x + colW + gap;
+		int c2 = c1 + colW + gap;
+		// Crisp 1:1 packing — no pose downscale (that softens icons/text in the short runs panel).
+		drawEssenceColumnPacked(g, font, this.data.iceShop(), c0, y, colW, h, ICE_COLOR, registerHovers);
+		PvDraw.fill(g, c0 + colW + gap / 2, y, 1, h, PvDraw.COLOR_BORDER);
+		drawEssenceColumnPacked(g, font, this.data.spiderShop(), c1, y, colW, h, SPIDER_COLOR, registerHovers);
+		PvDraw.fill(g, c1 + colW + gap / 2, y, 1, h, PvDraw.COLOR_BORDER);
+		drawEssenceColumnPacked(g, font, this.data.dragonShop(), c2, y, colW, h, DRAGON_COLOR, registerHovers);
+	}
+
+	/**
+	 * Ice/Spider/Dragon columns: fit by packing integer row heights only.
+	 * Avoids fractional pose.scale which softens Minecraft item textures and text.
+	 */
+	private void drawEssenceColumnPacked(
+		GuiGraphicsExtractor g,
+		Font font,
+		DungeonSnapshot.EssenceShop shop,
+		int x,
+		int y,
+		int w,
+		int h,
+		int headerColor,
+		boolean registerHovers
+	) {
+		if (w <= 0 || h <= 0 || shop == null) {
+			return;
+		}
+		List<DungeonSnapshot.EssencePerk> perks = shop.perks();
+		int perkCount = Math.max(1, perks.size());
+		// Compact header + integer row packing; always draw native 16px icons (no pose downscale).
+		int headerH = Math.max(font.lineHeight + 2, 14);
+		int afterHeader = Math.max(0, h - headerH - 2);
+		int rowH = Math.max(font.lineHeight + 1, afterHeader / perkCount);
+		final int iconSize = 16;
+
+		PvDraw.IconTextAlign headerAlign = PvDraw.IconTextAlign.of(y, headerH, iconSize, font.lineHeight);
+		g.item(essenceIcon(shop.iconId()), x, headerAlign.iconY());
+		String name = shop.name() == null ? "" : shop.name();
+		String bal = FormatUtil.commas(shop.balance());
+		int headerLabelX = x + iconSize + 3;
+		int balW = PvDraw.widthBold(font, bal);
+		int nameMax = Math.max(4, w - (headerLabelX - x) - balW - 4);
+		PvDraw.textBold(g, font, trimToWidthBold(font, name, nameMax), headerLabelX, headerAlign.textY(), headerColor);
+		PvDraw.textBold(g, font, bal, x + w - balW, headerAlign.textY(), headerColor);
+
+		int ly = y + headerH + 2;
+		for (DungeonSnapshot.EssencePerk perk : perks) {
+			if (ly + font.lineHeight > y + h) {
+				break;
+			}
+			PvDraw.IconTextAlign rowAlign = PvDraw.IconTextAlign.of(ly, rowH, iconSize, font.lineHeight);
+			g.item(essencePerkIcon(perk.id()), x, rowAlign.iconY());
+			String right = perk.level() + "/" + perk.maxLevel();
+			int rightW = font.width(right);
+			int labelX = x + iconSize + 2;
+			String left = trimToWidth(font, perk.name(), Math.max(4, w - (labelX - x) - rightW - 2));
+			int valueColor = perk.maxed() ? COLOR_COMPLETIONS : PvDraw.COLOR_TEXT;
+			PvDraw.text(g, font, left, labelX, rowAlign.textY(), PvDraw.COLOR_MUTED);
+			PvDraw.textRight(g, font, right, x + w, rowAlign.textY(), valueColor);
+			if (registerHovers) {
+				this.zones.add(new HoverZone(x, ly, w, Math.max(1, Math.min(rowH, y + h - ly)), EssencePerkTips.tip(perk)));
+			}
+			ly += rowH;
+		}
+	}
+
+	private static float essenceFitScale(Font font, int perkCount, int h, int rowGap) {
+		int headerH = Math.max(16, font.lineHeight + 2);
+		int contentH = Math.max(16, font.lineHeight + 2);
+		int rowH = contentH + Math.max(0, rowGap);
+		int naturalH = headerH + 2 + Math.max(0, perkCount) * rowH;
+		return naturalH <= h ? 1F : (float) h / (float) naturalH;
+	}
+
+	/**
+	 * Single-column essence shop. Lays out at readable row height, then uniformly scales
+	 * down if needed so every perk fits with no overlap and nothing clipped away.
+	 */
+	private void drawEssenceColumnFit(
+		GuiGraphicsExtractor g,
+		Font font,
+		DungeonSnapshot.EssenceShop shop,
+		int x,
+		int y,
+		int w,
+		int h,
+		int headerColor,
+		boolean compactHeader,
+		int rowGap,
+		float scale,
+		boolean registerHovers
+	) {
+		if (w <= 0 || h <= 0 || shop == null) {
+			return;
+		}
+		List<DungeonSnapshot.EssencePerk> perks = shop.perks();
+		int headerH = Math.max(16, font.lineHeight + 2);
+		int contentH = Math.max(16, font.lineHeight + 2);
+		int rowH = contentH + Math.max(0, rowGap);
+		if (scale <= 0F || Float.isNaN(scale)) {
+			scale = 1F;
+		}
+
+		g.pose().pushMatrix();
+		g.pose().translate(x, y);
+		g.pose().scale(scale, scale);
+		int drawW = Math.max(1, Math.round(w / scale));
+
+		String name = shop.name() == null ? "" : shop.name();
+		String bal = FormatUtil.commas(shop.balance());
+		int headerLabelX = 16 + 3;
+		int avail = Math.max(1, drawW - headerLabelX);
+		int nameW = PvDraw.widthBold(font, name);
+		int balW = PvDraw.widthBold(font, bal);
+		int gapNameBal = 4;
+		// Prefer a slightly smaller header; shrink further if needed so the full name always shows.
+		// Never ellipsize "Wither" / "Undead" — scale the whole label+balance pair instead.
+		float headerScale = compactHeader ? 0.78F : 1F;
+		float needed = (nameW + gapNameBal + balW) * headerScale;
+		if (needed > avail) {
+			headerScale = Math.max(0.55F, avail / (float) (nameW + gapNameBal + balW));
+		}
+		int textH = Math.max(1, Math.round(font.lineHeight * headerScale));
+		PvDraw.IconTextAlign headerAlign = PvDraw.IconTextAlign.of(0, headerH, 16, textH);
+		g.item(essenceIcon(shop.iconId()), 0, headerAlign.iconY());
+		int drawBalW = Math.max(1, Math.round(balW * headerScale));
+		if (headerScale >= 0.999F) {
+			PvDraw.textBold(g, font, name, headerLabelX, headerAlign.textY(), headerColor);
+			PvDraw.textBold(g, font, bal, drawW - balW, headerAlign.textY(), headerColor);
+		} else {
+			PvDraw.textBoldScaled(g, font, name, headerLabelX, headerAlign.textY(), headerColor, headerScale);
+			PvDraw.textBoldScaled(g, font, bal, drawW - drawBalW, headerAlign.textY(), headerColor, headerScale);
+		}
+
+		int ly = headerH + 2;
+		for (DungeonSnapshot.EssencePerk perk : perks) {
+			PvDraw.IconTextAlign rowAlign = PvDraw.IconTextAlign.of(ly, contentH, 16, font.lineHeight);
+			g.item(essencePerkIcon(perk.id()), 0, rowAlign.iconY());
+			String right = perk.level() + "/" + perk.maxLevel();
+			int rightW = font.width(right);
+			int labelX = 16 + 2;
+			String left = trimToWidth(font, perk.name(), Math.max(4, drawW - labelX - rightW - 2));
+			int valueColor = perk.maxed() ? COLOR_COMPLETIONS : PvDraw.COLOR_TEXT;
+			PvDraw.text(g, font, left, labelX, rowAlign.textY(), PvDraw.COLOR_MUTED);
+			PvDraw.textRight(g, font, right, drawW, rowAlign.textY(), valueColor);
+			if (registerHovers) {
+				int hitX = x;
+				int hitY = y + Math.round(ly * scale);
+				int hitW = Math.max(1, Math.round(drawW * scale));
+				int hitH = Math.max(1, Math.round(contentH * scale));
+				this.zones.add(new HoverZone(hitX, hitY, hitW, hitH, EssencePerkTips.tip(perk)));
+			}
+			ly += rowH;
+		}
+		g.pose().popMatrix();
+	}
+
 	private void drawRunsPanel(
 		GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, FloorLayout floors, int mouseX, int mouseY
 	) {
@@ -724,7 +1010,7 @@ public final class DungeonPage {
 		}
 
 		if (showEssence) {
-			drawEssenceShopFace(g, font, x, y, w, h);
+			drawIceSpiderDragonEssenceFace(g, font, x + PAD, y + PAD, w - PAD * 2, h - PAD * 2, !animating);
 		} else {
 			drawRunsFace(g, font, x, y, w, floors);
 		}
@@ -768,76 +1054,6 @@ public final class DungeonPage {
 		drawTotalLine(g, font, rightCol, floors.totalY(), colW, masterTotal, masterColor);
 	}
 
-	private void drawEssenceShopFace(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h) {
-		int cx = x + PAD;
-		int cy = y + PAD;
-		int innerW = w - PAD * 2;
-		int colGap = 14;
-		int colW = Math.max(40, (innerW - colGap) / 2);
-		int leftCol = cx;
-		int rightCol = cx + colW + colGap;
-		// Slightly airier than lineHeight-only so upgrades aren't cramped.
-		int rowH = Math.max(font.lineHeight + 3, ESSENCE_PERK_ICON + 3);
-		int bottom = y + h - PAD;
-
-		drawEssenceColumn(g, font, this.data.witherShop(), leftCol, cy, colW, rowH, bottom, WITHER_COLOR);
-		drawEssenceColumn(g, font, this.data.undeadShop(), rightCol, cy, colW, rowH, bottom, UNDEAD_COLOR);
-
-		// Vertical separator between Wither and Undead (rotated section rule).
-		int sepX = leftCol + colW + colGap / 2;
-		int sepH = Math.max(0, bottom - cy);
-		if (sepH > 0) {
-			PvDraw.fill(g, sepX, cy, 1, sepH, PvDraw.COLOR_BORDER);
-		}
-	}
-
-	private void drawEssenceColumn(
-		GuiGraphicsExtractor g,
-		Font font,
-		DungeonSnapshot.EssenceShop shop,
-		int x,
-		int y,
-		int w,
-		int rowH,
-		int bottom,
-		int headerColor
-	) {
-		int headerIcon = ESSENCE_HEADER_ICON;
-		int perkIcon = ESSENCE_PERK_ICON;
-		int gap = 3;
-		int headerH = Math.max(headerIcon, font.lineHeight + 2);
-		int headerLabelX = x + headerIcon + gap;
-		int headerTextMid = Math.max(0, (headerH - font.lineHeight) / 2);
-		int headerIconMid = Math.max(0, (headerH - headerIcon) / 2);
-
-		// Header: larger essence icon + name …… amount
-		drawItemIcon(g, essenceIcon(shop.iconId()), x, y + headerIconMid, headerIcon);
-		String name = shop.name();
-		String bal = FormatUtil.commas(shop.balance());
-		int balW = PvDraw.widthBold(font, bal);
-		int nameMax = Math.max(8, w - (headerLabelX - x) - balW - 4);
-		PvDraw.textBold(g, font, trimToWidth(font, name, nameMax), headerLabelX, y + headerTextMid, headerColor);
-		PvDraw.textBold(g, font, bal, x + w - balW, y + headerTextMid, headerColor);
-
-		int perkLabelX = x + perkIcon + gap;
-		int perkTextMid = Math.max(0, (rowH - font.lineHeight) / 2);
-		int perkIconMid = Math.max(0, (rowH - perkIcon) / 2);
-		int ly = y + headerH + 4;
-		for (DungeonSnapshot.EssencePerk perk : shop.perks()) {
-			if (ly + font.lineHeight > bottom) {
-				break;
-			}
-			drawItemIcon(g, essencePerkIcon(perk.id()), x, ly + perkIconMid, perkIcon);
-			String right = perk.level() + "/" + perk.maxLevel();
-			int rightW = font.width(right);
-			String left = trimToWidth(font, perk.name(), Math.max(8, w - (perkLabelX - x) - rightW - 4));
-			int valueColor = perk.maxed() ? COLOR_COMPLETIONS : PvDraw.COLOR_TEXT;
-			PvDraw.text(g, font, left, perkLabelX, ly + perkTextMid, PvDraw.COLOR_MUTED);
-			PvDraw.textRight(g, font, right, x + w, ly + perkTextMid, valueColor);
-			ly += rowH;
-		}
-	}
-
 	private static ItemStack essenceIcon(String skyblockId) {
 		ItemStack stack = SkyBlockItemFactory.iconStack(skyblockId == null ? "" : skyblockId);
 		return stack == null || stack.isEmpty() ? new ItemStack(Items.PLAYER_HEAD) : stack;
@@ -859,25 +1075,27 @@ public final class DungeonPage {
 			case "catacombs_looting" -> new ItemStack(Items.GOLDEN_SWORD);
 			case "revive_stone", "help_of_the_fairies" -> new ItemStack(Items.TOTEM_OF_UNDYING);
 			case "catacombs_crit_damage" -> new ItemStack(Items.DIAMOND_SWORD);
+			case "cold_efficiency" -> new ItemStack(Items.IRON_PICKAXE);
+			case "cooled_forges" -> new ItemStack(Items.BLAST_FURNACE);
+			case "frozen_skin" -> new ItemStack(Items.LEATHER_CHESTPLATE);
+			case "season_of_joy" -> new ItemStack(Items.SNOWBALL);
+			case "drake_piper" -> new ItemStack(Items.EGG);
+			case "empowered_agility" -> new ItemStack(Items.FEATHER);
+			case "vermin_control" -> new ItemStack(Items.SPIDER_EYE);
+			case "bane" -> new ItemStack(Items.IRON_SWORD);
+			case "spider_training" -> new ItemStack(Items.BOOK);
+			case "toxophilite" -> new ItemStack(Items.BOW);
+			case "flat_damage_vs_ender" -> new ItemStack(Items.DIAMOND_SWORD);
+			case "mana_after_ender_kill" -> new ItemStack(Items.EXPERIENCE_BOTTLE);
+			case "fero_vs_dragons" -> new ItemStack(Items.DRAGON_BREATH);
+			case "inc_zealots_odds" -> new ItemStack(Items.ENDER_PEARL);
+			case "combat_wisdom_in_end" -> new ItemStack(Items.BOOK);
+			case "edrag_cd" -> new ItemStack(Items.DRAGON_HEAD);
+			case "dragon_reforges_buff" -> new ItemStack(Items.ANVIL);
+			case "increased_sup_chances" -> new ItemStack(Items.EGG);
+			case "unbridled_rage" -> new ItemStack(Items.BLAZE_POWDER);
 			default -> new ItemStack(Items.PAPER);
 		};
-	}
-
-	/** Draw items at exact half-size (8px) so scaling stays crisp. */
-	private static void drawItemIcon(GuiGraphicsExtractor g, ItemStack icon, int x, int y, int size) {
-		if (icon == null || icon.isEmpty()) {
-			return;
-		}
-		if (size == 16) {
-			g.item(icon, x, y);
-			return;
-		}
-		float scale = size / 16f;
-		g.pose().pushMatrix();
-		g.pose().translate(x, y);
-		g.pose().scale(scale, scale);
-		g.item(icon, 0, 0);
-		g.pose().popMatrix();
 	}
 
 	private static float easeInOutCubic(float t) {

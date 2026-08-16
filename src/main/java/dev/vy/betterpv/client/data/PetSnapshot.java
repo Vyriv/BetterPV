@@ -58,12 +58,27 @@ public final class PetSnapshot {
 		}
 	}
 
+	public record AutopetRule(
+		String id,
+		String petName,
+		String trigger,
+		String detail,
+		boolean disabled
+	) {
+		public AutopetRule {
+			id = id == null ? "" : id;
+			petName = petName == null ? "" : petName;
+			trigger = trigger == null ? "" : trigger;
+			detail = detail == null ? "" : detail;
+		}
+	}
+
 	private final List<Entry> pets;
 	private final int highestPetScore;
 	private final List<String> sacrificedTypes;
 	private final int autopetRuleCount;
 	private final int autopetRulesLimit;
-	private final List<String> autopetRuleNames;
+	private final List<AutopetRule> autopetRules;
 
 	public PetSnapshot(
 		List<Entry> pets,
@@ -71,14 +86,14 @@ public final class PetSnapshot {
 		List<String> sacrificedTypes,
 		int autopetRuleCount,
 		int autopetRulesLimit,
-		List<String> autopetRuleNames
+		List<AutopetRule> autopetRules
 	) {
 		this.pets = pets == null ? List.of() : List.copyOf(pets);
 		this.highestPetScore = Math.max(0, highestPetScore);
 		this.sacrificedTypes = List.copyOf(sacrificedTypes == null ? List.of() : sacrificedTypes);
 		this.autopetRuleCount = Math.max(0, autopetRuleCount);
 		this.autopetRulesLimit = Math.max(0, autopetRulesLimit);
-		this.autopetRuleNames = List.copyOf(autopetRuleNames == null ? List.of() : autopetRuleNames);
+		this.autopetRules = List.copyOf(autopetRules == null ? List.of() : autopetRules);
 	}
 
 	public PetSnapshot(List<Entry> pets) {
@@ -142,7 +157,7 @@ public final class PetSnapshot {
 
 		JsonObject autopet = Leveling.obj(petsData == null ? null : petsData.get("autopet"));
 		int rulesLimit = intOf(autopet, "rules_limit");
-		List<String> ruleNames = new ArrayList<>();
+		List<AutopetRule> rules = new ArrayList<>();
 		JsonElement rulesEl = autopet == null ? null : autopet.get("rules");
 		if (rulesEl != null && rulesEl.isJsonArray()) {
 			for (JsonElement el : rulesEl.getAsJsonArray()) {
@@ -157,13 +172,56 @@ public final class PetSnapshot {
 					} catch (Exception ignored) {
 					}
 				}
-				if (name != null && !name.isBlank()) {
-					ruleNames.add(stripSectionCodes(name));
+				String id = str(rule, "id");
+				boolean disabled = rule.has("disabled")
+					&& rule.get("disabled").isJsonPrimitive()
+					&& rule.get("disabled").getAsBoolean();
+				JsonObject data = Leveling.obj(rule.get("data"));
+				String category = data == null ? "" : str(data, "category");
+				String boss = data == null ? "" : str(data, "boss");
+				String detail = "";
+				if (!category.isBlank() && !boss.isBlank()) {
+					detail = InventoryDecoder.prettyWords(category) + " · " + InventoryDecoder.prettyWords(boss);
+				} else if (!boss.isBlank()) {
+					detail = InventoryDecoder.prettyWords(boss);
+				} else if (!category.isBlank()) {
+					detail = InventoryDecoder.prettyWords(category);
 				}
+				String trigger = prettyAutopetTrigger(id);
+				String petName = stripSectionCodes(name);
+				if (petName.isBlank() && trigger.isBlank()) {
+					continue;
+				}
+				rules.add(new AutopetRule(id, petName, trigger, detail, disabled));
 			}
 		}
 
-		return new PetSnapshot(entries, highestScore, sacrificed, ruleNames.size(), rulesLimit, ruleNames);
+		return new PetSnapshot(entries, highestScore, sacrificed, rules.size(), rulesLimit, rules);
+	}
+
+	private static String str(JsonObject obj, String key) {
+		if (obj == null || key == null || !obj.has(key) || !obj.get(key).isJsonPrimitive()) {
+			return "";
+		}
+		try {
+			String v = obj.get(key).getAsString();
+			return v == null ? "" : v;
+		} catch (Exception ignored) {
+			return "";
+		}
+	}
+
+	private static String prettyAutopetTrigger(String id) {
+		if (id == null || id.isBlank()) {
+			return "Rule";
+		}
+		return switch (id.toUpperCase(Locale.ROOT)) {
+			case "BOSS_SPAWN" -> "Boss spawn";
+			case "START_SLAYER_QUEST" -> "Start slayer quest";
+			case "ENTER_DUNGEON" -> "Enter dungeon";
+			case "ENTER_LOCATION" -> "Enter location";
+			default -> InventoryDecoder.prettyWords(id.toLowerCase(Locale.ROOT));
+		};
 	}
 
 	private static Entry fromPet(JsonObject pet) {
@@ -270,8 +328,8 @@ public final class PetSnapshot {
 		return this.autopetRulesLimit;
 	}
 
-	public List<String> autopetRuleNames() {
-		return this.autopetRuleNames;
+	public List<AutopetRule> autopetRules() {
+		return this.autopetRules;
 	}
 
 	public boolean isEmpty() {

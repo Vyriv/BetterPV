@@ -178,8 +178,8 @@ public final class RiftOverviewPage {
 			charm.itemId(), 1, List.of(), charm.name(), null, null, null
 		));
 
-		int iconY = y + Math.max(0, (CHARM_ROW - CHARM_ICON) / 2);
-		RiftUi.drawItemIcon(g, icon, charm.itemId(), x, iconY, CHARM_ICON);
+		PvDraw.IconTextAlign rowAlign = PvDraw.IconTextAlign.of(y, CHARM_ROW, CHARM_ICON, font.lineHeight);
+		RiftUi.drawItemIcon(g, icon, charm.itemId(), x, rowAlign.iconY(), CHARM_ICON);
 
 		int textX = x + CHARM_ICON + 4;
 		String status = charm.secured() ? "Obtained" : "Not obtained";
@@ -187,9 +187,8 @@ public final class RiftOverviewPage {
 		int statusW = font.width(status);
 		int nameMax = Math.max(20, w - CHARM_ICON - 4 - statusW - 6);
 		String name = RiftUi.trim(font, charm.name(), nameMax);
-		int textY = y + Math.max(0, (CHARM_ROW - font.lineHeight) / 2);
-		PvDraw.text(g, font, name, textX, textY, charm.color());
-		PvDraw.textRight(g, font, status, x + w, textY, statusColor);
+		PvDraw.text(g, font, name, textX, rowAlign.textY(), charm.color());
+		PvDraw.textRight(g, font, status, x + w, rowAlign.textY(), statusColor);
 
 		List<PvTooltip.Line> tip = new ArrayList<>();
 		tip.add(PvTooltip.Line.title(charm.name(), charm.color()));

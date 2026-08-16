@@ -59,13 +59,24 @@ public final class EssenceShopData {
 		new Def("wither_piper", "Wither Piper", 5)
 	);
 
-	/** Forest Essence Shop (Foraging). */
+	/** Forest Essence Shop (Foraging) — NEU ESSENCE_FOREST. */
 	private static final List<Def> FOREST = List.of(
-		new Def("forest_health", "Health", 5),
-		new Def("forest_defense", "Defense", 5),
-		new Def("forest_strength", "Strength", 5),
-		new Def("forest_intelligence", "Intelligence", 5),
-		new Def("forest_crit_damage", "Crit", 5)
+		new Def("trapped", "Trapped", 5),
+		new Def("axed", "Axed", 1),
+		new Def("extreme_pressure", "Extreme Pressure", 10),
+		new Def("lumberjack", "Lumberjack", 10),
+		new Def("tasty", "Tasty", 5),
+		new Def("forest_training", "Forest Training", 3)
+	);
+
+	/** Fossil Essence Shop (Glacite / mineshafts) — NEU ESSENCE_FOSSIL. */
+	private static final List<Def> FOSSIL = List.of(
+		new Def("prehistorian", "Prehistorian", 10),
+		new Def("resourceful", "Resourceful", 5),
+		new Def("chilled_to_the_bone", "Chilled To The Bone", 10),
+		new Def("dwarven_expertise", "Dwarven Expertise", 10),
+		new Def("sleight_of_hand", "Sleight Of Hand", 1),
+		new Def("cut_loose", "Cut Loose", 5)
 	);
 
 	/** Diamond Essence Shop. */
@@ -109,6 +120,21 @@ public final class EssenceShopData {
 		new Def("drake_piper", "Drake Piper", 1)
 	);
 
+	/** Safari Essence Shop (Archie / Critter Safari). */
+	private static final List<Def> SAFARI = List.of(
+		new Def("critter_catcher", "Critter Catcher", 8),
+		new Def("critter_master", "Critter Master", 1),
+		new Def("floortunate", "Floortunate", 5),
+		new Def("fresh_footprints", "Fresh Footprints", 10),
+		new Def("head_start", "Head Start", 1),
+		new Def("hunting_hotspot", "Hunting Hotspot", 5),
+		new Def("thawing", "Thawing", 10),
+		new Def("deep_diver", "Deep Diver", 10),
+		new Def("quickdraw", "Quickdraw", 10),
+		new Def("amateur_hour", "Amateur Hour", 10),
+		new Def("sparkling_specialist", "Sparkling Specialist", 1)
+	);
+
 	private EssenceShopData() {
 	}
 
@@ -146,6 +172,14 @@ public final class EssenceShopData {
 
 	public static DungeonSnapshot.EssenceShop ice(JsonObject member) {
 		return shop("ice", "Ice", "ICE", "ESSENCE_ICE", ICE, member);
+	}
+
+	public static DungeonSnapshot.EssenceShop fossil(JsonObject member) {
+		return shop("fossil", "Fossil", "FOSSIL", "ESSENCE_FOSSIL", FOSSIL, member);
+	}
+
+	public static DungeonSnapshot.EssenceShop safari(JsonObject member) {
+		return shop("safari", "Safari", "SAFARI", "ESSENCE_SAFARI", SAFARI, member);
 	}
 
 	/** Raw essence balance from {@code currencies.essence.<TYPE>.current}. */

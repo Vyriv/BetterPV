@@ -39,7 +39,7 @@ public final class MiningPage {
 			return this.hotm.mouseClicked(mx, my);
 		}
 		if (this.lastSub == PvSubTab.MINING_GLACITE) {
-			return false;
+			return this.glacite.mouseClicked(mx, my);
 		}
 		return this.overview.mouseClicked(mx, my);
 	}

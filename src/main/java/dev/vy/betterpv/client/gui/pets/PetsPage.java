@@ -48,7 +48,8 @@ public final class PetsPage {
 	private int maxXpBarH;
 	private String maxXpHover;
 	private List<Component> hoverPetTip;
-	private List<PvTooltip.Line> summaryTip;
+	private List<PvTooltip.Line> careTip;
+	private List<PvTooltip.Line> autopetTip;
 
 	public void apply(PetSnapshot snapshot) {
 		this.snapshot = snapshot == null ? PetSnapshot.empty() : snapshot;
@@ -75,7 +76,8 @@ public final class PetsPage {
 		this.maxXpHover = null;
 		this.maxXpBarW = 0;
 		this.hoverPetTip = null;
-		this.summaryTip = null;
+		this.careTip = null;
+		this.autopetTip = null;
 		int leftW = Math.max(160, (int) Math.round(w * 0.70));
 		int rightW = Math.max(110, w - leftW - GAP);
 		leftW = w - rightW - GAP;
@@ -95,8 +97,10 @@ public final class PetsPage {
 			&& mouseX >= this.maxXpBarX && mouseX < this.maxXpBarX + this.maxXpBarW
 			&& mouseY >= this.maxXpBarY && mouseY < this.maxXpBarY + this.maxXpBarH) {
 			PvTooltip.draw(g, font, List.of(this.maxXpHover), mouseX, mouseY, screenW, screenH);
-		} else if (this.summaryTip != null) {
-			PvTooltip.drawStyled(g, font, this.summaryTip, mouseX, mouseY, screenW, screenH);
+		} else if (this.careTip != null) {
+			PvTooltip.drawStyled(g, font, this.careTip, mouseX, mouseY, screenW, screenH);
+		} else if (this.autopetTip != null) {
+			PvTooltip.drawStyled(g, font, this.autopetTip, mouseX, mouseY, screenW, screenH);
 		} else if (this.hoverPetTip != null) {
 			PvTooltip.drawComponents(g, font, this.hoverPetTip, mouseX, mouseY, screenW, screenH);
 		}
@@ -134,45 +138,77 @@ public final class PetsPage {
 			|| this.snapshot.autopetRuleCount() > 0
 			|| this.snapshot.autopetRulesLimit() > 0;
 		if (showSummary) {
-			String summary = "Score " + FormatUtil.commas(this.snapshot.highestPetScore())
-				+ " · Care " + this.snapshot.sacrificedTypes().size()
-				+ " · Autopet " + this.snapshot.autopetRuleCount()
+			String scorePart = "Score " + FormatUtil.commas(this.snapshot.highestPetScore());
+			String carePart = "Care " + this.snapshot.sacrificedTypes().size();
+			String autopetPart = "Autopet " + this.snapshot.autopetRuleCount()
 				+ "/" + Math.max(this.snapshot.autopetRulesLimit(), this.snapshot.autopetRuleCount());
-			PvDraw.text(g, font, trim(font, summary, w - PAD * 2), x + PAD, summaryY, PvDraw.COLOR_MUTED);
-			if (mouseX >= x + PAD && mouseX < x + w - PAD
-				&& mouseY >= summaryY && mouseY < summaryY + font.lineHeight) {
-				List<PvTooltip.Line> tip = new ArrayList<>();
-				tip.add(PvTooltip.Line.title("Pets summary", PvDraw.COLOR_TEXT));
-				tip.add(PvTooltip.Line.divider());
-				tip.add(PvTooltip.Line.row("Score", PvDraw.COLOR_MUTED,
-					FormatUtil.commas(this.snapshot.highestPetScore()), PvDraw.COLOR_GOLD));
-				tip.add(PvTooltip.Line.row("Care", PvDraw.COLOR_MUTED,
-					String.valueOf(this.snapshot.sacrificedTypes().size()), PvDraw.COLOR_ACCENT));
-				tip.add(PvTooltip.Line.row("Autopet", PvDraw.COLOR_MUTED,
-					this.snapshot.autopetRuleCount() + " / "
-						+ Math.max(this.snapshot.autopetRulesLimit(), this.snapshot.autopetRuleCount()),
-					PvDraw.COLOR_TEXT));
-				if (!this.snapshot.sacrificedTypes().isEmpty()) {
-					tip.add(PvTooltip.Line.blank());
-					tip.add(PvTooltip.Line.meta("Care types"));
-					int shown = 0;
-					for (String type : this.snapshot.sacrificedTypes()) {
-						if (shown >= 12) {
-							tip.add(PvTooltip.Line.meta("+" + (this.snapshot.sacrificedTypes().size() - shown) + " more"));
-							break;
+			String sep = " · ";
+			int x0 = x + PAD;
+			int y0 = summaryY;
+			PvDraw.text(g, font, scorePart, x0, y0, PvDraw.COLOR_MUTED);
+			int careX = x0 + font.width(scorePart + sep);
+			PvDraw.text(g, font, sep + carePart, x0 + font.width(scorePart), y0, PvDraw.COLOR_MUTED);
+			int autopetX = careX + font.width(carePart + sep);
+			PvDraw.text(g, font, sep + autopetPart, careX + font.width(carePart), y0, PvDraw.COLOR_MUTED);
+
+			if (mouseY >= y0 && mouseY < y0 + font.lineHeight) {
+				if (mouseX >= careX && mouseX < autopetX) {
+					List<PvTooltip.Line> tip = new ArrayList<>();
+					tip.add(PvTooltip.Line.title("Pet Care", PvDraw.COLOR_TEXT));
+					tip.add(PvTooltip.Line.divider());
+					tip.add(PvTooltip.Line.meta("Pet types sacrificed at Kat for Care XP"));
+					tip.add(PvTooltip.Line.row("Types", PvDraw.COLOR_MUTED,
+						String.valueOf(this.snapshot.sacrificedTypes().size()), PvDraw.COLOR_ACCENT));
+					if (!this.snapshot.sacrificedTypes().isEmpty()) {
+						tip.add(PvTooltip.Line.blank());
+						int shown = 0;
+						for (String type : this.snapshot.sacrificedTypes()) {
+							if (shown >= 16) {
+								tip.add(PvTooltip.Line.meta(
+									"+" + (this.snapshot.sacrificedTypes().size() - shown) + " more"));
+								break;
+							}
+							tip.add(PvTooltip.Line.row("Type", PvDraw.COLOR_MUTED, type, PvDraw.COLOR_TEXT));
+							shown++;
 						}
-						tip.add(PvTooltip.Line.row("Type", PvDraw.COLOR_MUTED, type, PvDraw.COLOR_TEXT));
-						shown++;
 					}
-				}
-				if (!this.snapshot.autopetRuleNames().isEmpty()) {
-					tip.add(PvTooltip.Line.blank());
-					tip.add(PvTooltip.Line.meta("Autopet rules"));
-					for (String name : this.snapshot.autopetRuleNames()) {
-						tip.add(PvTooltip.Line.row("Rule", PvDraw.COLOR_MUTED, name, PvDraw.COLOR_ACCENT));
+					this.careTip = tip;
+				} else if (mouseX >= autopetX && mouseX < x + w - PAD) {
+					List<PvTooltip.Line> tip = new ArrayList<>();
+					tip.add(PvTooltip.Line.title("Autopet", PvDraw.COLOR_TEXT));
+					tip.add(PvTooltip.Line.divider());
+					tip.add(PvTooltip.Line.row("Rules", PvDraw.COLOR_MUTED,
+						this.snapshot.autopetRuleCount() + "/"
+							+ Math.max(this.snapshot.autopetRulesLimit(), this.snapshot.autopetRuleCount()),
+						PvDraw.COLOR_ACCENT));
+					if (this.snapshot.autopetRules().isEmpty()) {
+						tip.add(PvTooltip.Line.meta("No rules configured"));
+					} else {
+						int shown = 0;
+						for (PetSnapshot.AutopetRule rule : this.snapshot.autopetRules()) {
+							if (shown >= 8) {
+								tip.add(PvTooltip.Line.blank());
+								tip.add(PvTooltip.Line.meta(
+									"+" + (this.snapshot.autopetRules().size() - shown) + " more"));
+								break;
+							}
+							tip.add(PvTooltip.Line.blank());
+							String pet = rule.petName().isBlank() ? "Unknown pet" : rule.petName();
+							int petColor = rule.disabled() ? PvDraw.COLOR_MUTED : PvDraw.COLOR_GOLD;
+							tip.add(PvTooltip.Line.title(pet, petColor));
+							StringBuilder sub = new StringBuilder(rule.trigger());
+							if (!rule.detail().isBlank()) {
+								sub.append(" · ").append(rule.detail());
+							}
+							if (rule.disabled()) {
+								sub.append(" · Off");
+							}
+							tip.add(PvTooltip.Line.meta(sub.toString()));
+							shown++;
+						}
 					}
+					this.autopetTip = tip;
 				}
-				this.summaryTip = tip;
 			}
 		}
 		// Fixed top-left origin - never shift up / left / right when slot size changes.

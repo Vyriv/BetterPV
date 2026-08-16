@@ -424,21 +424,20 @@ public final class MiscStatsPage {
 		int x, int y, int w, int rowH, int iconSize, int bottom, int mx, int my
 	) {
 		int labelX = x + iconSize + 3;
-		int iconMid = Math.max(0, (rowH - iconSize) / 2);
-		int textMid = Math.max(0, (rowH - font.lineHeight) / 2);
 		int ry = y;
 		for (MiscStatsSnapshot.CommunityUpgrade u : upgrades) {
 			if (ry + font.lineHeight > bottom) {
 				break;
 			}
-			drawCommunityIcon(g, u.upgrade(), x, ry + iconMid, iconSize);
+			PvDraw.IconTextAlign rowAlign = PvDraw.IconTextAlign.of(ry, rowH, iconSize, font.lineHeight);
+			drawCommunityIcon(g, u.upgrade(), x, rowAlign.iconY(), iconSize);
 			int max = communityMaxTier(u.upgrade());
 			String right = max > 0 ? u.tier() + "/" + max : "T" + u.tier();
 			int rightW = font.width(right);
 			String left = trim(font, u.label(), Math.max(8, w - (labelX - x) - rightW - 4));
 			boolean maxed = max > 0 && u.tier() >= max;
-			PvDraw.text(g, font, left, labelX, ry + textMid, PvDraw.COLOR_MUTED);
-			PvDraw.textRight(g, font, right, x + w, ry + textMid, maxed ? ENABLED : PvDraw.COLOR_GOLD);
+			PvDraw.text(g, font, left, labelX, rowAlign.textY(), PvDraw.COLOR_MUTED);
+			PvDraw.textRight(g, font, right, x + w, rowAlign.textY(), maxed ? ENABLED : PvDraw.COLOR_GOLD);
 			if (mx >= x && mx < x + w && my >= ry && my < ry + rowH) {
 				List<PvTooltip.Line> tip = new ArrayList<>();
 				tip.add(PvTooltip.Line.title(u.label(), HEADER_COMMUNITY));
@@ -695,7 +694,6 @@ public final class MiscStatsPage {
 		long total = showDeaths ? this.snapshot.deathsTotal() : this.snapshot.killsTotal();
 		String title = showDeaths ? "Deaths" : "Kills";
 		int titleColor = showDeaths ? HEADER_DEATHS : HEADER_KILLS;
-		String hint = showDeaths ? "Click to flip → Kills" : "Click to flip → Deaths";
 
 		int lx = x + PAD;
 		int ly = y + PAD;
@@ -705,7 +703,7 @@ public final class MiscStatsPage {
 		ly += font.lineHeight + 4;
 
 		int listTop = ly;
-		int listBottom = y + h - PAD - font.lineHeight - 2;
+		int listBottom = y + h - PAD;
 		int listH = Math.max(STAT_ROW, listBottom - listTop);
 		int contentH = rows.size() * STAT_ROW;
 		this.listMaxScroll = Math.max(0, contentH - listH);
@@ -741,7 +739,6 @@ public final class MiscStatsPage {
 				x + w / 2, listTop + listH / 2 - font.lineHeight / 2, PvDraw.COLOR_MUTED);
 		}
 
-		PvDraw.text(g, font, hint, lx, y + h - PAD - font.lineHeight, PvDraw.COLOR_MUTED);
 		if (this.listMaxScroll > 0) {
 			PvDraw.textRight(g, font, "↕", lx + lw, y + h - PAD - font.lineHeight, PvDraw.COLOR_MUTED);
 		}

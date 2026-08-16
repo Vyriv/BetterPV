@@ -124,7 +124,7 @@ public final class MiningSnapshot {
 	private final ColeWeight.Result coleWeight;
 	private final DungeonSnapshot.EssenceShop goldShop;
 	private final DungeonSnapshot.EssenceShop diamondShop;
-	private final DungeonSnapshot.EssenceShop iceShop;
+	private final DungeonSnapshot.EssenceShop fossilShop;
 	private final int goblinKingQuests;
 	private final boolean jungleTempleOpen;
 	private final boolean precursorTalked;
@@ -142,7 +142,7 @@ public final class MiningSnapshot {
 		ColeWeight.Result coleWeight,
 		DungeonSnapshot.EssenceShop goldShop,
 		DungeonSnapshot.EssenceShop diamondShop,
-		DungeonSnapshot.EssenceShop iceShop,
+		DungeonSnapshot.EssenceShop fossilShop,
 		int goblinKingQuests,
 		boolean jungleTempleOpen,
 		boolean precursorTalked,
@@ -177,7 +177,7 @@ public final class MiningSnapshot {
 		this.coleWeight = coleWeight == null ? ColeWeight.Result.empty() : coleWeight;
 		this.goldShop = goldShop == null ? DungeonSnapshot.EssenceShop.empty("gold", "Gold") : goldShop;
 		this.diamondShop = diamondShop == null ? DungeonSnapshot.EssenceShop.empty("diamond", "Diamond") : diamondShop;
-		this.iceShop = iceShop == null ? DungeonSnapshot.EssenceShop.empty("ice", "Ice") : iceShop;
+		this.fossilShop = fossilShop == null ? DungeonSnapshot.EssenceShop.empty("fossil", "Fossil") : fossilShop;
 		this.goblinKingQuests = Math.max(0, goblinKingQuests);
 		this.jungleTempleOpen = jungleTempleOpen;
 		this.precursorTalked = precursorTalked;
@@ -197,7 +197,7 @@ public final class MiningSnapshot {
 			ColeWeight.Result.empty(),
 			DungeonSnapshot.EssenceShop.empty("gold", "Gold"),
 			DungeonSnapshot.EssenceShop.empty("diamond", "Diamond"),
-			DungeonSnapshot.EssenceShop.empty("ice", "Ice"),
+			DungeonSnapshot.EssenceShop.empty("fossil", "Fossil"),
 			0, false, false, 0L, 0L
 		);
 	}
@@ -214,7 +214,7 @@ public final class MiningSnapshot {
 			coleWeight,
 			goldShop,
 			diamondShop,
-			iceShop,
+			fossilShop,
 			goblinKingQuests,
 			jungleTempleOpen,
 			precursorTalked,
@@ -343,7 +343,7 @@ public final class MiningSnapshot {
 			ColeWeight.Result.empty(),
 			EssenceShopData.gold(member),
 			EssenceShopData.diamond(member),
-			EssenceShopData.ice(member),
+			EssenceShopData.fossil(member),
 			intOf(goblin, "king_quests_completed"),
 			boolOf(jungle, "jungle_temple_open"),
 			boolOf(precursor, "talked_to_professor"),
@@ -449,8 +449,8 @@ public final class MiningSnapshot {
 		return diamondShop;
 	}
 
-	public DungeonSnapshot.EssenceShop iceShop() {
-		return iceShop;
+	public DungeonSnapshot.EssenceShop fossilShop() {
+		return fossilShop;
 	}
 
 	public int goblinKingQuests() {

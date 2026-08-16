@@ -9,6 +9,8 @@ import static dev.vy.betterpv.client.gui.foraging.ForagingUi.SLOT;
 import static dev.vy.betterpv.client.gui.foraging.ForagingUi.SLOT_GAP;
 import static dev.vy.betterpv.client.gui.foraging.ForagingUi.STAT_ROW;
 
+import dev.vy.betterpv.client.data.AttributeShardsData;
+import dev.vy.betterpv.client.data.DungeonSnapshot;
 import dev.vy.betterpv.client.data.FormatUtil;
 import dev.vy.betterpv.client.data.ForagingSnapshot;
 import dev.vy.betterpv.client.gui.PvDraw;
@@ -108,9 +110,10 @@ public final class SafariPage {
 			lx, ly, lw, PvDraw.COLOR_TEXT) + 1;
 		ly = ForagingUi.statLine(g, font, "Tickets", FormatUtil.commas(safari.totalTickets()),
 			lx, ly, lw, PvDraw.COLOR_GOLD) + 2;
-		if (snapshot.safariEssence() > 0L) {
-			ly = ForagingUi.statLine(g, font, "Safari essence", FormatUtil.commas(snapshot.safariEssence()),
-				lx, ly, lw, PvDraw.COLOR_ACCENT) + 2;
+
+		ly = drawSafariEssenceShop(g, font, snapshot.safariShop(), lx, ly, lw, bottom);
+		if (ly + font.lineHeight + STAT_ROW > bottom) {
+			return;
 		}
 
 		ly = ForagingUi.sectionSeparator(g, font, x, ly, w);
@@ -202,7 +205,7 @@ public final class SafariPage {
 		this.gridMaxScroll = Math.max(0, contentH - this.gridH);
 		this.gridScroll = Math.min(this.gridScroll, this.gridMaxScroll);
 
-		ItemStack fallback = new ItemStack(Items.LIME_DYE);
+		ItemStack fallback = new ItemStack(Items.PLAYER_HEAD);
 		g.enableScissor(this.gridX, this.gridY, this.gridX + this.gridW, this.gridY + this.gridH);
 		for (int i = 0; i < critters.size(); i++) {
 			int col = i % cols;
@@ -229,7 +232,94 @@ public final class SafariPage {
 		g.disableScissor();
 	}
 
+	private static final int SAFARI_COLOR = 0xFF7CFF9A;
+	private static final int COLOR_MAXED = 0xFF7CFF9A;
+
+	private static int drawSafariEssenceShop(
+		GuiGraphicsExtractor g, Font font, DungeonSnapshot.EssenceShop shop,
+		int x, int y, int w, int bottom
+	) {
+		if (shop == null || y + font.lineHeight + 4 > bottom) {
+			return y;
+		}
+		int headerH = Math.max(16, font.lineHeight + 2);
+		PvDraw.IconTextAlign headerAlign = PvDraw.IconTextAlign.of(y, headerH, 16, font.lineHeight);
+		g.item(safariEssenceIcon(shop.iconId()), x, headerAlign.iconY());
+		String bal = FormatUtil.commas(shop.balance());
+		int balW = PvDraw.widthBold(font, bal);
+		int headerLabelX = x + 16 + 4;
+		int nameMax = Math.max(8, w - (headerLabelX - x) - balW - 4);
+		PvDraw.textBold(g, font, ForagingUi.trim(font, shop.name() + " Essence", nameMax),
+			headerLabelX, headerAlign.textY(), SAFARI_COLOR);
+		PvDraw.textBold(g, font, bal, x + w - balW, headerAlign.textY(), SAFARI_COLOR);
+
+		int ly = y + headerH + 4;
+		List<DungeonSnapshot.EssencePerk> perks = shop.perks();
+		if (perks.isEmpty()) {
+			return ly + 2;
+		}
+		int colGap = 8;
+		int colW = Math.max(70, (w - colGap) / 2);
+		int perkRows = Math.max(1, (perks.size() + 1) / 2);
+		int avail = Math.max(font.lineHeight + 2, bottom - ly - 4);
+		int rowH = Math.max(16, Math.max(font.lineHeight + 1, Math.min(18, avail / perkRows)));
+		for (int i = 0; i < perks.size(); i++) {
+			DungeonSnapshot.EssencePerk perk = perks.get(i);
+			int col = i % 2;
+			int row = i / 2;
+			int px = x + col * (colW + colGap);
+			int py = ly + row * rowH;
+			if (py + font.lineHeight > bottom) {
+				break;
+			}
+			PvDraw.IconTextAlign rowAlign = PvDraw.IconTextAlign.of(py, rowH, 16, font.lineHeight);
+			g.item(safariPerkIcon(perk.id()), px, rowAlign.iconY());
+			String right = perk.level() + "/" + perk.maxLevel();
+			int rightW = font.width(right);
+			int labelX = px + 16 + 2;
+			String left = ForagingUi.trim(font, perk.name(), Math.max(8, colW - 16 - 2 - rightW - 2));
+			int valueColor = perk.maxed() ? COLOR_MAXED : PvDraw.COLOR_TEXT;
+			PvDraw.text(g, font, left, labelX, rowAlign.textY(), PvDraw.COLOR_MUTED);
+			PvDraw.textRight(g, font, right, px + colW, rowAlign.textY(), valueColor);
+		}
+		return ly + perkRows * rowH + 4;
+	}
+
+	private static ItemStack safariEssenceIcon(String id) {
+		ItemStack stack = SkyBlockItemFactory.iconStack(id == null ? "ESSENCE_SAFARI" : id);
+		if (usableIcon(stack)) {
+			return stack;
+		}
+		stack = SkyBlockItemFactory.iconStack("ESSENCE_FOREST");
+		return usableIcon(stack) ? stack : new ItemStack(Items.LIME_DYE);
+	}
+
+	private static ItemStack safariPerkIcon(String perkId) {
+		if (perkId == null) {
+			return new ItemStack(Items.PAPER);
+		}
+		return switch (perkId) {
+			case "critter_catcher" -> new ItemStack(Items.EGG);
+			case "critter_master" -> new ItemStack(Items.NETHER_STAR);
+			case "floortunate" -> new ItemStack(Items.STRING);
+			case "fresh_footprints" -> new ItemStack(Items.LEATHER_BOOTS);
+			case "head_start" -> new ItemStack(Items.MAP);
+			case "hunting_hotspot" -> new ItemStack(Items.COMPASS);
+			case "thawing" -> new ItemStack(Items.MAGMA_CREAM);
+			case "deep_diver" -> new ItemStack(Items.TURTLE_HELMET);
+			case "quickdraw" -> new ItemStack(Items.BOW);
+			case "amateur_hour" -> new ItemStack(Items.BOOK);
+			case "sparkling_specialist" -> new ItemStack(Items.AMETHYST_SHARD);
+			default -> new ItemStack(Items.PAPER);
+		};
+	}
+
 	private static void drawCritterIcon(GuiGraphicsExtractor g, String critterId, int x, int y, ItemStack fallback) {
+		ItemStack stack = critterSkull(critterId);
+		if (stack != null && !stack.isEmpty()) {
+			g.item(stack, x, y);
+			return;
+		}
 		if (critterId != null && !critterId.isBlank()) {
 			Identifier custom = SkyBlockItemFactory.customIcon(critterId);
 			if (custom != null) {
@@ -237,13 +327,41 @@ public final class SafariPage {
 				g.blit(RenderPipelines.GUI_TEXTURED, custom, x, y, 0, 0, 16, 16, tex, tex, tex, tex);
 				return;
 			}
-			ItemStack stack = SkyBlockItemFactory.iconStack(critterId);
-			if (stack != null && !stack.isEmpty() && !stack.is(Items.PAPER) && !stack.is(Items.BARRIER)) {
-				g.item(stack, x, y);
-				return;
-			}
 		}
 		g.item(fallback, x, y);
+	}
+
+	private static ItemStack critterSkull(String critterId) {
+		if (critterId == null || critterId.isBlank()) {
+			return ItemStack.EMPTY;
+		}
+		AttributeShardsData.ensureLoaded();
+		AttributeShardsData.Def def = AttributeShardsData.byCritterId(critterId);
+		if (def != null) {
+			ItemStack fromDef = SkyBlockItemFactory.iconStack(def.iconId());
+			if (usableIcon(fromDef)) {
+				return fromDef;
+			}
+			if (def.bazaarName() != null) {
+				ItemStack bazaar = SkyBlockItemFactory.iconStack(def.bazaarName());
+				if (usableIcon(bazaar)) {
+					return bazaar;
+				}
+			}
+		}
+		String upper = critterId.trim().toUpperCase(Locale.ROOT).replace(' ', '_');
+		for (String id : List.of("SHARD_" + upper, upper, "ATTRIBUTE_SHARD_" + upper + ";1")) {
+			ItemStack stack = SkyBlockItemFactory.iconStack(id);
+			if (usableIcon(stack)) {
+				return stack;
+			}
+		}
+		return ItemStack.EMPTY;
+	}
+
+	private static boolean usableIcon(ItemStack stack) {
+		return stack != null && !stack.isEmpty() && !stack.is(Items.PAPER) && !stack.is(Items.BARRIER)
+			&& !stack.is(Items.LIME_DYE);
 	}
 
 	private static int ticketColor(String id) {

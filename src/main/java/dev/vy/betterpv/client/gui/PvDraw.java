@@ -108,6 +108,34 @@ public final class PvDraw {
 		text(g, font, styled(value, color, true), x, y);
 	}
 
+	/** Bold text scaled about its top-left corner (keeps glyph raster crisp at mild scales). */
+	public static void textBoldScaled(GuiGraphicsExtractor g, Font font, String value, int x, int y, int color, float scale) {
+		if (scale == 1.0F) {
+			textBold(g, font, value, x, y, color);
+			return;
+		}
+		g.pose().pushMatrix();
+		g.pose().translate(x, y);
+		g.pose().scale(scale, scale);
+		text(g, font, styled(value, color, true), 0, 0);
+		g.pose().popMatrix();
+	}
+
+	/**
+	 * Y positions so a square item icon and a text line share the same vertical center.
+	 * Works when {@code rowH} is shorter than the icon (dense lists used to pin icons to the top
+	 * while centering text, which made icons look low).
+	 */
+	public record IconTextAlign(int iconY, int textY) {
+		public static IconTextAlign of(int rowY, int rowH, int iconSize, int lineHeight) {
+			int pairH = Math.max(Math.max(1, iconSize), Math.max(1, lineHeight));
+			int pairTop = rowY + Math.max(0, (Math.max(1, rowH) - pairH) / 2);
+			int iconY = pairTop + Math.max(0, (pairH - iconSize) / 2);
+			int textY = pairTop + Math.max(0, (pairH - lineHeight) / 2);
+			return new IconTextAlign(iconY, textY);
+		}
+	}
+
 	public static int width(Font font, Component value) {
 		return font.width(value);
 	}
@@ -167,11 +195,34 @@ public final class PvDraw {
 		}
 		boolean roundRight = filled >= w;
 		if (MoulberryMode.isActive()) {
-			drawXpBarAnimatedGradient(g, x, y, filled, h, roundRight);
+			drawXpBarAnimatedGradient(g, x, y, filled, h, true);
 		} else if (maxedShiny) {
 			drawXpBarMaxed(g, x, y, filled, h, roundRight);
 		} else {
-			fill(g, x, y, filled, h, fillColor);
+			drawXpBarSolidRounded(g, x, y, filled, h, fillColor, true);
+		}
+	}
+
+	/** Solid fill with pill tips so incomplete bars match maxed rounding. */
+	private static void drawXpBarSolidRounded(
+		GuiGraphicsExtractor g, int x, int y, int w, int h, int fillColor, boolean roundRight
+	) {
+		if (w <= 0 || h <= 0) {
+			return;
+		}
+		if (h < 3 || w == 1) {
+			fill(g, x, y + (h < 3 ? 0 : 1), w, h < 3 ? h : Math.max(1, h - 2), fillColor);
+			return;
+		}
+		int leftInset = 1;
+		int rightInset = roundRight ? 1 : 0;
+		int bodyW = w - leftInset - rightInset;
+		if (bodyW > 0) {
+			fill(g, x + leftInset, y, bodyW, h, fillColor);
+		}
+		fill(g, x, y + 1, 1, Math.max(1, h - 2), fillColor);
+		if (roundRight) {
+			fill(g, x + w - 1, y + 1, 1, Math.max(1, h - 2), fillColor);
 		}
 	}
 

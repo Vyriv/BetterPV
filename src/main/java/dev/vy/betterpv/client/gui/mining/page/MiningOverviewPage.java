@@ -126,31 +126,12 @@ public final class MiningOverviewPage {
 
 		if (snapshot.commissionMilestone() > 0) {
 			ly = MiningUi.statLine(g, font, "Commissions", "Tier " + snapshot.commissionMilestone(),
-				lx, ly, lw, PvDraw.COLOR_TEXT);
-			ly = MiningUi.sectionSeparator(g, font, x, ly, leftW);
+				lx, ly, lw, PvDraw.COLOR_TEXT) + 1;
 		}
 
-		boolean hollows = snapshot.goblinKingQuests() > 0
-			|| snapshot.jungleTempleOpen()
-			|| snapshot.precursorTalked()
-			|| snapshot.miningFiestaOres() > 0L;
-		if (hollows) {
-			PvDraw.text(g, font, "Hollows", lx, ly, PvDraw.COLOR_MUTED);
-			ly += font.lineHeight + 3;
-			if (snapshot.goblinKingQuests() > 0) {
-				ly = MiningUi.statLine(g, font, "Goblin King quests",
-					String.valueOf(snapshot.goblinKingQuests()), lx, ly, lw, PvDraw.COLOR_TEXT) + 1;
-			}
-			ly = MiningUi.statLine(g, font, "Jungle Temple",
-				snapshot.jungleTempleOpen() ? "Open" : "Closed",
-				lx, ly, lw, snapshot.jungleTempleOpen() ? MiningUi.PLACED : PvDraw.COLOR_MUTED) + 1;
-			ly = MiningUi.statLine(g, font, "Precursor",
-				snapshot.precursorTalked() ? "Yes" : "No",
-				lx, ly, lw, snapshot.precursorTalked() ? MiningUi.PLACED : PvDraw.COLOR_MUTED) + 1;
-			if (snapshot.miningFiestaOres() > 0L) {
-				ly = MiningUi.statLine(g, font, "Fiesta ores",
-					FormatUtil.commas(snapshot.miningFiestaOres()), lx, ly, lw, PvDraw.COLOR_GOLD);
-			}
+		if (snapshot.miningFiestaOres() > 0L) {
+			ly = MiningUi.statLine(g, font, "Fiesta ores",
+				FormatUtil.commas(snapshot.miningFiestaOres()), lx, ly, lw, PvDraw.COLOR_GOLD);
 		}
 
 		drawCrystalsPanel(g, font, snapshot, zones, x + leftW + MiningUi.GAP, y, rightW, h, mx, my);
@@ -235,8 +216,19 @@ public final class MiningOverviewPage {
 		int rows = (crystals.size() + cols - 1) / cols;
 		int gridH = rows * cellH;
 
+		boolean hollows = snapshot.goblinKingQuests() > 0
+			|| snapshot.jungleTempleOpen()
+			|| snapshot.precursorTalked();
+		int hollowsReserve = hollows
+			? font.lineHeight + 3
+				+ (snapshot.goblinKingQuests() > 0 ? MiningUi.STAT_ROW + 1 : 0)
+				+ MiningUi.STAT_ROW + 1
+				+ MiningUi.STAT_ROW
+				+ 6
+			: 0;
+
 		this.scrollTop = ry;
-		this.scrollH = Math.max(0, bottom - ry - MiningUi.STAT_ROW - 8);
+		this.scrollH = Math.max(0, bottom - ry - MiningUi.STAT_ROW - 8 - hollowsReserve);
 		this.maxScroll = Math.max(0, gridH - this.scrollH);
 		this.scroll = Math.min(this.scroll, this.maxScroll);
 
@@ -266,6 +258,22 @@ public final class MiningOverviewPage {
 				tip.add(PvTooltip.Line.row("API", PvDraw.COLOR_MUTED, FormatUtil.commas(api), PvDraw.COLOR_GOLD));
 			}
 			zones.add(HoverZone.of(rx, nucY, rw, MiningUi.STAT_ROW, tip));
+		}
+
+		if (hollows) {
+			int hy = nucY + MiningUi.STAT_ROW + 6;
+			PvDraw.text(g, font, "Hollows", rx, hy, PvDraw.COLOR_MUTED);
+			hy += font.lineHeight + 3;
+			if (snapshot.goblinKingQuests() > 0) {
+				hy = MiningUi.statLine(g, font, "Goblin King quests",
+					String.valueOf(snapshot.goblinKingQuests()), rx, hy, rw, PvDraw.COLOR_TEXT) + 1;
+			}
+			hy = MiningUi.statLine(g, font, "Jungle Temple",
+				snapshot.jungleTempleOpen() ? "Open" : "Closed",
+				rx, hy, rw, snapshot.jungleTempleOpen() ? MiningUi.PLACED : PvDraw.COLOR_MUTED) + 1;
+			MiningUi.statLine(g, font, "Precursor",
+				snapshot.precursorTalked() ? "Yes" : "No",
+				rx, hy, rw, snapshot.precursorTalked() ? MiningUi.PLACED : PvDraw.COLOR_MUTED);
 		}
 	}
 
@@ -323,32 +331,30 @@ public final class MiningOverviewPage {
 		int perkIcon = ESSENCE_PERK_ICON;
 		int gap = 3;
 		int headerLabelX = x + headerIcon + gap;
-		int headerTextMid = Math.max(0, (headerH - font.lineHeight) / 2);
-		int headerIconMid = Math.max(0, (headerH - headerIcon) / 2);
+		PvDraw.IconTextAlign headerAlign = PvDraw.IconTextAlign.of(y, headerH, headerIcon, font.lineHeight);
 
-		MiningUi.drawItemIcon(g, essenceIcon(shop.iconId()), x, y + headerIconMid, headerIcon);
+		MiningUi.drawItemIcon(g, essenceIcon(shop.iconId()), x, headerAlign.iconY(), headerIcon);
 		String name = shop.name();
 		String bal = FormatUtil.commas(shop.balance());
 		int balW = PvDraw.widthBold(font, bal);
 		int nameMax = Math.max(8, w - (headerLabelX - x) - balW - 4);
-		PvDraw.textBold(g, font, MiningUi.trim(font, name, nameMax), headerLabelX, y + headerTextMid, headerColor);
-		PvDraw.textBold(g, font, bal, x + w - balW, y + headerTextMid, headerColor);
+		PvDraw.textBold(g, font, MiningUi.trim(font, name, nameMax), headerLabelX, headerAlign.textY(), headerColor);
+		PvDraw.textBold(g, font, bal, x + w - balW, headerAlign.textY(), headerColor);
 
 		int perkLabelX = x + perkIcon + gap;
-		int perkTextMid = Math.max(0, (rowH - font.lineHeight) / 2);
-		int perkIconMid = Math.max(0, (rowH - perkIcon) / 2);
 		int ly = y + headerH + 4;
 		for (DungeonSnapshot.EssencePerk perk : shop.perks()) {
 			if (ly + font.lineHeight > bottom) {
 				break;
 			}
-			MiningUi.drawItemIcon(g, miningEssencePerkIcon(perk.id()), x, ly + perkIconMid, perkIcon);
+			PvDraw.IconTextAlign rowAlign = PvDraw.IconTextAlign.of(ly, rowH, perkIcon, font.lineHeight);
+			MiningUi.drawItemIcon(g, miningEssencePerkIcon(perk.id()), x, rowAlign.iconY(), perkIcon);
 			String right = perk.level() + "/" + perk.maxLevel();
 			int rightW = font.width(right);
 			String left = MiningUi.trim(font, perk.name(), Math.max(8, w - (perkLabelX - x) - rightW - 4));
 			int valueColor = perk.maxed() ? COLOR_MAXED : PvDraw.COLOR_TEXT;
-			PvDraw.text(g, font, left, perkLabelX, ly + perkTextMid, PvDraw.COLOR_MUTED);
-			PvDraw.textRight(g, font, right, x + w, ly + perkTextMid, valueColor);
+			PvDraw.text(g, font, left, perkLabelX, rowAlign.textY(), PvDraw.COLOR_MUTED);
+			PvDraw.textRight(g, font, right, x + w, rowAlign.textY(), valueColor);
 			ly += rowH;
 		}
 	}

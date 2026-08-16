@@ -73,6 +73,10 @@ public final class HuntingPage {
 		}
 		ly = ForagingUi.statLine(g, font, "Fused", FormatUtil.commas(snapshot.fusedShards()),
 			lx, ly, lw, PvDraw.COLOR_GOLD);
+		if (snapshot.peltCount() > 0L) {
+			ly = ForagingUi.statLine(g, font, "Pelts", FormatUtil.commas(snapshot.peltCount()),
+				lx, ly, lw, PvDraw.COLOR_TEXT);
+		}
 		ly = ForagingUi.sectionSeparator(g, font, x, ly, w);
 
 		if (!snapshot.huntStats().isEmpty()) {

@@ -141,12 +141,6 @@ public final class ForagingOverviewPage {
 		}
 
 		g.pose().popMatrix();
-
-		if (hovered && !animating) {
-			this.zones.add(HoverZone.of(x, y, w, h, List.of(
-				PvTooltip.Line.of("Click to flip", PvDraw.COLOR_MUTED)
-			)));
-		}
 	}
 
 	private void drawOverviewLeft(
@@ -346,15 +340,15 @@ public final class ForagingOverviewPage {
 
 		// Full 16px icons - no fractional scale (that softens item textures).
 		int headerH = Math.max(16, font.lineHeight + 2);
-		int headerTextMid = Math.max(0, (headerH - font.lineHeight) / 2);
-		g.item(essenceIcon(shop.iconId()), cx, cy + Math.max(0, (headerH - 16) / 2));
+		PvDraw.IconTextAlign headerAlign = PvDraw.IconTextAlign.of(cy, headerH, 16, font.lineHeight);
+		g.item(essenceIcon(shop.iconId()), cx, headerAlign.iconY());
 		String bal = FormatUtil.commas(shop.balance());
 		int balW = PvDraw.widthBold(font, bal);
 		int headerLabelX = cx + 16 + 4;
 		int nameMax = Math.max(8, innerW - (headerLabelX - cx) - balW - 4);
 		PvDraw.textBold(g, font, ForagingUi.trim(font, shop.name() + " Essence", nameMax),
-			headerLabelX, cy + headerTextMid, FOREST_COLOR);
-		PvDraw.textBold(g, font, bal, cx + innerW - balW, cy + headerTextMid, FOREST_COLOR);
+			headerLabelX, headerAlign.textY(), FOREST_COLOR);
+		PvDraw.textBold(g, font, bal, cx + innerW - balW, headerAlign.textY(), FOREST_COLOR);
 
 		int ly = cy + headerH + 6;
 		List<DungeonSnapshot.EssencePerk> perks = shop.perks();
@@ -362,7 +356,7 @@ public final class ForagingOverviewPage {
 		int colW = Math.max(80, (innerW - colGap) / 2);
 		int perkRows = Math.max(1, (perks.size() + 1) / 2);
 		int availPerkH = Math.max(font.lineHeight + 2, shopsBottom - ly);
-		int rowH = Math.max(font.lineHeight + 2, Math.min(20, availPerkH / perkRows));
+		int rowH = Math.max(16, Math.max(font.lineHeight + 2, Math.min(20, availPerkH / perkRows)));
 		for (int i = 0; i < perks.size(); i++) {
 			DungeonSnapshot.EssencePerk perk = perks.get(i);
 			int col = i % 2;
@@ -372,15 +366,15 @@ public final class ForagingOverviewPage {
 			if (py + font.lineHeight > shopsBottom) {
 				break;
 			}
-			g.item(forestPerkIcon(perk.id()), px, py + Math.max(0, (rowH - 16) / 2));
+			PvDraw.IconTextAlign rowAlign = PvDraw.IconTextAlign.of(py, rowH, 16, font.lineHeight);
+			g.item(forestPerkIcon(perk.id()), px, rowAlign.iconY());
 			String right = perk.level() + "/" + perk.maxLevel();
 			int rightW = font.width(right);
 			int labelX = px + 16 + 3;
 			String left = ForagingUi.trim(font, perk.name(), Math.max(8, colW - 16 - 3 - rightW - 4));
-			int textMid = Math.max(0, (rowH - font.lineHeight) / 2);
 			int valueColor = perk.maxed() ? COLOR_MAXED : PvDraw.COLOR_TEXT;
-			PvDraw.text(g, font, left, labelX, py + textMid, PvDraw.COLOR_MUTED);
-			PvDraw.textRight(g, font, right, px + colW, py + textMid, valueColor);
+			PvDraw.text(g, font, left, labelX, rowAlign.textY(), PvDraw.COLOR_MUTED);
+			PvDraw.textRight(g, font, right, px + colW, rowAlign.textY(), valueColor);
 		}
 
 		int sepY = ForagingUi.sectionSeparator(g, font, x, shopsBottom, w);

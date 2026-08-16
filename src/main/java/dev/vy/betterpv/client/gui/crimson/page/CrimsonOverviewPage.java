@@ -135,8 +135,12 @@ public final class CrimsonOverviewPage {
 			List<PvTooltip.Line> dailyTip = new ArrayList<>();
 			dailyTip.add(PvTooltip.Line.title("Daily quests", PvDraw.COLOR_TEXT));
 			dailyTip.add(PvTooltip.Line.divider());
+			int i = 1;
 			for (String q : snapshot.dailyQuests()) {
-				dailyTip.add(PvTooltip.Line.row("Quest", PvDraw.COLOR_MUTED, prettyMiniboss(q), PvDraw.COLOR_TEXT));
+				dailyTip.add(PvTooltip.Line.row(
+					"#" + i, PvDraw.COLOR_MUTED, prettyDailyQuest(q), PvDraw.COLOR_ACCENT
+				));
+				i++;
 			}
 			int dailyY = ly;
 			ly = statLine(g, font, "Daily quests", String.valueOf(snapshot.dailyQuests().size()),
@@ -150,6 +154,50 @@ public final class CrimsonOverviewPage {
 		ly = statLine(g, font, "Kuudra Loremaster",
 			snapshot.kuudraLoremaster() ? "Yes" : "No",
 			lx, ly, lw, snapshot.kuudraLoremaster() ? ENABLED : PvDraw.COLOR_MUTED);
+	}
+
+	private static String prettyDailyQuest(String id) {
+		if (id == null || id.isBlank()) {
+			return "?";
+		}
+		String raw = id.trim().toLowerCase(Locale.ROOT);
+		if (raw.startsWith("crimson_isle_")) {
+			raw = raw.substring("crimson_isle_".length());
+		}
+		raw = raw.replace('_', ' ').replaceAll("\\s+", " ").trim();
+		// Drop trailing letter grades like " a" / " b" / " c" when they look like tier tags.
+		if (raw.length() > 2 && raw.charAt(raw.length() - 2) == ' '
+			&& Character.isLetter(raw.charAt(raw.length() - 1))) {
+			char grade = Character.toLowerCase(raw.charAt(raw.length() - 1));
+			if (grade >= 'a' && grade <= 'd') {
+				raw = raw.substring(0, raw.length() - 2);
+			}
+		}
+		StringBuilder out = new StringBuilder(raw.length());
+		boolean cap = true;
+		for (int i = 0; i < raw.length(); i++) {
+			char c = raw.charAt(i);
+			if (c == ' ') {
+				out.append(c);
+				cap = true;
+			} else if (cap) {
+				out.append(Character.toUpperCase(c));
+				cap = false;
+			} else {
+				out.append(c);
+			}
+		}
+		String pretty = out.toString()
+			.replace("Kuudra Hot Tier", "Kuudra (Hot)")
+			.replace("Kuudra Burning Tier", "Kuudra (Burning)")
+			.replace("Kuudra Fiery Tier", "Kuudra (Fiery)")
+			.replace("Kuudra Infernal Tier", "Kuudra (Infernal)")
+			.replace("Dojo Test Of", "Dojo:")
+			.replace("Kb Drating", "Knockback")
+			.replace("Soulfish", "Soulfish")
+			.replace("Fetch Magmag", "Fetch Magmaggies")
+			.replace("Kill Magma Boss", "Kill Magma Boss");
+		return pretty.isBlank() ? "?" : pretty;
 	}
 
 	private static String prettyMiniboss(String id) {
@@ -362,16 +410,15 @@ public final class CrimsonOverviewPage {
 		DungeonSnapshot.EssenceShop shop = snapshot.crimsonShop();
 		int headerIcon = 16;
 		int headerH = Math.max(headerIcon, font.lineHeight + 2);
-		int headerIconMid = Math.max(0, (headerH - headerIcon) / 2);
-		int headerTextMid = Math.max(0, (headerH - font.lineHeight) / 2);
+		PvDraw.IconTextAlign headerAlign = PvDraw.IconTextAlign.of(ly, headerH, headerIcon, font.lineHeight);
 
-		drawItemIcon(g, essenceIcon(shop.iconId()), lx, ly + headerIconMid, headerIcon);
+		drawItemIcon(g, essenceIcon(shop.iconId()), lx, headerAlign.iconY(), headerIcon);
 		int labelX = lx + headerIcon + 4;
 		String bal = FormatUtil.commas(shop.balance());
 		int balW = PvDraw.widthBold(font, bal);
 		int nameMax = Math.max(8, lw - (labelX - lx) - balW - 4);
-		PvDraw.textBold(g, font, trim(font, "Crimson", nameMax), labelX, ly + headerTextMid, SHOP_HEADER_COLOR);
-		PvDraw.textBold(g, font, bal, lx + lw - balW, ly + headerTextMid, SHOP_HEADER_COLOR);
+		PvDraw.textBold(g, font, trim(font, "Crimson", nameMax), labelX, headerAlign.textY(), SHOP_HEADER_COLOR);
+		PvDraw.textBold(g, font, bal, lx + lw - balW, headerAlign.textY(), SHOP_HEADER_COLOR);
 
 		int perkIconSize = 12;
 		int rowH = Math.max(font.lineHeight + 2, perkIconSize + 2);
@@ -395,20 +442,19 @@ public final class CrimsonOverviewPage {
 		int x, int y, int w, int rowH, int perkIconSize, int bottom
 	) {
 		int perkLabelX = x + perkIconSize + 3;
-		int perkIconMid = Math.max(0, (rowH - perkIconSize) / 2);
-		int perkTextMid = Math.max(0, (rowH - font.lineHeight) / 2);
 		int ry = y;
 		for (DungeonSnapshot.EssencePerk perk : perks) {
 			if (ry + font.lineHeight > bottom) {
 				break;
 			}
-			drawItemIcon(g, shopPerkIcon(perk.id()), x, ry + perkIconMid, perkIconSize);
+			PvDraw.IconTextAlign rowAlign = PvDraw.IconTextAlign.of(ry, rowH, perkIconSize, font.lineHeight);
+			drawItemIcon(g, shopPerkIcon(perk.id()), x, rowAlign.iconY(), perkIconSize);
 			String right = perk.level() + "/" + perk.maxLevel();
 			int rightW = font.width(right);
 			String left = trim(font, perk.name(), Math.max(8, w - (perkLabelX - x) - rightW - 4));
 			int valueColor = perk.maxed() ? ENABLED : PvDraw.COLOR_TEXT;
-			PvDraw.text(g, font, left, perkLabelX, ry + perkTextMid, PvDraw.COLOR_MUTED);
-			PvDraw.textRight(g, font, right, x + w, ry + perkTextMid, valueColor);
+			PvDraw.text(g, font, left, perkLabelX, rowAlign.textY(), PvDraw.COLOR_MUTED);
+			PvDraw.textRight(g, font, right, x + w, rowAlign.textY(), valueColor);
 			ry += rowH;
 		}
 	}

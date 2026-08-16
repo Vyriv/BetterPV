@@ -62,6 +62,8 @@ public final class DungeonSnapshot {
 				case "spider" -> "ESSENCE_SPIDER";
 				case "dragon" -> "ESSENCE_DRAGON";
 				case "ice" -> "ESSENCE_ICE";
+				case "fossil" -> "ESSENCE_FOSSIL";
+				case "safari" -> "ESSENCE_SAFARI";
 				default -> "ESSENCE_WITHER";
 			};
 			return new EssenceShop(id, name, 0L, icon, List.of());
@@ -91,6 +93,9 @@ public final class DungeonSnapshot {
 	private final String mayorName;
 	private final EssenceShop witherShop;
 	private final EssenceShop undeadShop;
+	private final EssenceShop iceShop;
+	private final EssenceShop spiderShop;
+	private final EssenceShop dragonShop;
 	private final int dailyRuns;
 	private final int journalsUnlocked;
 
@@ -118,6 +123,9 @@ public final class DungeonSnapshot {
 		String mayorName,
 		EssenceShop witherShop,
 		EssenceShop undeadShop,
+		EssenceShop iceShop,
+		EssenceShop spiderShop,
+		EssenceShop dragonShop,
 		int dailyRuns,
 		int journalsUnlocked
 	) {
@@ -146,6 +154,9 @@ public final class DungeonSnapshot {
 		this.mayorName = mayorName == null ? "" : mayorName;
 		this.witherShop = witherShop == null ? EssenceShop.empty("wither", "Wither") : witherShop;
 		this.undeadShop = undeadShop == null ? EssenceShop.empty("undead", "Undead") : undeadShop;
+		this.iceShop = iceShop == null ? EssenceShop.empty("ice", "Ice") : iceShop;
+		this.spiderShop = spiderShop == null ? EssenceShop.empty("spider", "Spider") : spiderShop;
+		this.dragonShop = dragonShop == null ? EssenceShop.empty("dragon", "Dragon") : dragonShop;
 		this.dailyRuns = Math.max(0, dailyRuns);
 		this.journalsUnlocked = Math.max(0, journalsUnlocked);
 	}
@@ -251,6 +262,18 @@ public final class DungeonSnapshot {
 		return this.undeadShop;
 	}
 
+	public EssenceShop iceShop() {
+		return this.iceShop;
+	}
+
+	public EssenceShop spiderShop() {
+		return this.spiderShop;
+	}
+
+	public EssenceShop dragonShop() {
+		return this.dragonShop;
+	}
+
 	public int dailyRuns() {
 		return this.dailyRuns;
 	}
@@ -270,6 +293,9 @@ public final class DungeonSnapshot {
 			false, 0, 0, 0, Map.of(), 1.0, "",
 			EssenceShop.empty("wither", "Wither"),
 			EssenceShop.empty("undead", "Undead"),
+			EssenceShop.empty("ice", "Ice"),
+			EssenceShop.empty("spider", "Spider"),
+			EssenceShop.empty("dragon", "Dragon"),
 			0, 0
 		);
 	}

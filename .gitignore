@@ -1,0 +1,31 @@
+.gradle/
+build/
+run/
+out/
+*.iml
+.idea/
+*.log
+.DS_Store
+*.class
+.classpath
+.project
+.settings/
+bin/
+**/config/betterpv.json
+
+# Local build secrets (baked into jar at compile time - never commit)
+betterpv.local.properties
+
+# Stray decompile / dump output
+/net/
+
+# Temporary / Cache
+tmp_heads/
+.output.txt
+.tmp_api_coverage/
+.tmp_foraging_probe/
+.tmp_*
+
+# Assets / Resources
+assets/minecraft/lang/
+betterpv.local.properties.example

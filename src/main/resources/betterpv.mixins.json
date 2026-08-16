@@ -1,0 +1,19 @@
+{
+	"required": true,
+	"package": "dev.vy.betterpv.mixin",
+	"compatibilityLevel": "JAVA_21",
+	"client": [
+		"ChatComponentMixin",
+		"EntityCosmeticsMixin",
+		"EntityRendererCosmeticsMixin",
+		"FontCosmeticsMixin",
+		"PlayerInfoCosmeticsMixin",
+		"PlayerTabOverlayCosmeticsMixin",
+		"SkyHanniAdvancedPlayerListCosmeticsMixin",
+		"SkyHanniScoreboardElementPartyCosmeticsMixin",
+		"SkyHanniScoreboardEventDungeonsCosmeticsMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}

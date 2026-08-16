@@ -1,0 +1,145 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version "${loom_version}"
+	id 'maven-publish'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+	archivesName = project.archives_base_name
+}
+
+repositories {
+	mavenCentral()
+	maven {
+		name = "Modrinth"
+		url = "https://api.modrinth.com/maven"
+		content {
+			includeGroup "maven.modrinth"
+		}
+	}
+}
+
+configurations {
+	sparkRuntime
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+	// Spark profiler for the Loom run folder - https://spark.lucko.me/
+	sparkRuntime "maven.modrinth:spark:${project.spark_version}"
+}
+
+tasks.register("prepareSpark", Copy) {
+	from configurations.sparkRuntime
+	into layout.projectDirectory.dir("run/mods")
+	rename { String fileName -> "spark.jar" }
+	duplicatesStrategy = DuplicatesStrategy.INCLUDE
+}
+
+afterEvaluate {
+	tasks.matching { it.name == "runClient" || it.name == "runServer" }.configureEach {
+		dependsOn("prepareSpark")
+	}
+}
+
+/** Worker Hypixel auth secret: env {@code VYPV_HYPIXEL_SECRET} or gitignored {@code betterpv.local.properties}. */
+def resolveWorkerHypixelSecret = {
+	def fromEnv = System.getenv("VYPV_HYPIXEL_SECRET")
+	if (fromEnv != null && !fromEnv.isBlank()) {
+		return fromEnv.trim()
+	}
+	def local = file("betterpv.local.properties")
+	if (local.exists()) {
+		def props = new Properties()
+		local.withInputStream { props.load(it) }
+		def value = props.getProperty("betterpv.hypixel.worker.secret", "")
+		if (value != null && !value.isBlank() && value != "REPLACE_ME") {
+			return value.trim()
+		}
+	}
+	return ""
+}
+
+def workerHypixelSecret = resolveWorkerHypixelSecret()
+def generatedSecretsDir = layout.buildDirectory.dir("generated/sources/betterpvSecrets")
+
+tasks.register("generateWorkerSecrets") {
+	inputs.property("workerHypixelSecret", workerHypixelSecret)
+	outputs.dir(generatedSecretsDir)
+	doLast {
+		def pkgDir = new File(generatedSecretsDir.get().asFile, "dev/vy/betterpv/client/api")
+		pkgDir.mkdirs()
+		def escaped = workerHypixelSecret
+			.replace("\\", "\\\\")
+			.replace("\"", "\\\"")
+			.replace("\r", "")
+			.replace("\n", "")
+		new File(pkgDir, "WorkerSecrets.java").text = """\
+package dev.vy.betterpv.client.api;
+
+/** Generated at build time from betterpv.local.properties / VYPV_HYPIXEL_SECRET. Do not edit. */
+public final class WorkerSecrets {
+	private WorkerSecrets() {
+	}
+
+	public static final String HYPIXEL_WORKER_SECRET = "${escaped}";
+}
+"""
+		if (workerHypixelSecret.isBlank()) {
+			logger.warn("BetterPV: no hypixel worker secret - set VYPV_HYPIXEL_SECRET or betterpv.local.properties (see betterpv.local.properties.example)")
+		}
+	}
+}
+
+sourceSets {
+	main {
+		java {
+			srcDir(generatedSecretsDir)
+		}
+	}
+}
+
+tasks.named("compileJava").configure {
+	dependsOn("generateWorkerSecrets")
+}
+
+processResources {
+	def version = project.version
+	inputs.property "version", version
+
+	filesMatching("fabric.mod.json") {
+		expand "version": version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 25
+}
+
+java {
+	withSourcesJar()
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(25)
+	}
+
+	sourceCompatibility = JavaVersion.VERSION_25
+	targetCompatibility = JavaVersion.VERSION_25
+}
+
+tasks.named("sourcesJar", Jar).configure {
+	dependsOn("generateWorkerSecrets")
+	exclude("**/WorkerSecrets.java")
+}
+
+publishing {
+	publications {
+		create("mavenJava", MavenPublication) {
+			from components.java
+		}
+	}
+}

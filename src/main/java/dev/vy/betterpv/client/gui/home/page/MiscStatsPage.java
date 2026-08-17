@@ -178,7 +178,9 @@ public final class MiscStatsPage {
 
 		drawLeftFlip(g, font, leftX, y, leftW, h, mouseX, mouseY);
 		drawRightFlip(g, font, rightX, y, rightW, h, mouseX, mouseY);
+	}
 
+	public void renderTooltip(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH) {
 		for (HoverZone zone : this.zones) {
 			if (mouseX >= zone.x && mouseX < zone.x + zone.w && mouseY >= zone.y && mouseY < zone.y + zone.h) {
 				PvTooltip.drawStyled(g, font, zone.lines, mouseX, mouseY, screenW, screenH);

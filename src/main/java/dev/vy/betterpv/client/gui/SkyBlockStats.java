@@ -2,6 +2,7 @@ package dev.vy.betterpv.client.gui;
 
 import dev.vy.betterpv.client.data.InventorySnapshot;
 import dev.vy.betterpv.client.networth.InventoryDecoder;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import net.minecraft.network.chat.Component;
@@ -9,31 +10,31 @@ import net.minecraft.network.chat.MutableComponent;
 
 public final class SkyBlockStats {
 	private static final Map<String, StatStyle> STATS = Map.ofEntries(
-		Map.entry("health", new StatStyle("❤", 0xFFFF5555)),
-		Map.entry("defense", new StatStyle("❈", 0xFF55FF55)),
-		Map.entry("speed", new StatStyle("✦", 0xFFFFFFFF)),
-		Map.entry("walk_speed", new StatStyle("✦", 0xFFFFFFFF)),
-		Map.entry("strength", new StatStyle("❁", 0xFFFF5555)),
-		Map.entry("critical_damage", new StatStyle("☠", 0xFF5555FF)),
-		Map.entry("critical_chance", new StatStyle("☣", 0xFF5555FF)),
-		Map.entry("attack_speed", new StatStyle("⚔", 0xFFFFFF55)),
-		Map.entry("intelligence", new StatStyle("✎", 0xFF55FFFF)),
-		Map.entry("ferocity", new StatStyle("⫽", 0xFFFF5555)),
-		Map.entry("ability_damage", new StatStyle("๑", 0xFFFF5555)),
-		Map.entry("health_regen", new StatStyle("❣", 0xFFFF5555)),
-		Map.entry("vitality", new StatStyle("♨", 0xFFFF5555)),
-		Map.entry("mending", new StatStyle("☄", 0xFFFF5555)),
-		Map.entry("swing_range", new StatStyle("Ⓢ", 0xFFFFAA00)),
-		Map.entry("magic_find", new StatStyle("✯", 0xFF55FFFF)),
-		Map.entry("pet_luck", new StatStyle("♣", 0xFFFF55FF)),
-		Map.entry("true_defense", new StatStyle("❂", 0xFFFFFFFF)),
-		Map.entry("mining_fortune", new StatStyle("☘", 0xFFFFAA00)),
-		Map.entry("farming_fortune", new StatStyle("☘", 0xFFFFAA00)),
-		Map.entry("foraging_fortune", new StatStyle("☘", 0xFFFFAA00)),
-		Map.entry("mining_speed", new StatStyle("⸕", 0xFFFFAA00)),
-		Map.entry("pristine", new StatStyle("✧", 0xFFAA00AA)),
-		Map.entry("sea_creature_chance", new StatStyle("α", 0xFF00AAAA)),
-		Map.entry("fishing_speed", new StatStyle("☂", 0xFF55FFFF))
+		Map.entry("health", new StatStyle("❤", "Health", 0xFFFF5555)),
+		Map.entry("defense", new StatStyle("❈", "Defense", 0xFF55FF55)),
+		Map.entry("speed", new StatStyle("✦", "Speed", 0xFFFFFFFF)),
+		Map.entry("walk_speed", new StatStyle("✦", "Speed", 0xFFFFFFFF)),
+		Map.entry("strength", new StatStyle("❁", "Strength", 0xFFFF5555)),
+		Map.entry("critical_damage", new StatStyle("☠", "Crit Damage", 0xFF5555FF)),
+		Map.entry("critical_chance", new StatStyle("☣", "Crit Chance", 0xFF5555FF)),
+		Map.entry("attack_speed", new StatStyle("⚔", "Attack Speed", 0xFFFFFF55)),
+		Map.entry("intelligence", new StatStyle("✎", "Intelligence", 0xFF55FFFF)),
+		Map.entry("ferocity", new StatStyle("⫽", "Ferocity", 0xFFFF5555)),
+		Map.entry("ability_damage", new StatStyle("๑", "Ability Damage", 0xFFFF5555)),
+		Map.entry("health_regen", new StatStyle("❣", "Health Regen", 0xFFFF5555)),
+		Map.entry("vitality", new StatStyle("♨", "Vitality", 0xFFFF5555)),
+		Map.entry("mending", new StatStyle("☄", "Mending", 0xFFFF5555)),
+		Map.entry("swing_range", new StatStyle("Ⓢ", "Swing Range", 0xFFFFAA00)),
+		Map.entry("magic_find", new StatStyle("✯", "Magic Find", 0xFF55FFFF)),
+		Map.entry("pet_luck", new StatStyle("♣", "Pet Luck", 0xFFFF55FF)),
+		Map.entry("true_defense", new StatStyle("❂", "True Defense", 0xFFFFFFFF)),
+		Map.entry("mining_fortune", new StatStyle("☘", "Mining Fortune", 0xFFFFAA00)),
+		Map.entry("farming_fortune", new StatStyle("☘", "Farming Fortune", 0xFFFFAA00)),
+		Map.entry("foraging_fortune", new StatStyle("☘", "Foraging Fortune", 0xFFFFAA00)),
+		Map.entry("mining_speed", new StatStyle("⸕", "Mining Speed", 0xFFFFAA00)),
+		Map.entry("pristine", new StatStyle("✧", "Pristine", 0xFFAA00AA)),
+		Map.entry("sea_creature_chance", new StatStyle("α", "Sea Creature Chance", 0xFF00AAAA)),
+		Map.entry("fishing_speed", new StatStyle("☂", "Fishing Speed", 0xFF55FFFF))
 	);
 
 	/** Rough Hypixel/Maxwell power name colours. */
@@ -64,9 +65,25 @@ public final class SkyBlockStats {
 
 	public static StatStyle stat(String id) {
 		if (id == null) {
-			return new StatStyle("•", PvDraw.COLOR_TEXT);
+			return new StatStyle("•", "Unknown", PvDraw.COLOR_TEXT);
 		}
-		return STATS.getOrDefault(id.toLowerCase(Locale.ROOT), new StatStyle("•", PvDraw.COLOR_TEXT));
+		return STATS.getOrDefault(id.toLowerCase(Locale.ROOT), new StatStyle("•", "Unknown", PvDraw.COLOR_TEXT));
+	}
+
+	/** Hover tip: coloured full name, then coloured symbol + full number. */
+	public static List<PvTooltip.Line> tooltipLines(String id, String formattedValue) {
+		StatStyle style = stat(id);
+		String value = formattedValue == null || formattedValue.isBlank() ? "-" : formattedValue;
+		return List.of(
+			PvTooltip.Line.text(List.of(
+				PvTooltip.Span.of(style.symbol() + " ", style.color()),
+				PvTooltip.Span.bold(style.fullName(), style.color())
+			)),
+			PvTooltip.Line.text(List.of(
+				PvTooltip.Span.of(style.symbol() + " ", style.color()),
+				PvTooltip.Span.of(value, style.color())
+			))
+		);
 	}
 
 	public static int powerColor(String power) {
@@ -116,6 +133,10 @@ public final class SkyBlockStats {
 		return out;
 	}
 
-	public record StatStyle(String symbol, int color) {
+	public record StatStyle(String symbol, String fullName, int color) {
+		public StatStyle {
+			symbol = symbol == null ? "•" : symbol;
+			fullName = fullName == null || fullName.isBlank() ? "Unknown" : fullName;
+		}
 	}
 }

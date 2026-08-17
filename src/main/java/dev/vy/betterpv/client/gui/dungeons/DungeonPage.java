@@ -391,18 +391,19 @@ public final class DungeonPage {
 		FloorLayout floors = new FloorLayout(firstFloorY, lineH, gap, totalY);
 		drawRunsPanel(g, font, leftX, runsY, leftW, runsH, floors, mouseX, mouseY);
 		drawRightColumn(g, font, rightX, y, rightW, h, floors.totalY(), mouseX, mouseY);
+	}
 
-		List<PvTooltip.Line> tip = null;
-		if (this.runsFlipStartMs == 0L && this.classFlipStartMs == 0L) {
-			for (HoverZone zone : this.zones) {
-				if (mouseX >= zone.x && mouseX < zone.x + zone.w && mouseY >= zone.y && mouseY < zone.y + zone.h) {
-					tip = zone.lines;
-					break;
-				}
-			}
+	public void renderTooltip(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH) {
+		if (this.runsFlipStartMs != 0L || this.classFlipStartMs != 0L) {
+			return;
 		}
-		if (tip != null && !tip.isEmpty()) {
-			PvTooltip.drawStyled(g, font, tip, mouseX, mouseY, screenW, screenH);
+		for (HoverZone zone : this.zones) {
+			if (mouseX >= zone.x && mouseX < zone.x + zone.w && mouseY >= zone.y && mouseY < zone.y + zone.h) {
+				if (zone.lines != null && !zone.lines.isEmpty()) {
+					PvTooltip.drawStyled(g, font, zone.lines, mouseX, mouseY, screenW, screenH);
+				}
+				break;
+			}
 		}
 	}
 

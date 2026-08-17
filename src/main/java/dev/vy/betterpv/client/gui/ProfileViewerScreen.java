@@ -30,6 +30,7 @@ import dev.vy.betterpv.client.gui.garden.GardenPage;
 import dev.vy.betterpv.client.gui.home.HomePage;
 import dev.vy.betterpv.client.gui.home.page.MiscStatsPage;
 import dev.vy.betterpv.client.gui.inventories.InventoryPage;
+import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import dev.vy.betterpv.client.gui.mining.MiningPage;
 import dev.vy.betterpv.client.gui.museum.MuseumPage;
 import dev.vy.betterpv.client.gui.nav.IconButtonBar;
@@ -39,14 +40,20 @@ import dev.vy.betterpv.client.gui.nav.PvSubTab;
 import dev.vy.betterpv.client.gui.nav.PvTab;
 import dev.vy.betterpv.client.gui.pets.PetsPage;
 import dev.vy.betterpv.client.gui.rift.RiftPage;
+import dev.vy.betterpv.client.gui.mining.MiningUi;
 import dev.vy.betterpv.BetterPV;
+import com.mojang.authlib.GameProfile;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.ResolvableProfile;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
@@ -64,6 +71,16 @@ public final class ProfileViewerScreen extends Screen {
 	private static final int SEARCH_GAP = 4;
 	private static final long OPEN_ANIM_MS = 260L;
 	private static final float OPEN_SCALE_START = 0.12F;
+	private static final int PROFILE_MENU_PAD = 6;
+	private static final int PROFILE_MENU_COUNTS_W = 56;
+	private static final int PROFILE_BADGE_SIZE = 10;
+	private static final int PROFILE_COOP_ICON = 8;
+	private static final int PROFILE_COOP_FLYOUT_W = 168;
+	private static final int PROFILE_COOP_FLYOUT_PAD = 6;
+	private static final int PROFILE_COOP_FLYOUT_ROW = 14;
+	private static final int PROFILE_COOP_FLYOUT_BRIDGE = 6;
+	private static final int COLOR_COOP_CURRENT = 0xFF55DD55;
+	private static final int COLOR_COOP_FORMER = 0xFFFF6666;
 
 	private final String requestedName;
 	private final HomePage homePage;
@@ -127,6 +144,9 @@ public final class ProfileViewerScreen extends Screen {
 	private JsonObject profilesRoot;
 	private List<ProfileFetcher.ProfileChoice> profileChoices = List.of();
 	private boolean profileMenuOpen;
+	private ProfileFetcher.ProfileChoice profileMenuHoverChoice;
+	private int profileCoopFlyoutScroll;
+	private final List<CoopMemberHit> coopMemberHits = new ArrayList<>();
 	private int profileFooterX;
 	private int profileFooterY;
 	private int profileFooterW;
@@ -274,6 +294,15 @@ public final class ProfileViewerScreen extends Screen {
 		if (loaded == null) {
 			return;
 		}
+		UUID prevUuid = this.playerUuid;
+		String prevProfileId = this.profileId;
+		UUID nextUuid = loaded.snapshot() == null ? null : loaded.snapshot().playerUuid();
+		String nextProfileId = loaded.profileId();
+		boolean sameIdentity = prevUuid != null
+			&& prevUuid.equals(nextUuid)
+			&& prevProfileId != null
+			&& prevProfileId.equals(nextProfileId);
+
 		this.cachedProfileFooterName = "";
 		this.homePage.applyLoaded(
 			loaded.snapshot(),
@@ -305,30 +334,52 @@ public final class ProfileViewerScreen extends Screen {
 		this.eventsPage.apply(loaded.events());
 		if (loaded.museumMember() != null) {
 			this.museumPage.applyMuseum(loaded.museumMember());
-		} else {
+		} else if (!sameIdentity) {
 			this.museumPage.reset();
 		}
 		this.profileId = loaded.profileId();
-		this.playerUuid = loaded.snapshot() == null ? null : loaded.snapshot().playerUuid();
+		this.playerUuid = nextUuid;
 		if (loaded.profilesRoot() != null) {
 			this.profilesRoot = loaded.profilesRoot();
 		}
 		if (loaded.profiles() != null && !loaded.profiles().isEmpty()) {
 			this.profileChoices = loaded.profiles();
+			String viewed = this.playerUuid == null ? "" : HypixelApiClient.undashed(this.playerUuid);
+			ProfileFetcher.warmCoopMemberNames(
+				this.profileChoices,
+				viewed,
+				this.homePage.playerName(),
+				() -> {
+					Minecraft client = Minecraft.getInstance();
+					if (client != null) {
+						client.execute(() -> {
+							if (client.screen == this) {
+								this.profileCoopFlyoutScroll = 0;
+							}
+						});
+					}
+				}
+			);
 		}
 		this.profileMenuOpen = false;
-		this.gardenFetchStarted = false;
-		this.gardenContestsFetchStarted = false;
-		this.gardenWeightFetchStarted = false;
-		this.museumFetchStarted = loaded.museumMember() != null;
-		this.bingoFetchStarted = false;
-		this.bingoFetchInFlight = false;
-		this.bingoRetryAtMs = 0L;
-		this.usernameHistoryFetchStarted = false;
-		this.statusFetchStarted = false;
-		this.playerRankFetchStarted = false;
-		this.eventsPage.resetBingoFetch();
-		ensurePlayerRank();
+		this.profileMenuHoverChoice = null;
+		this.profileCoopFlyoutScroll = 0;
+		if (!sameIdentity) {
+			this.gardenFetchStarted = false;
+			this.gardenContestsFetchStarted = false;
+			this.gardenWeightFetchStarted = false;
+			this.museumFetchStarted = loaded.museumMember() != null;
+			this.bingoFetchStarted = false;
+			this.bingoFetchInFlight = false;
+			this.bingoRetryAtMs = 0L;
+			this.usernameHistoryFetchStarted = false;
+			this.statusFetchStarted = false;
+			this.playerRankFetchStarted = false;
+			this.eventsPage.resetBingoFetch();
+			ensurePlayerRank();
+		} else if (loaded.museumMember() != null) {
+			this.museumFetchStarted = true;
+		}
 	}
 
 	@Override
@@ -394,38 +445,47 @@ public final class ProfileViewerScreen extends Screen {
 
 			String profileName = this.homePage.profileName();
 			ProfileFetcher.ProfileChoice selectedChoice = selectedProfileChoice();
-			String modeLabel = selectedChoice == null ? "" : selectedChoice.gameModeLabel();
-			String footerKey = profileName + "|" + modeLabel + "|" + this.profileMenuOpen;
+			String footerKey = profileName + "|" + (selectedChoice == null ? "" : selectedChoice.gameMode())
+				+ "|" + this.profileMenuOpen;
 			if (!footerKey.equals(this.cachedProfileFooterName)) {
 				this.cachedProfileFooterName = footerKey;
-				StringBuilder footer = new StringBuilder(
-					Component.translatable("betterpv.home.profile", profileName).getString()
-				);
-				if (!modeLabel.isBlank()) {
-					footer.append(" · ").append(modeLabel);
-				}
-				if (this.profileChoices.size() > 1) {
-					footer.append(this.profileMenuOpen ? " ▲" : " ▼");
-				}
-				this.cachedProfileFooter = footer.toString();
+				this.cachedProfileFooter = Component.translatable("betterpv.home.profile", profileName).getString();
 			}
 			this.profileFooterX = panelX + 2;
 			this.profileFooterY = panelY + panelH + 3;
-			this.profileFooterW = this.font.width(this.cachedProfileFooter);
 			this.profileFooterH = this.font.lineHeight;
+			ItemStack footerBadge = profileModeBadge(selectedChoice);
+			String footerArrow = this.profileChoices.size() > 1
+				? (this.profileMenuOpen ? " ▲" : " ▼")
+				: "";
+			int footerTextW = this.font.width(this.cachedProfileFooter);
+			int footerBadgeW = footerBadge.isEmpty() ? 0 : 2 + PROFILE_BADGE_SIZE;
+			int footerArrowW = footerArrow.isEmpty() ? 0 : this.font.width(footerArrow);
+			this.profileFooterW = footerTextW + footerBadgeW + footerArrowW;
 			boolean footerHover = mouseX >= this.profileFooterX && mouseX < this.profileFooterX + this.profileFooterW
 				&& mouseY >= this.profileFooterY && mouseY < this.profileFooterY + this.profileFooterH;
+			int footerColor = footerHover && this.profileChoices.size() > 1 ? PvDraw.COLOR_ACCENT : PvDraw.COLOR_MUTED;
 			PvDraw.text(
 				graphics, this.font, this.cachedProfileFooter,
 				this.profileFooterX, this.profileFooterY,
-				footerHover && this.profileChoices.size() > 1 ? PvDraw.COLOR_ACCENT : PvDraw.COLOR_MUTED
+				footerColor
 			);
-			if (this.profileMenuOpen) {
-				drawProfileMenu(graphics, mouseX, mouseY);
+			int footerX = this.profileFooterX + footerTextW;
+			if (!footerBadge.isEmpty()) {
+				footerX += 2;
+				int badgeY = this.profileFooterY + Math.max(0, (this.profileFooterH - PROFILE_BADGE_SIZE) / 2);
+				MiningUi.drawItemIcon(graphics, footerBadge, footerX, badgeY, PROFILE_BADGE_SIZE);
+				footerX += PROFILE_BADGE_SIZE;
 			}
-			List<PvTooltip.Line> profileTip = profileSelectorTooltip(mouseX, mouseY, footerHover);
-			if (profileTip != null) {
-				PvTooltip.drawStyled(graphics, this.font, profileTip, mouseX, mouseY, this.width, this.height);
+			if (!footerArrow.isEmpty()) {
+				PvDraw.text(graphics, this.font, footerArrow, footerX, this.profileFooterY, footerColor);
+			}
+			if (this.profileMenuOpen) {
+				updateProfileMenuHover(mouseX, mouseY);
+				drawProfileMenu(graphics, mouseX, mouseY);
+				drawProfileCoopFlyout(graphics, mouseX, mouseY);
+			} else {
+				this.profileMenuHoverChoice = null;
 			}
 			positionPlayerSearch(graphics, panelX, panelY, panelW, panelH);
 			if (this.playerSearchErrorUntilMs > System.currentTimeMillis() && !this.playerSearchError.isBlank()) {
@@ -437,35 +497,10 @@ public final class ProfileViewerScreen extends Screen {
 				);
 			}
 
+			renderDeferredTooltips(graphics, panelX, panelY, panelW, panelH, mouseX, mouseY);
+
 			if (this.tab == PvTab.DUNGEONS) {
 				this.dungeonPage.renderOverlay(graphics, this.font, this.width, this.height, mouseX, mouseY);
-			}
-
-			if (this.tab.isInventorySplit()) {
-				this.inventoryPage.renderTooltip(graphics, this.font, mouseX, mouseY, this.width, this.height);
-				if (this.inventoryPaneTip != null) {
-					this.inventoryBar.maybeTooltip(
-						graphics,
-						this.font,
-						this.inventoryPaneTip,
-						true,
-						this.inventoryPaneTipX,
-						this.inventoryPaneTipY
-					);
-				}
-			}
-			if (this.tab.isBestiarySplit()) {
-				this.bestiaryPage.renderTooltip(graphics, this.font, mouseX, mouseY, this.width, this.height);
-				if (this.bestiaryCategoryTip != null) {
-					this.inventoryBar.maybeTooltip(
-						graphics,
-						this.font,
-						this.bestiaryCategoryTip,
-						true,
-						this.bestiaryCategoryTipX,
-						this.bestiaryCategoryTipY
-					);
-				}
 			}
 		}
 
@@ -562,7 +597,9 @@ public final class ProfileViewerScreen extends Screen {
 					if (t != PvTab.DUNGEONS) {
 						this.dungeonPage.blurField();
 					}
+					this.homePage.forceCloseSbLevelOverlay();
 					this.tab = t;
+					ProfileFetcher.prioritizeTab(t);
 				}));
 			}
 			this.topTabEntries = List.copyOf(entries);
@@ -580,7 +617,10 @@ public final class ProfileViewerScreen extends Screen {
 			if (entry instanceof PvSubTab sub) {
 				side.add(new IconButtonBar.Entry(
 					entry, sub.icon(), sub.label(),
-					() -> this.subSelection.put(this.tab, sub),
+					() -> {
+						this.homePage.forceCloseSbLevelOverlay();
+						this.subSelection.put(this.tab, sub);
+					},
 					sub.textureIcon(), sub.textureSize()
 				));
 			} else if (entry instanceof MuseumSort sort) {
@@ -996,55 +1036,408 @@ public final class ProfileViewerScreen extends Screen {
 		this.playerSearch.setVisible(false);
 	}
 
+	private void renderDeferredTooltips(
+		GuiGraphicsExtractor g, int panelX, int panelY, int panelW, int panelH, int mouseX, int mouseY
+	) {
+		boolean footerHover = mouseX >= this.profileFooterX && mouseX < this.profileFooterX + this.profileFooterW
+			&& mouseY >= this.profileFooterY && mouseY < this.profileFooterY + this.profileFooterH;
+		List<PvTooltip.Line> profileTip = profileSelectorTooltip(mouseX, mouseY, footerHover);
+		if (profileTip != null && !this.profileMenuOpen) {
+			PvTooltip.drawStyled(g, this.font, profileTip, mouseX, mouseY, this.width, this.height);
+		}
+		if (this.profileMenuOpen && profileMenuCombinedHover(mouseX, mouseY)) {
+			return;
+		}
+
+		switch (this.tab) {
+			case HOME -> {
+				if (activeSub(PvSubTab.HOME_MISC) == PvSubTab.HOME_MISC) {
+					this.homeMiscPage.renderTooltip(g, this.font, mouseX, mouseY, this.width, this.height);
+				} else {
+					this.homePage.renderTooltip(g, this.font, mouseX, mouseY, this.width, this.height);
+				}
+			}
+			case DUNGEONS -> this.dungeonPage.renderTooltip(g, this.font, mouseX, mouseY, this.width, this.height);
+			default -> { }
+		}
+
+		if (this.tab.isInventorySplit()) {
+			this.inventoryPage.renderTooltip(g, this.font, mouseX, mouseY, this.width, this.height);
+			if (this.inventoryPaneTip != null) {
+				this.inventoryBar.maybeTooltip(
+					g,
+					this.font,
+					this.inventoryPaneTip,
+					true,
+					this.inventoryPaneTipX,
+					this.inventoryPaneTipY
+				);
+			}
+		}
+		if (this.tab.isBestiarySplit()) {
+			this.bestiaryPage.renderTooltip(g, this.font, mouseX, mouseY, this.width, this.height);
+			if (this.bestiaryCategoryTip != null) {
+				this.inventoryBar.maybeTooltip(
+					g,
+					this.font,
+					this.bestiaryCategoryTip,
+					true,
+					this.bestiaryCategoryTipX,
+					this.bestiaryCategoryTipY
+				);
+			}
+		}
+	}
+
+	private record ProfileMenuLayout(int menuX, int menuY, int menuW, int menuH, int lineH) {
+	}
+
+	private ProfileMenuLayout profileMenuLayout() {
+		int lineH = this.font.lineHeight + 4;
+		int menuW = PROFILE_MENU_PAD * 2 + PROFILE_MENU_COUNTS_W;
+		for (ProfileFetcher.ProfileChoice choice : this.profileChoices) {
+			menuW = Math.max(menuW, profileChoiceLineWidth(choice) + PROFILE_MENU_PAD * 2);
+		}
+		menuW = Math.max(menuW, 96);
+		int menuH = this.profileChoices.size() * lineH + 4;
+		int menuX = this.profileFooterX;
+		int menuY = this.profileFooterY + this.profileFooterH + 2;
+		return new ProfileMenuLayout(menuX, menuY, menuW, menuH, lineH);
+	}
+
+	private ProfileFetcher.ProfileChoice profileMenuChoiceAt(int mouseX, int mouseY) {
+		ProfileMenuLayout layout = profileMenuLayout();
+		if (mouseX < layout.menuX() || mouseX >= layout.menuX() + layout.menuW()
+			|| mouseY < layout.menuY() || mouseY >= layout.menuY() + layout.menuH()) {
+			return null;
+		}
+		int cy = layout.menuY() + 2;
+		for (ProfileFetcher.ProfileChoice choice : this.profileChoices) {
+			if (mouseY >= cy && mouseY < cy + layout.lineH()) {
+				return choice;
+			}
+			cy += layout.lineH();
+		}
+		return null;
+	}
+
+	private void updateProfileMenuHover(int mouseX, int mouseY) {
+		ProfileFetcher.ProfileChoice rowHover = profileMenuChoiceAt(mouseX, mouseY);
+		if (rowHover != null) {
+			if (rowHover != this.profileMenuHoverChoice) {
+				this.profileCoopFlyoutScroll = 0;
+			}
+			this.profileMenuHoverChoice = rowHover;
+			return;
+		}
+		if (this.profileMenuHoverChoice != null && profileCoopFlyoutHover(mouseX, mouseY, this.profileMenuHoverChoice)) {
+			return;
+		}
+		this.profileMenuHoverChoice = null;
+		this.profileCoopFlyoutScroll = 0;
+	}
+
+	private int profileCoopFlyoutX(ProfileMenuLayout layout) {
+		return layout.menuX() + layout.menuW() + 2 - PROFILE_COOP_FLYOUT_BRIDGE;
+	}
+
+	private int profileCoopFlyoutHeight(ProfileFetcher.ProfileChoice choice) {
+		return profileCoopFlyoutContentBottom(choice);
+	}
+
+	private int profileCoopFlyoutContentBottom(ProfileFetcher.ProfileChoice choice) {
+		if (choice == null) {
+			return 0;
+		}
+		int cy = PROFILE_COOP_FLYOUT_PAD;
+		cy += this.font.lineHeight + 3;
+		if (choice.createdAtMs() > 0L) {
+			if (!FormatUtil.prettyDate(choice.createdAtMs()).isBlank()) {
+				cy += this.font.lineHeight + 1;
+			}
+			if (!FormatUtil.ago(choice.createdAtMs()).isBlank()) {
+				cy += this.font.lineHeight + 1;
+			}
+		}
+		cy += 2 + 1 + 4;
+		if (choice.coop().currentMembers().isEmpty() && choice.coop().formerMembers().isEmpty()) {
+			cy += this.font.lineHeight;
+		} else {
+			if (!choice.coop().currentMembers().isEmpty()) {
+				cy += this.font.lineHeight + 4;
+				cy += choice.coop().currentMembers().size() * PROFILE_COOP_FLYOUT_ROW;
+				if (!choice.coop().formerMembers().isEmpty()) {
+					cy += 2;
+				}
+			}
+			if (!choice.coop().formerMembers().isEmpty()) {
+				cy += this.font.lineHeight + 4;
+				cy += choice.coop().formerMembers().size() * PROFILE_COOP_FLYOUT_ROW;
+			}
+		}
+		return cy + PROFILE_COOP_FLYOUT_PAD;
+	}
+
+	private boolean profileCoopFlyoutHover(int mouseX, int mouseY, ProfileFetcher.ProfileChoice choice) {
+		if (choice == null) {
+			return false;
+		}
+		ProfileMenuLayout layout = profileMenuLayout();
+		int flyoutX = profileCoopFlyoutX(layout);
+		int flyoutY = layout.menuY();
+		int flyoutW = PROFILE_COOP_FLYOUT_W;
+		int flyoutH = Math.min(profileCoopFlyoutHeight(choice), this.height - flyoutY - 4);
+		return mouseX >= flyoutX && mouseX < flyoutX + flyoutW + PROFILE_COOP_FLYOUT_BRIDGE
+			&& mouseY >= flyoutY && mouseY < flyoutY + flyoutH;
+	}
+
+	private boolean profileMenuCombinedHover(int mouseX, int mouseY) {
+		ProfileMenuLayout layout = profileMenuLayout();
+		boolean inMenu = mouseX >= layout.menuX() && mouseX < layout.menuX() + layout.menuW()
+			&& mouseY >= layout.menuY() && mouseY < layout.menuY() + layout.menuH();
+		if (inMenu) {
+			return true;
+		}
+		return this.profileMenuHoverChoice != null
+			&& profileCoopFlyoutHover(mouseX, mouseY, this.profileMenuHoverChoice);
+	}
+
 	private void drawProfileMenu(GuiGraphicsExtractor g, int mouseX, int mouseY) {
 		if (this.profileChoices.size() <= 1) {
 			return;
 		}
-		int lineH = this.font.lineHeight + 4;
-		int menuW = 0;
+		ProfileMenuLayout layout = profileMenuLayout();
+		PvDraw.fill(g, layout.menuX(), layout.menuY(), layout.menuW(), layout.menuH(), 0xF0101018);
+		g.outline(layout.menuX(), layout.menuY(), layout.menuW(), layout.menuH(), PvDraw.COLOR_BORDER);
+		int cy = layout.menuY() + 2;
 		for (ProfileFetcher.ProfileChoice choice : this.profileChoices) {
-			menuW = Math.max(menuW, profileChoiceLineWidth(choice) + 12);
-		}
-		menuW = Math.max(menuW, 72);
-		int menuH = this.profileChoices.size() * lineH + 4;
-		int menuX = this.profileFooterX;
-		int menuY = this.profileFooterY - menuH - 2;
-		if (menuY < 2) {
-			menuY = this.profileFooterY + this.profileFooterH + 2;
-		}
-		PvDraw.fill(g, menuX, menuY, menuW, menuH, 0xF0101018);
-		g.outline(menuX, menuY, menuW, menuH, PvDraw.COLOR_BORDER);
-		int cy = menuY + 2;
-		for (ProfileFetcher.ProfileChoice choice : this.profileChoices) {
-			boolean hover = mouseX >= menuX && mouseX < menuX + menuW && mouseY >= cy && mouseY < cy + lineH;
+			boolean hover = choice == this.profileMenuHoverChoice
+				|| profileMenuChoiceAt(mouseX, mouseY) == choice;
 			if (hover || choice.selected()) {
-				PvDraw.fill(g, menuX + 1, cy, menuW - 2, lineH, hover ? 0x33FFFFFF : 0x22AA88FF);
+				PvDraw.fill(
+					g,
+					layout.menuX() + 1,
+					cy,
+					layout.menuW() - 2,
+					layout.lineH(),
+					hover ? 0x33FFFFFF : 0x22AA88FF
+				);
 			}
 			PvDraw.text(
 				g, this.font, choice.cuteName(),
-				menuX + 6, cy + 2,
+				layout.menuX() + PROFILE_MENU_PAD, cy + 2,
 				choice.selected() ? PvDraw.COLOR_ACCENT : PvDraw.COLOR_TEXT
 			);
-			String mode = choice.gameModeLabel();
-			if (!mode.isBlank()) {
-				int modeW = this.font.width(mode);
-				PvDraw.text(
-					g, this.font, mode,
-					menuX + menuW - 6 - modeW, cy + 2,
-					PvDraw.COLOR_GOLD
-				);
+			ItemStack badge = profileModeBadge(choice);
+			if (!badge.isEmpty()) {
+				int badgeX = layout.menuX() + PROFILE_MENU_PAD + this.font.width(choice.cuteName()) + 3;
+				int badgeY = cy + 1 + Math.max(0, (layout.lineH() - 2 - PROFILE_BADGE_SIZE) / 2);
+				MiningUi.drawItemIcon(g, badge, badgeX, badgeY, PROFILE_BADGE_SIZE);
 			}
-			cy += lineH;
+			drawProfileCoopCounts(g, choice, layout.menuX(), layout.menuW(), cy + 2);
+			cy += layout.lineH();
 		}
+	}
+
+	private void drawProfileCoopCounts(
+		GuiGraphicsExtractor g,
+		ProfileFetcher.ProfileChoice choice,
+		int menuX,
+		int menuW,
+		int textY
+	) {
+		int x = menuX + menuW - PROFILE_MENU_PAD;
+		if (choice.coop().soloProfile()) {
+			String solo = "Solo";
+			PvDraw.text(g, this.font, solo, x - this.font.width(solo), textY, PvDraw.COLOR_MUTED);
+			return;
+		}
+		String formerText = String.valueOf(choice.coop().formerCount());
+		x -= this.font.width(formerText);
+		PvDraw.text(g, this.font, formerText, x, textY, COLOR_COOP_FORMER);
+		x -= 2;
+		x -= PROFILE_COOP_ICON;
+		drawCoopMemberIcon(g, x, textY - 1, COLOR_COOP_FORMER);
+		x -= 8;
+		String currentText = String.valueOf(choice.coop().currentOthers());
+		x -= this.font.width(currentText);
+		PvDraw.text(g, this.font, currentText, x, textY, COLOR_COOP_CURRENT);
+		x -= 2;
+		x -= PROFILE_COOP_ICON;
+		drawCoopMemberIcon(g, x, textY - 1, COLOR_COOP_CURRENT);
+	}
+
+	private static void drawCoopMemberIcon(GuiGraphicsExtractor g, int x, int y, int tint) {
+		int body = tint & 0x00FFFFFF;
+		PvDraw.fill(g, x + 2, y, 4, 4, 0xFF000000 | body);
+		PvDraw.fill(g, x + 1, y + 4, 6, 5, 0xFF000000 | body);
+	}
+
+	private void drawProfileCoopFlyout(GuiGraphicsExtractor g, int mouseX, int mouseY) {
+		this.coopMemberHits.clear();
+		ProfileFetcher.ProfileChoice choice = this.profileMenuHoverChoice;
+		if (choice == null) {
+			return;
+		}
+		ProfileMenuLayout layout = profileMenuLayout();
+		int flyoutX = profileCoopFlyoutX(layout) + PROFILE_COOP_FLYOUT_BRIDGE;
+		int flyoutY = layout.menuY();
+		int flyoutW = PROFILE_COOP_FLYOUT_W;
+		int contentH = profileCoopFlyoutHeight(choice);
+		int flyoutH = Math.min(contentH, this.height - flyoutY - 4);
+		PvDraw.fill(g, flyoutX, flyoutY, flyoutW, flyoutH, 0xF0101018);
+		g.outline(flyoutX, flyoutY, flyoutW, flyoutH, PvDraw.COLOR_BORDER);
+
+		int innerX = flyoutX + PROFILE_COOP_FLYOUT_PAD;
+		int innerW = flyoutW - PROFILE_COOP_FLYOUT_PAD * 2;
+		int cy = flyoutY + PROFILE_COOP_FLYOUT_PAD - this.profileCoopFlyoutScroll;
+
+		g.enableScissor(flyoutX + 1, flyoutY + 1, flyoutX + flyoutW - 1, flyoutY + flyoutH - 1);
+		PvDraw.text(g, this.font, choice.cuteName(), innerX, cy, PvDraw.COLOR_TEXT);
+		ItemStack badge = profileModeBadge(choice);
+		if (!badge.isEmpty()) {
+			int badgeX = innerX + this.font.width(choice.cuteName()) + 3;
+			MiningUi.drawItemIcon(g, badge, badgeX, cy - 1, PROFILE_BADGE_SIZE);
+		}
+		cy += this.font.lineHeight + 3;
+		if (choice.createdAtMs() > 0L) {
+			String date = FormatUtil.prettyDate(choice.createdAtMs());
+			String age = FormatUtil.ago(choice.createdAtMs());
+			if (!date.isBlank()) {
+				drawFlyoutMetaRow(g, "Created", date, PvDraw.COLOR_TEXT, innerX, innerW, cy);
+				cy += this.font.lineHeight + 1;
+			}
+			if (!age.isBlank()) {
+				drawFlyoutMetaRow(g, "Age", age, PvDraw.COLOR_GOLD, innerX, innerW, cy);
+				cy += this.font.lineHeight + 1;
+			}
+		}
+		cy += 2;
+		PvDraw.fill(g, innerX, cy, innerW, 1, PvDraw.COLOR_DIVIDER);
+		cy += 4;
+
+		if (choice.coop().currentMembers().isEmpty() && choice.coop().formerMembers().isEmpty()) {
+			PvDraw.text(g, this.font, "Solo profile", innerX, cy, PvDraw.COLOR_MUTED);
+			g.disableScissor();
+			return;
+		}
+		if (!choice.coop().currentMembers().isEmpty()) {
+			PvDraw.text(g, this.font, "Current members", innerX, cy, COLOR_COOP_CURRENT);
+			cy += this.font.lineHeight + 4;
+			for (ProfileFetcher.CoopMemberRef member : choice.coop().currentMembers()) {
+				drawCoopFlyoutMember(g, member, innerX, innerW, cy, false, mouseX, mouseY, flyoutY, flyoutH);
+				cy += PROFILE_COOP_FLYOUT_ROW;
+			}
+			cy += 2;
+		}
+		if (!choice.coop().formerMembers().isEmpty()) {
+			PvDraw.text(g, this.font, "Former members", innerX, cy, COLOR_COOP_FORMER);
+			cy += this.font.lineHeight + 4;
+			for (ProfileFetcher.CoopMemberRef member : choice.coop().formerMembers()) {
+				drawCoopFlyoutMember(g, member, innerX, innerW, cy, true, mouseX, mouseY, flyoutY, flyoutH);
+				cy += PROFILE_COOP_FLYOUT_ROW;
+			}
+		}
+		g.disableScissor();
+	}
+
+	private void drawFlyoutMetaRow(
+		GuiGraphicsExtractor g,
+		String label,
+		String value,
+		int valueColor,
+		int x,
+		int w,
+		int y
+	) {
+		PvDraw.text(g, this.font, label, x, y, PvDraw.COLOR_MUTED);
+		int valueW = this.font.width(value);
+		PvDraw.text(g, this.font, value, x + w - valueW, y, valueColor);
+	}
+
+	private void drawCoopFlyoutMember(
+		GuiGraphicsExtractor g,
+		ProfileFetcher.CoopMemberRef member,
+		int x,
+		int w,
+		int y,
+		boolean former,
+		int mouseX,
+		int mouseY,
+		int flyoutY,
+		int flyoutH
+	) {
+		boolean visible = y + PROFILE_COOP_FLYOUT_ROW > flyoutY && y < flyoutY + flyoutH;
+		boolean resolved = ProfileFetcher.coopNameResolved(member);
+		boolean hover = visible && resolved
+			&& mouseX >= x && mouseX < x + w
+			&& mouseY >= y && mouseY < y + PROFILE_COOP_FLYOUT_ROW;
+		if (hover) {
+			PvDraw.fill(g, x - 2, y - 1, w + 4, PROFILE_COOP_FLYOUT_ROW, 0x33FFFFFF);
+		}
+		UUID uuid = HypixelApiClient.parseUndashedUuid(member.uuid());
+		if (uuid != null) {
+			MiningUi.drawItemIcon(g, coopMemberHead(uuid), x, y - 1, PROFILE_COOP_ICON);
+		}
+		String name = ProfileFetcher.coopMemberDisplayName(member);
+		int nameColor = former ? COLOR_COOP_FORMER : COLOR_COOP_CURRENT;
+		if (!resolved) {
+			nameColor = PvDraw.COLOR_MUTED;
+		}
+		int nameX = x + PROFILE_COOP_ICON + 4;
+		int maxW = w - PROFILE_COOP_ICON - 4;
+		String clipped = this.font.plainSubstrByWidth(name, maxW);
+		PvDraw.text(g, this.font, clipped, nameX, y, nameColor);
+		if (visible && resolved) {
+			this.coopMemberHits.add(new CoopMemberHit(x, y, w, PROFILE_COOP_FLYOUT_ROW, member.uuid(), name));
+		}
+	}
+
+	private static ItemStack coopMemberHead(UUID uuid) {
+		ItemStack head = new ItemStack(Items.PLAYER_HEAD);
+		if (uuid == null) {
+			return head;
+		}
+		try {
+			head.set(DataComponents.PROFILE, ResolvableProfile.createUnresolved(uuid));
+		} catch (Throwable ignored) {
+			try {
+				head.set(
+					DataComponents.PROFILE,
+					ResolvableProfile.createResolved(new GameProfile(uuid, "Player"))
+				);
+			} catch (Throwable ignored2) {
+			}
+		}
+		return head;
 	}
 
 	private int profileChoiceLineWidth(ProfileFetcher.ProfileChoice choice) {
 		int w = this.font.width(choice.cuteName());
-		String mode = choice.gameModeLabel();
-		if (!mode.isBlank()) {
-			w += 8 + this.font.width(mode);
+		if (!profileModeBadge(choice).isEmpty()) {
+			w += 3 + PROFILE_BADGE_SIZE;
+		}
+		if (choice.coop().soloProfile()) {
+			w += 8 + this.font.width("Solo");
+		} else {
+			w += 8 + PROFILE_MENU_COUNTS_W;
 		}
 		return w;
+	}
+
+	private static ItemStack profileModeBadge(ProfileFetcher.ProfileChoice choice) {
+		if (choice == null || choice.gameMode() == null || choice.gameMode().isBlank()) {
+			return ItemStack.EMPTY;
+		}
+		return switch (choice.gameMode().toLowerCase(Locale.ROOT)) {
+			case "ironman" -> new ItemStack(Items.SHIELD);
+			case "bingo" -> {
+				ItemStack card = SkyBlockItemFactory.iconStack("BINGO_CARD");
+				yield card == null || card.isEmpty() ? new ItemStack(Items.FILLED_MAP) : card;
+			}
+			case "stranded", "island" -> new ItemStack(Items.OAK_SAPLING);
+			default -> ItemStack.EMPTY;
+		};
 	}
 
 	private ProfileFetcher.ProfileChoice selectedProfileChoice() {
@@ -1058,24 +1451,9 @@ public final class ProfileViewerScreen extends Screen {
 
 	private List<PvTooltip.Line> profileSelectorTooltip(int mouseX, int mouseY, boolean footerHover) {
 		if (this.profileMenuOpen && this.profileChoices.size() > 1) {
-			int lineH = this.font.lineHeight + 4;
-			int menuW = 0;
-			for (ProfileFetcher.ProfileChoice choice : this.profileChoices) {
-				menuW = Math.max(menuW, profileChoiceLineWidth(choice) + 12);
-			}
-			menuW = Math.max(menuW, 72);
-			int menuH = this.profileChoices.size() * lineH + 4;
-			int menuX = this.profileFooterX;
-			int menuY = this.profileFooterY - menuH - 2;
-			if (menuY < 2) {
-				menuY = this.profileFooterY + this.profileFooterH + 2;
-			}
-			int cy = menuY + 2;
-			for (ProfileFetcher.ProfileChoice choice : this.profileChoices) {
-				if (mouseX >= menuX && mouseX < menuX + menuW && mouseY >= cy && mouseY < cy + lineH) {
-					return profileCreatedTooltip(choice);
-				}
-				cy += lineH;
+			ProfileFetcher.ProfileChoice hover = profileMenuChoiceAt(mouseX, mouseY);
+			if (hover != null) {
+				return profileCreatedTooltip(hover);
 			}
 			return null;
 		}
@@ -1114,39 +1492,55 @@ public final class ProfileViewerScreen extends Screen {
 		if (mx >= this.profileFooterX && mx < this.profileFooterX + this.profileFooterW
 			&& my >= this.profileFooterY && my < this.profileFooterY + this.profileFooterH) {
 			this.profileMenuOpen = !this.profileMenuOpen;
+			if (!this.profileMenuOpen) {
+				this.profileMenuHoverChoice = null;
+			}
 			return true;
 		}
 		if (!this.profileMenuOpen) {
 			return false;
 		}
-		int lineH = this.font.lineHeight + 4;
-		int menuW = 0;
-		for (ProfileFetcher.ProfileChoice choice : this.profileChoices) {
-			menuW = Math.max(menuW, profileChoiceLineWidth(choice) + 12);
-		}
-		menuW = Math.max(menuW, 72);
-		int menuH = this.profileChoices.size() * lineH + 4;
-		int menuX = this.profileFooterX;
-		int menuY = this.profileFooterY - menuH - 2;
-		if (menuY < 2) {
-			menuY = this.profileFooterY + this.profileFooterH + 2;
-		}
-		if (mx < menuX || mx >= menuX + menuW || my < menuY || my >= menuY + menuH) {
+		if (!profileMenuCombinedHover((int) mx, (int) my)) {
 			this.profileMenuOpen = false;
+			this.profileMenuHoverChoice = null;
+			this.coopMemberHits.clear();
 			return true;
 		}
-		int cy = menuY + 2;
-		for (ProfileFetcher.ProfileChoice choice : this.profileChoices) {
-			if (my >= cy && my < cy + lineH) {
-				this.profileMenuOpen = false;
-				if (!choice.selected()) {
-					switchProfile(choice.profileId());
-				}
-				return true;
-			}
-			cy += lineH;
+		ProfileFetcher.ProfileChoice choice = profileMenuChoiceAt((int) mx, (int) my);
+		if (choice == null) {
+			return clickCoopFlyoutMember(mx, my);
+		}
+		this.profileMenuOpen = false;
+		this.profileMenuHoverChoice = null;
+		this.coopMemberHits.clear();
+		if (!choice.selected()) {
+			switchProfile(choice.profileId());
 		}
 		return true;
+	}
+
+	private boolean clickCoopFlyoutMember(double mx, double my) {
+		for (CoopMemberHit hit : this.coopMemberHits) {
+			if (mx >= hit.x && mx < hit.x + hit.w && my >= hit.y && my < hit.y + hit.h) {
+				openCoopMemberProfile(hit.name);
+				return true;
+			}
+		}
+		return true;
+	}
+
+	private void openCoopMemberProfile(String name) {
+		if (name == null || name.isBlank()) {
+			return;
+		}
+		String current = this.homePage.playerName();
+		if (current != null && current.equalsIgnoreCase(name)) {
+			return;
+		}
+		Minecraft.getInstance().setScreen(new ProfileViewerScreen(name));
+	}
+
+	private record CoopMemberHit(int x, int y, int w, int h, String uuid, String name) {
 	}
 
 	private void switchProfile(String nextProfileId) {
@@ -1265,6 +1659,12 @@ public final class ProfileViewerScreen extends Screen {
 			return true;
 		}
 		if (this.tab == PvTab.HOME && activeSub(PvSubTab.HOME_OVERVIEW) == PvSubTab.HOME_OVERVIEW) {
+			if (this.homePage.clickSbLevelPanel(mx, my)) {
+				return true;
+			}
+			if (this.homePage.isSbLevelOverlayActive()) {
+				return true;
+			}
 			if (this.homePage.hitName(mx, my)) {
 				ensureUsernameHistory();
 				return true;
@@ -1315,6 +1715,19 @@ public final class ProfileViewerScreen extends Screen {
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
 		if (!uiInteractive()) {
+			return true;
+		}
+		if (this.profileMenuOpen
+			&& this.profileMenuHoverChoice != null
+			&& profileCoopFlyoutHover((int) mouseX, (int) mouseY, this.profileMenuHoverChoice)) {
+			int contentH = profileCoopFlyoutHeight(this.profileMenuHoverChoice);
+			ProfileMenuLayout layout = profileMenuLayout();
+			int visibleH = Math.min(contentH, this.height - layout.menuY() - 4);
+			int maxScroll = Math.max(0, contentH - visibleH);
+			this.profileCoopFlyoutScroll = Math.max(
+				0,
+				Math.min(maxScroll, this.profileCoopFlyoutScroll - (int) Math.round(scrollY * 12))
+			);
 			return true;
 		}
 		if (routePageScroll(mouseX, mouseY, scrollY)) {
@@ -1793,7 +2206,20 @@ public final class ProfileViewerScreen extends Screen {
 			if (!typingInvSearch && !typingPlayerSearch && MoulberryMode.keyPressed(event.key())) {
 				return true;
 			}
+			if (uiInteractive()
+				&& this.tab == PvTab.HOME
+				&& activeSub(PvSubTab.HOME_OVERVIEW) == PvSubTab.HOME_OVERVIEW
+				&& (event.key() == 256 || event.key() == 259)
+				&& this.homePage.requestSbLevelBack()) {
+				// ESC / Backspace collapses SB Level overlay without closing PV.
+				return true;
+			}
 			if (uiInteractive() && this.tab == PvTab.DUNGEONS && this.dungeonPage.keyPressed(event.key())) {
+				return true;
+			}
+			if (uiInteractive() && this.profileMenuOpen && event.key() == 256) {
+				this.profileMenuOpen = false;
+				this.profileMenuHoverChoice = null;
 				return true;
 			}
 		}

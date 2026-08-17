@@ -44,6 +44,19 @@ public final class HomePage {
 	private static final int SLAYER_ROWS = 3;
 	private static final int FLIP_MS = 480;
 	private static final int PANEL_HOVER = 0x0AFFFFFF;
+	private static final int SB_XP_STAGE_MS = 300;
+	/** Dim overlay while the SB XP panel sweeps over Home content. */
+	private static final int SB_XP_MASK = 0xB0000000;
+
+	/** Two-stage SkyBlock Level panel expand/collapse within Home bounds. */
+	public enum SbXpExpandPhase {
+		CLOSED,
+		EXPANDING_LEFT,
+		EXPANDING_RIGHT,
+		OPEN,
+		COLLAPSING_RIGHT,
+		COLLAPSING_LEFT
+	}
 
 	private ProfileSnapshot snapshot;
 	private PlayerStatsSnapshot playerStats = PlayerStatsSnapshot.empty();
@@ -77,6 +90,18 @@ public final class HomePage {
 	private int leftHitY;
 	private int leftHitW;
 	private int leftHitH;
+	private int sbXpHitX;
+	private int sbXpHitY;
+	private int sbXpHitW;
+	private int sbXpHitH;
+	private int homeBoundsX;
+	private int homeBoundsY;
+	private int homeBoundsW;
+	private int homeBoundsH;
+	private int sbXpClosedX;
+	private int sbXpClosedW;
+	private SbXpExpandPhase sbXpPhase = SbXpExpandPhase.CLOSED;
+	private long sbXpAnimStartMs;
 	private int bankHitX;
 	private int bankHitY;
 	private int bankHitW;
@@ -226,6 +251,9 @@ public final class HomePage {
 	}
 
 	public boolean clickLeftPanel(double mouseX, double mouseY) {
+		if (this.sbXpPhase != SbXpExpandPhase.CLOSED) {
+			return false;
+		}
 		if (mouseX < this.leftHitX || mouseX >= this.leftHitX + this.leftHitW
 			|| mouseY < this.leftHitY || mouseY >= this.leftHitY + this.leftHitH) {
 			return false;
@@ -239,6 +267,112 @@ public final class HomePage {
 		this.leftFlipTarget = !this.leftStatsFace;
 		this.leftFlipStartMs = System.currentTimeMillis();
 		return true;
+	}
+
+	/** Click the SkyBlock Level strip (closed → expand) or the open page (→ collapse). */
+	public boolean clickSbLevelPanel(double mouseX, double mouseY) {
+		tickSbXpPhase();
+		if (this.sbXpPhase == SbXpExpandPhase.EXPANDING_LEFT
+			|| this.sbXpPhase == SbXpExpandPhase.EXPANDING_RIGHT
+			|| this.sbXpPhase == SbXpExpandPhase.COLLAPSING_RIGHT
+			|| this.sbXpPhase == SbXpExpandPhase.COLLAPSING_LEFT) {
+			return true;
+		}
+		if (this.sbXpPhase == SbXpExpandPhase.OPEN) {
+			if (mouseX >= this.homeBoundsX && mouseX < this.homeBoundsX + this.homeBoundsW
+				&& mouseY >= this.homeBoundsY && mouseY < this.homeBoundsY + this.homeBoundsH) {
+				startSbXpCollapse();
+				return true;
+			}
+			return false;
+		}
+		if (mouseX >= this.sbXpHitX && mouseX < this.sbXpHitX + this.sbXpHitW
+			&& mouseY >= this.sbXpHitY && mouseY < this.sbXpHitY + this.sbXpHitH
+			&& this.sbXpHitW > 0) {
+			startSbXpExpand();
+			return true;
+		}
+		return false;
+	}
+
+	/** ESC / back: collapse expanded SB Level view. */
+	public boolean requestSbLevelBack() {
+		tickSbXpPhase();
+		if (this.sbXpPhase == SbXpExpandPhase.CLOSED
+			|| this.sbXpPhase == SbXpExpandPhase.COLLAPSING_RIGHT
+			|| this.sbXpPhase == SbXpExpandPhase.COLLAPSING_LEFT) {
+			return false;
+		}
+		if (this.sbXpPhase == SbXpExpandPhase.EXPANDING_LEFT) {
+			// Reverse mid-expand: collapse left from current progress.
+			float p = sbXpStageProgress();
+			this.sbXpPhase = SbXpExpandPhase.COLLAPSING_LEFT;
+			this.sbXpAnimStartMs = System.currentTimeMillis() - Math.round((1F - p) * SB_XP_STAGE_MS);
+			return true;
+		}
+		if (this.sbXpPhase == SbXpExpandPhase.EXPANDING_RIGHT) {
+			float p = sbXpStageProgress();
+			this.sbXpPhase = SbXpExpandPhase.COLLAPSING_RIGHT;
+			this.sbXpAnimStartMs = System.currentTimeMillis() - Math.round((1F - p) * SB_XP_STAGE_MS);
+			return true;
+		}
+		startSbXpCollapse();
+		return true;
+	}
+
+	public boolean isSbLevelOverlayActive() {
+		tickSbXpPhase();
+		return this.sbXpPhase != SbXpExpandPhase.CLOSED;
+	}
+
+	/** Snap closed when leaving Home overview (tab switch, etc.). */
+	public void forceCloseSbLevelOverlay() {
+		this.sbXpPhase = SbXpExpandPhase.CLOSED;
+		this.sbXpAnimStartMs = 0L;
+	}
+
+	public SbXpExpandPhase sbXpExpandPhase() {
+		tickSbXpPhase();
+		return this.sbXpPhase;
+	}
+
+	private void startSbXpExpand() {
+		this.sbXpPhase = SbXpExpandPhase.EXPANDING_LEFT;
+		this.sbXpAnimStartMs = System.currentTimeMillis();
+	}
+
+	private void startSbXpCollapse() {
+		this.sbXpPhase = SbXpExpandPhase.COLLAPSING_RIGHT;
+		this.sbXpAnimStartMs = System.currentTimeMillis();
+	}
+
+	private void tickSbXpPhase() {
+		if (this.sbXpPhase == SbXpExpandPhase.CLOSED || this.sbXpPhase == SbXpExpandPhase.OPEN) {
+			return;
+		}
+		if (sbXpStageProgress() < 1F) {
+			return;
+		}
+		this.sbXpPhase = switch (this.sbXpPhase) {
+			case EXPANDING_LEFT -> SbXpExpandPhase.EXPANDING_RIGHT;
+			case EXPANDING_RIGHT -> SbXpExpandPhase.OPEN;
+			case COLLAPSING_RIGHT -> SbXpExpandPhase.COLLAPSING_LEFT;
+			case COLLAPSING_LEFT -> SbXpExpandPhase.CLOSED;
+			default -> this.sbXpPhase;
+		};
+		if (this.sbXpPhase == SbXpExpandPhase.EXPANDING_RIGHT
+			|| this.sbXpPhase == SbXpExpandPhase.COLLAPSING_LEFT) {
+			this.sbXpAnimStartMs = System.currentTimeMillis();
+		} else if (this.sbXpPhase == SbXpExpandPhase.OPEN || this.sbXpPhase == SbXpExpandPhase.CLOSED) {
+			this.sbXpAnimStartMs = 0L;
+		}
+	}
+
+	private float sbXpStageProgress() {
+		if (this.sbXpAnimStartMs == 0L) {
+			return 1F;
+		}
+		return Math.min(1F, (System.currentTimeMillis() - this.sbXpAnimStartMs) / (float) SB_XP_STAGE_MS);
 	}
 
 	public boolean hitName(double mouseX, double mouseY) {
@@ -333,21 +467,94 @@ public final class HomePage {
 		this.openPivotX = openPivotX;
 		this.openPivotY = openPivotY;
 		this.zones.clear();
+		tickSbXpPhase();
 		Layout layout = layoutFor(font, w);
 		int contentH = Math.min(h, layout.contentH);
 		int leftX = x;
 		int levelX = x + layout.leftW + layout.gap;
 		int barsX = levelX + layout.levelW + layout.gap;
 
-		drawLeftColumn(g, font, leftX, y, layout.leftW, contentH, layout, mouseX, mouseY);
-		drawSkyBlockLevel(g, font, levelX, y, layout.levelW, contentH, layout);
-		drawBarsColumn(g, font, barsX, y, layout.barsW, contentH, layout);
+		this.homeBoundsX = x;
+		this.homeBoundsY = y;
+		this.homeBoundsW = w;
+		this.homeBoundsH = contentH;
+		this.sbXpClosedX = levelX;
+		this.sbXpClosedW = layout.levelW;
+		this.sbXpHitX = levelX;
+		this.sbXpHitY = y;
+		this.sbXpHitW = layout.levelW;
+		this.sbXpHitH = contentH;
 
+		boolean overlay = this.sbXpPhase != SbXpExpandPhase.CLOSED;
+		float stageP = easeInOutCubic(sbXpStageProgress());
+		int animLeft = levelX;
+		int animRight = levelX + layout.levelW;
+		float leftMask = 0F;
+		float barsMask = 0F;
+		float cardFade = 1F;
+
+		if (this.sbXpPhase == SbXpExpandPhase.EXPANDING_LEFT) {
+			animLeft = Math.round(lerp(levelX, x, stageP));
+			animRight = levelX + layout.levelW;
+			leftMask = stageP;
+			cardFade = 1F - stageP;
+		} else if (this.sbXpPhase == SbXpExpandPhase.EXPANDING_RIGHT) {
+			animLeft = x;
+			animRight = Math.round(lerp(levelX + layout.levelW, x + w, stageP));
+			leftMask = 1F;
+			barsMask = stageP;
+			cardFade = 0F;
+		} else if (this.sbXpPhase == SbXpExpandPhase.OPEN) {
+			animLeft = x;
+			animRight = x + w;
+			leftMask = 1F;
+			barsMask = 1F;
+			cardFade = 0F;
+		} else if (this.sbXpPhase == SbXpExpandPhase.COLLAPSING_RIGHT) {
+			animLeft = x;
+			animRight = Math.round(lerp(x + w, levelX + layout.levelW, stageP));
+			leftMask = 1F;
+			barsMask = 1F - stageP;
+			cardFade = 0F;
+		} else if (this.sbXpPhase == SbXpExpandPhase.COLLAPSING_LEFT) {
+			animLeft = Math.round(lerp(x, levelX, stageP));
+			animRight = levelX + layout.levelW;
+			leftMask = 1F - stageP;
+			barsMask = 0F;
+			cardFade = stageP;
+		}
+
+		if (this.sbXpPhase != SbXpExpandPhase.OPEN) {
+			drawLeftColumn(g, font, leftX, y, layout.leftW, contentH, layout, mouseX, mouseY);
+			if (leftMask > 0.01F) {
+				PvDraw.fill(g, leftX, y, layout.leftW, contentH, withAlpha(SB_XP_MASK, leftMask));
+			}
+			if (this.sbXpPhase == SbXpExpandPhase.CLOSED) {
+				drawSkyBlockLevel(g, font, levelX, y, layout.levelW, contentH, layout, 1F, true);
+			}
+			drawBarsColumn(g, font, barsX, y, layout.barsW, contentH, layout);
+			if (barsMask > 0.01F) {
+				PvDraw.fill(g, barsX, y, layout.barsW, contentH, withAlpha(SB_XP_MASK, barsMask));
+			}
+		}
+
+		if (overlay) {
+			int animW = Math.max(1, animRight - animLeft);
+			drawSkyBlockLevel(g, font, animLeft, y, animW, contentH, layout, cardFade, false);
+		}
+
+	}
+
+	public void renderTooltip(
+		GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH
+	) {
 		List<PvTooltip.Line> styledTip = null;
-		boolean onProfileFace = !showingLeftStatsFace();
+		boolean onProfileFace = !showingLeftStatsFace() && this.sbXpPhase == SbXpExpandPhase.CLOSED;
 		if (onProfileFace && hitName(mouseX, mouseY)) {
 			drawUsernameHistoryTooltip(g, font, mouseX, mouseY, screenW, screenH);
-		} else if (onProfileFace && hitStatus(mouseX, mouseY)) {
+			return;
+		}
+		if (onProfileFace && hitStatus(mouseX, mouseY)) {
 			styledTip = statusTooltip();
 		} else if (onProfileFace && mouseX >= this.weightHitX && mouseX < this.weightHitX + this.weightHitW
 			&& mouseY >= this.weightHitY && mouseY < this.weightHitY + this.weightHitH) {
@@ -365,7 +572,8 @@ public final class HomePage {
 		} else if (onProfileFace && mouseX >= this.bankHitX && mouseX < this.bankHitX + this.bankHitW
 			&& mouseY >= this.bankHitY && mouseY < this.bankHitY + this.bankHitH) {
 			styledTip = bankTooltip();
-		} else {
+		} else if (this.sbXpPhase == SbXpExpandPhase.CLOSED || this.sbXpPhase == SbXpExpandPhase.OPEN
+			|| showingLeftStatsFace()) {
 			for (HoverZone zone : this.zones) {
 				if (mouseX >= zone.x && mouseX < zone.x + zone.w && mouseY >= zone.y && mouseY < zone.y + zone.h) {
 					styledTip = zone.lines;
@@ -376,6 +584,15 @@ public final class HomePage {
 		if (styledTip != null) {
 			PvTooltip.drawStyled(g, font, styledTip, mouseX, mouseY, screenW, screenH);
 		}
+	}
+
+	private static float lerp(float a, float b, float t) {
+		return a + (b - a) * t;
+	}
+
+	private static int withAlpha(int argb, float alpha) {
+		int a = Math.max(0, Math.min(255, Math.round(((argb >>> 24) & 0xFF) * alpha)));
+		return (a << 24) | (argb & 0x00FFFFFF);
 	}
 
 	public void render(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, int mouseX, int mouseY, int screenW, int screenH) {
@@ -1016,12 +1233,32 @@ public final class HomePage {
 		return out;
 	}
 
-	private void drawSkyBlockLevel(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, Layout layout) {
+	private void drawSkyBlockLevel(
+		GuiGraphicsExtractor g,
+		Font font,
+		int x,
+		int y,
+		int w,
+		int h,
+		Layout layout,
+		float contentAlpha,
+		boolean registerHover
+	) {
 		PvDraw.innerPanel(g, x, y, w, h);
+		boolean emptyPage = this.sbXpPhase == SbXpExpandPhase.OPEN
+			|| (this.sbXpPhase == SbXpExpandPhase.EXPANDING_RIGHT && contentAlpha < 0.05F)
+			|| (this.sbXpPhase == SbXpExpandPhase.COLLAPSING_RIGHT && contentAlpha < 0.05F);
+		if (emptyPage || contentAlpha < 0.04F) {
+			// Intentionally empty foundation page for future SB XP / Guide content.
+			return;
+		}
+
 		int level = this.snapshot.skyBlockLevel();
 		int xp = this.snapshot.skyBlockXpIntoLevel();
 		String levelText = Component.translatable("betterpv.home.sb_level", level).getString();
-		int levelColor = SkyBlockLevelColors.colorFor(level);
+		int levelColor = fadeColor(SkyBlockLevelColors.colorFor(level), contentAlpha);
+		int muted = fadeColor(PvDraw.COLOR_MUTED, contentAlpha);
+		int white = fadeColor(PvDraw.COLOR_WHITE, contentAlpha);
 		int barW = Math.min(w - 16, 48);
 		int cx = x + w / 2;
 
@@ -1042,20 +1279,27 @@ public final class HomePage {
 		ty += ICON_SIZE + 4;
 
 		Component xpLine = Component.empty()
-			.append(PvDraw.styled(String.valueOf(xp), PvDraw.COLOR_WHITE, false))
-			.append(PvDraw.styled("/", PvDraw.COLOR_MUTED, false))
+			.append(PvDraw.styled(String.valueOf(xp), white, false))
+			.append(PvDraw.styled("/", muted, false))
 			.append(PvDraw.styled("100", levelColor, false));
 		PvDraw.textCentered(g, font, xpLine, cx, ty);
 		ty += font.lineHeight + 2;
 
 		int barX = cx - barW / 2;
 		PvDraw.progressBar(g, barX, ty, barW, BAR_H, this.snapshot.skyBlockProgress(), levelColor);
-		double pct = this.snapshot.skyBlockProgress() * 100.0;
-		List<PvTooltip.Line> xpHover = List.of(
-			PvTooltip.Line.of("SkyBlock Level " + level, levelColor),
-			PvTooltip.Line.of(xp + "/100 (" + Math.round(pct) + "%)", PvDraw.COLOR_GOLD)
-		);
-		this.zones.add(new HoverZone(barX, ty - font.lineHeight - 2, barW, font.lineHeight + 2 + BAR_H + 2, xpHover));
+		if (registerHover && contentAlpha > 0.85F) {
+			double pct = this.snapshot.skyBlockProgress() * 100.0;
+			List<PvTooltip.Line> xpHover = List.of(
+				PvTooltip.Line.of("SkyBlock Level " + level, SkyBlockLevelColors.colorFor(level)),
+				PvTooltip.Line.of(xp + "/100 (" + Math.round(pct) + "%)", PvDraw.COLOR_GOLD),
+				PvTooltip.Line.of("Click to open", PvDraw.COLOR_MUTED)
+			);
+			this.zones.add(new HoverZone(x, y, w, h, xpHover));
+		}
+	}
+
+	private static int fadeColor(int argb, float alpha) {
+		return withAlpha(argb, Math.max(0F, Math.min(1F, alpha)));
 	}
 
 	private void drawStatsFace(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h) {
@@ -1095,6 +1339,14 @@ public final class HomePage {
 			PvDraw.text(g, font, entry.label(), bx + symbolSlot + labelGap, by, style.color());
 			String value = entry.present() ? formatStat(entry.value().getAsDouble()) : "-";
 			PvDraw.textRight(g, font, value, bx + colW, by, PvDraw.COLOR_WHITE);
+			String tipValue = entry.present() ? formatStatFull(entry.value().getAsDouble()) : "-";
+			this.zones.add(new HoverZone(
+				bx,
+				by,
+				colW,
+				Math.max(font.lineHeight, rowH - 1),
+				SkyBlockStats.tooltipLines(entry.id(), tipValue)
+			));
 		}
 	}
 
@@ -1111,6 +1363,18 @@ public final class HomePage {
 			return formatCompact(value / 1_000L, "k");
 		}
 		return String.valueOf(Math.round(value));
+	}
+
+	/** Full tooltip number with commas (and one decimal when meaningful). */
+	private static String formatStatFull(double value) {
+		double rounded = Math.round(value * 10.0) / 10.0;
+		if (Math.abs(rounded - Math.rint(rounded)) < 0.05) {
+			return FormatUtil.commas(Math.round(rounded));
+		}
+		long whole = (long) Math.floor(Math.abs(rounded));
+		String dec = String.format(java.util.Locale.US, "%.1f", Math.abs(rounded) - whole).substring(1);
+		String sign = rounded < 0 ? "-" : "";
+		return sign + FormatUtil.commas(whole) + dec;
 	}
 
 	private static String formatCompact(double scaled, String suffix) {

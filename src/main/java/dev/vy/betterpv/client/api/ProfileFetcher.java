@@ -40,10 +40,13 @@ import dev.vy.betterpv.client.weight.WeightBreakdown;
 import dev.vy.betterpv.client.weight.WeightCalculator;
 import dev.vy.betterpv.BetterPV;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -62,6 +65,8 @@ public final class ProfileFetcher {
 		t.setDaemon(true);
 		return t;
 	});
+	private static final Object ACTIVE_ENRICH_LOCK = new Object();
+	private static volatile ProfileEnrichmentSession activeEnrichment;
 
 	private static final String[] HOME_SKILLS = {
 		"combat", "foraging", "farming", "enchanting", "mining", "alchemy", "fishing", "carpentry", "taming", "hunting"
@@ -79,7 +84,38 @@ public final class ProfileFetcher {
 		"healer", "mage", "berserk", "archer", "tank"
 	};
 
+	private static final ConcurrentHashMap<String, String> COOP_MEMBER_NAMES = new ConcurrentHashMap<>();
+
 	private ProfileFetcher() {
+	}
+
+	public record CoopMemberRef(String uuid, String fallbackName) {
+		public CoopMemberRef {
+			uuid = uuid == null ? "" : uuid.replace("-", "").toLowerCase(Locale.ROOT);
+			fallbackName = fallbackName == null || fallbackName.isBlank() ? shortCoopUuid(uuid) : fallbackName;
+		}
+	}
+
+	public record CoopSummary(
+		int currentOthers,
+		int formerCount,
+		List<CoopMemberRef> currentMembers,
+		List<CoopMemberRef> formerMembers
+	) {
+		public CoopSummary {
+			currentMembers = currentMembers == null ? List.of() : List.copyOf(currentMembers);
+			formerMembers = formerMembers == null ? List.of() : List.copyOf(formerMembers);
+			currentOthers = Math.max(0, currentOthers);
+			formerCount = Math.max(0, formerCount);
+		}
+
+		public static CoopSummary solo() {
+			return new CoopSummary(0, 0, List.of(), List.of());
+		}
+
+		public boolean soloProfile() {
+			return currentOthers == 0 && formerCount == 0;
+		}
 	}
 
 	public record ProfileChoice(
@@ -87,13 +123,25 @@ public final class ProfileFetcher {
 		String profileId,
 		boolean selected,
 		String gameMode,
-		long createdAtMs
+		long createdAtMs,
+		CoopSummary coop
 	) {
 		public ProfileChoice {
 			cuteName = cuteName == null || cuteName.isBlank() ? "Unknown" : cuteName;
 			profileId = profileId == null ? "" : profileId;
 			gameMode = gameMode == null ? "" : gameMode.trim();
 			createdAtMs = Math.max(0L, createdAtMs);
+			coop = coop == null ? CoopSummary.solo() : coop;
+		}
+
+		public ProfileChoice(
+			String cuteName,
+			String profileId,
+			boolean selected,
+			String gameMode,
+			long createdAtMs
+		) {
+			this(cuteName, profileId, selected, gameMode, createdAtMs, CoopSummary.solo());
 		}
 
 		public String gameModeLabel() {
@@ -264,45 +312,125 @@ public final class ProfileFetcher {
 								putCache(uuidKey(id.uuid()), core);
 								putCache(nameKey(id.name()), core);
 								putCache(nameKey(cleaned), core);
-							}
-						});
-
-						coreFuture.thenCompose(core -> {
-							if (core == null || !core.ok()) {
-								return CompletableFuture.completedFuture(core);
-							}
-							return CompletableFuture.allOf(museumFut, electionFut, auctionFut, soldFut, bidsFut)
-								.thenApplyAsync(ignored2 -> {
-									LoadedProfile loaded = InventoryDecoder.withSharedDecode(() -> parse(
-										id.name(),
-										id.uuid(),
-										root,
-										museumFut.join().orElse(null),
-										electionFut.join().orElse(null),
-										AuctionSnapshot.build(
-											id.uuid(),
-											auctionFut.join().orElse(null),
-											soldFut.join().orElse(null),
-											bidsFut.join().orElse(null)
-										)
-									));
-									if (loaded.ok()) {
-										putCache(uuidKey(id.uuid()), loaded);
-										putCache(nameKey(id.name()), loaded);
-										putCache(nameKey(cleaned), loaded);
-									}
-									return loaded;
-								}, ENRICH_EXECUTOR);
-						}).whenComplete((loaded, error) -> {
-							if (error != null) {
-								BetterPV.LOGGER.warn("Background profile enrichment failed for {}", id.name(), error);
-							} else if (loaded != null && onUpdate != null) {
-								onUpdate.accept(loaded);
+								startProgressiveEnrichment(
+									core,
+									nameKey(cleaned),
+									root,
+									museumFut,
+									electionFut,
+									auctionFut,
+									soldFut,
+									bidsFut,
+									onUpdate
+								);
 							}
 						});
 						return coreFuture;
 					}));
 		});
+	}
+
+	/**
+	 * Prefer loading the clicked tab next while background enrichment is still running.
+	 */
+	public static void prioritizeTab(dev.vy.betterpv.client.gui.nav.PvTab tab) {
+		ProfileEnrichmentSession session = activeEnrichment;
+		if (session != null) {
+			session.prioritize(tab);
+		}
+	}
+
+	static void clearActiveEnrichment(ProfileEnrichmentSession session) {
+		synchronized (ACTIVE_ENRICH_LOCK) {
+			if (activeEnrichment == session) {
+				activeEnrichment = null;
+			}
+		}
+	}
+
+	static void cacheEnriched(UUID uuid, String name, String cleanedNameKey, LoadedProfile loaded) {
+		if (loaded == null || !loaded.ok()) {
+			return;
+		}
+		putCache(uuidKey(uuid), loaded);
+		putCache(nameKey(name), loaded);
+		if (cleanedNameKey != null && !cleanedNameKey.isBlank()) {
+			CACHE.put(cleanedNameKey, new CacheEntry(loaded, System.currentTimeMillis() + CACHE_TTL_MS));
+		}
+	}
+
+	static DungeonSnapshot parseDungeonsPublic(
+		JsonObject member,
+		JsonObject museumMember,
+		JsonObject electionRoot,
+		Map<String, List<InventoryDecoder.Stack>> inventoryCategories
+	) {
+		return parseDungeons(member, museumMember, electionRoot, inventoryCategories);
+	}
+
+	static JsonObject findMuseumMemberPublic(JsonObject museumRoot, String profileId, String undashed) {
+		return findMuseumMember(museumRoot, profileId, undashed);
+	}
+
+	static void scheduleNetworthRefreshPublic(
+		LoadedProfile base,
+		JsonObject member,
+		JsonObject profile,
+		JsonObject museumMember,
+		Map<String, List<InventoryDecoder.Stack>> inventoryCategories,
+		Consumer<LoadedProfile> onUpdate
+	) {
+		scheduleNetworthRefresh(base, member, profile, museumMember, inventoryCategories, onUpdate);
+	}
+
+	private static void startProgressiveEnrichment(
+		LoadedProfile core,
+		String cleanedNameKey,
+		JsonObject root,
+		CompletableFuture<Optional<JsonObject>> museumFut,
+		CompletableFuture<Optional<JsonObject>> electionFut,
+		CompletableFuture<Optional<JsonObject>> auctionFut,
+		CompletableFuture<Optional<JsonArray>> soldFut,
+		CompletableFuture<Optional<JsonArray>> bidsFut,
+		Consumer<LoadedProfile> onUpdate
+	) {
+		JsonArray profiles = root.has("profiles") && root.get("profiles").isJsonArray()
+			? root.getAsJsonArray("profiles")
+			: null;
+		JsonObject best = pickProfile(profiles, core.profileId());
+		if (best == null || core.snapshot() == null || core.snapshot().playerUuid() == null) {
+			return;
+		}
+		String undashed = HypixelApiClient.undashed(core.snapshot().playerUuid());
+		JsonObject members = best.has("members") && best.get("members").isJsonObject()
+			? best.getAsJsonObject("members")
+			: null;
+		JsonObject member = findMember(members, undashed);
+		if (member == null) {
+			return;
+		}
+		ProfileEnrichmentSession session = new ProfileEnrichmentSession(
+			core,
+			cleanedNameKey,
+			root,
+			best,
+			members,
+			member,
+			museumFut,
+			electionFut,
+			auctionFut,
+			soldFut,
+			bidsFut,
+			onUpdate,
+			ENRICH_EXECUTOR
+		);
+		synchronized (ACTIVE_ENRICH_LOCK) {
+			if (activeEnrichment != null) {
+				activeEnrichment.cancel();
+			}
+			activeEnrichment = session;
+		}
+		session.start();
 	}
 
 	/**
@@ -320,9 +448,9 @@ public final class ProfileFetcher {
 			() -> parseHomeCore(name, uuid, root, profileId),
 			HypixelApiClient.parseExecutor()
 		);
-		coreFuture.thenCompose(core -> {
+		coreFuture.thenAccept(core -> {
 			if (core == null || !core.ok()) {
-				return CompletableFuture.completedFuture(core);
+				return;
 			}
 			String pid = core.profileId();
 			CompletableFuture<Optional<JsonObject>> museumFut = HypixelApiClient.skyblockMuseum(uuid, pid);
@@ -330,30 +458,17 @@ public final class ProfileFetcher {
 			CompletableFuture<Optional<JsonObject>> auctionFut = HypixelApiClient.skyblockAuction(uuid);
 			CompletableFuture<Optional<JsonArray>> soldFut = CoflnetApiClient.playerAuctions(uuid, 0);
 			CompletableFuture<Optional<JsonArray>> bidsFut = CoflnetApiClient.playerBids(uuid, 0);
-			return CompletableFuture.allOf(museumFut, electionFut, auctionFut, soldFut, bidsFut)
-				.thenApplyAsync(ignored -> {
-					LoadedProfile loaded = InventoryDecoder.withSharedDecode(() -> parse(
-						name,
-						uuid,
-						root,
-						museumFut.join().orElse(null),
-						electionFut.join().orElse(null),
-						AuctionSnapshot.build(
-							uuid,
-							auctionFut.join().orElse(null),
-							soldFut.join().orElse(null),
-							bidsFut.join().orElse(null)
-						),
-						pid
-					));
-					return loaded;
-				}, ENRICH_EXECUTOR);
-		}).whenComplete((loaded, error) -> {
-			if (error != null) {
-				BetterPV.LOGGER.warn("Profile switch enrichment failed for {} ({})", name, profileId, error);
-			} else if (loaded != null && onUpdate != null) {
-				onUpdate.accept(loaded);
-			}
+			startProgressiveEnrichment(
+				core,
+				nameKey(name),
+				root,
+				museumFut,
+				electionFut,
+				auctionFut,
+				soldFut,
+				bidsFut,
+				onUpdate
+			);
 		});
 		return coreFuture;
 	}
@@ -538,7 +653,7 @@ public final class ProfileFetcher {
 			cuteName = best.has("cute_name") ? best.get("cute_name").getAsString() : cuteName;
 			profileId = best.has("profile_id") ? best.get("profile_id").getAsString() : profileId;
 		}
-		List<ProfileChoice> choices = listProfileChoices(profiles, profileId);
+		List<ProfileChoice> choices = listProfileChoices(profiles, profileId, undashed);
 		if (best == null) {
 			return fail(name, "No usable profile");
 		}
@@ -549,6 +664,8 @@ public final class ProfileFetcher {
 		if (member == null) {
 			return fail(name, "Member data missing");
 		}
+
+		warmCoopMemberNames(choices, undashed, name, null);
 
 		BetterPV.LOGGER.info("Parsing home core for {} ({})", name, cuteName);
 
@@ -720,7 +837,7 @@ public final class ProfileFetcher {
 			cuteName = best.has("cute_name") ? best.get("cute_name").getAsString() : cuteName;
 			profileId = best.has("profile_id") ? best.get("profile_id").getAsString() : profileId;
 		}
-		choices = listProfileChoices(profiles, profileId);
+		choices = listProfileChoices(profiles, profileId, undashed);
 		if (best == null) {
 			return fail(name, "No usable profile");
 		}
@@ -731,6 +848,8 @@ public final class ProfileFetcher {
 		if (member == null) {
 			return fail(name, "Member data missing");
 		}
+
+		warmCoopMemberNames(choices, undashed, name, null);
 
 		Map<String, Leveling.Progress> weightLevels = WeightCalculator.buildLevels(member);
 		WeightBreakdown senither = WeightCalculator.senither(member, weightLevels);
@@ -1064,10 +1183,15 @@ public final class ProfileFetcher {
 		return selected != null ? selected : first;
 	}
 
-	private static List<ProfileChoice> listProfileChoices(JsonArray profiles, String activeProfileId) {
+	private static List<ProfileChoice> listProfileChoices(
+		JsonArray profiles,
+		String activeProfileId,
+		String viewedUuidUndashed
+	) {
 		if (profiles == null || profiles.isEmpty()) {
 			return List.of();
 		}
+		String viewed = viewedUuidUndashed == null ? "" : viewedUuidUndashed.replace("-", "").toLowerCase(Locale.ROOT);
 		List<ProfileChoice> out = new ArrayList<>(profiles.size());
 		for (JsonElement element : profiles) {
 			if (!element.isJsonObject()) {
@@ -1093,7 +1217,7 @@ public final class ProfileFetcher {
 					created = 0L;
 				}
 			}
-			out.add(new ProfileChoice(cute, id, selected, mode, created));
+			out.add(new ProfileChoice(cute, id, selected, mode, created, parseCoopSummary(profile, viewed)));
 		}
 		if (activeProfileId == null || activeProfileId.isBlank()) {
 			boolean any = false;
@@ -1106,11 +1230,129 @@ public final class ProfileFetcher {
 			if (!any && !out.isEmpty()) {
 				ProfileChoice first = out.get(0);
 				out.set(0, new ProfileChoice(
-					first.cuteName(), first.profileId(), true, first.gameMode(), first.createdAtMs()
+					first.cuteName(),
+					first.profileId(),
+					true,
+					first.gameMode(),
+					first.createdAtMs(),
+					first.coop()
 				));
 			}
 		}
 		return out;
+	}
+
+	private static CoopSummary parseCoopSummary(JsonObject profile, String viewedUuidUndashed) {
+		JsonObject members = Leveling.obj(profile == null ? null : profile.get("members"));
+		if (members == null || members.isEmpty()) {
+			return CoopSummary.solo();
+		}
+		List<CoopMemberRef> current = new ArrayList<>();
+		List<CoopMemberRef> former = new ArrayList<>();
+		for (var entry : members.entrySet()) {
+			if (entry.getValue() == null || !entry.getValue().isJsonObject()) {
+				continue;
+			}
+			String uuid = entry.getKey() == null ? "" : entry.getKey().replace("-", "").toLowerCase(Locale.ROOT);
+			if (uuid.isBlank()) {
+				continue;
+			}
+			JsonObject memberObj = entry.getValue().getAsJsonObject();
+			CoopMemberRef ref = new CoopMemberRef(uuid, shortCoopUuid(uuid));
+			if (isDeletedCoopMember(memberObj)) {
+				former.add(ref);
+			} else if (!uuid.equals(viewedUuidUndashed)) {
+				current.add(ref);
+			}
+		}
+		current.sort(Comparator.comparing(CoopMemberRef::fallbackName, String.CASE_INSENSITIVE_ORDER));
+		former.sort(Comparator.comparing(CoopMemberRef::fallbackName, String.CASE_INSENSITIVE_ORDER));
+		return new CoopSummary(current.size(), former.size(), List.copyOf(current), List.copyOf(former));
+	}
+
+	private static boolean isDeletedCoopMember(JsonObject memberObj) {
+		JsonObject profileNode = Leveling.obj(memberObj.get("profile"));
+		if (profileNode == null) {
+			return false;
+		}
+		JsonElement notice = profileNode.get("deletion_notice");
+		return notice != null && !notice.isJsonNull();
+	}
+
+	private static String shortCoopUuid(String uuid) {
+		if (uuid == null || uuid.length() < 8) {
+			return uuid == null ? "?" : uuid;
+		}
+		return uuid.substring(0, 8);
+	}
+
+	public static String coopMemberDisplayName(CoopMemberRef member) {
+		if (member == null) {
+			return "?";
+		}
+		String resolved = COOP_MEMBER_NAMES.get(member.uuid());
+		return resolved != null && !resolved.isBlank() ? resolved : member.fallbackName();
+	}
+
+	public static boolean coopNameResolved(CoopMemberRef member) {
+		if (member == null || member.uuid().isBlank()) {
+			return false;
+		}
+		String name = coopMemberDisplayName(member);
+		if (name == null || name.isBlank() || "?".equals(name)) {
+			return false;
+		}
+		return !name.equals(shortCoopUuid(member.uuid()));
+	}
+
+	public static void warmCoopMemberNames(
+		List<ProfileChoice> choices,
+		String viewedUuidUndashed,
+		String viewedName,
+		Runnable onResolved
+	) {
+		if (choices == null || choices.isEmpty()) {
+			return;
+		}
+		String viewed = viewedUuidUndashed == null ? "" : viewedUuidUndashed.replace("-", "").toLowerCase(Locale.ROOT);
+		if (!viewed.isBlank() && viewedName != null && !viewedName.isBlank()) {
+			COOP_MEMBER_NAMES.put(viewed, viewedName);
+		}
+		Set<String> pending = new HashSet<>();
+		for (ProfileChoice choice : choices) {
+			collectCoopNameLookups(choice.coop().currentMembers(), pending);
+			collectCoopNameLookups(choice.coop().formerMembers(), pending);
+		}
+		for (String uuidKey : pending) {
+			UUID uuid = HypixelApiClient.parseUndashedUuid(uuidKey);
+			if (uuid == null) {
+				continue;
+			}
+			HypixelApiClient.resolveName(uuid).thenAccept(opt -> {
+				opt.ifPresent(id -> {
+					COOP_MEMBER_NAMES.put(uuidKey, id.name());
+					if (onResolved != null) {
+						onResolved.run();
+					}
+				});
+			});
+		}
+	}
+
+	private static void collectCoopNameLookups(List<CoopMemberRef> members, Set<String> pending) {
+		for (CoopMemberRef member : members) {
+			if (member.uuid().isBlank()) {
+				continue;
+			}
+			if (COOP_MEMBER_NAMES.containsKey(member.uuid())) {
+				continue;
+			}
+			if (!member.fallbackName().equals(shortCoopUuid(member.uuid()))) {
+				COOP_MEMBER_NAMES.put(member.uuid(), member.fallbackName());
+				continue;
+			}
+			pending.add(member.uuid());
+		}
 	}
 
 	private static List<ProfileSnapshot.BankTransaction> parseBankTransactions(JsonObject profileRoot) {

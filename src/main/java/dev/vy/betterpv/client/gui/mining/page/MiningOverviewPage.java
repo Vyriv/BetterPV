@@ -219,8 +219,7 @@ public final class MiningOverviewPage {
 			|| snapshot.jungleTempleOpen()
 			|| snapshot.precursorTalked();
 		int hollowsReserve = hollows
-			? font.lineHeight + 3
-				+ (snapshot.goblinKingQuests() > 0 ? MiningUi.STAT_ROW + 1 : 0)
+			? (snapshot.goblinKingQuests() > 0 ? MiningUi.STAT_ROW + 1 : 0)
 				+ MiningUi.STAT_ROW + 1
 				+ MiningUi.STAT_ROW
 				+ 6
@@ -261,8 +260,6 @@ public final class MiningOverviewPage {
 
 		if (hollows) {
 			int hy = nucY + MiningUi.STAT_ROW + 6;
-			PvDraw.text(g, font, "Hollows", rx, hy, PvDraw.COLOR_MUTED);
-			hy += font.lineHeight + 3;
 			if (snapshot.goblinKingQuests() > 0) {
 				hy = MiningUi.statLine(g, font, "Goblin King quests",
 					String.valueOf(snapshot.goblinKingQuests()), rx, hy, rw, PvDraw.COLOR_TEXT) + 1;

@@ -26,9 +26,24 @@ public final class Leveling {
 			return Math.max(0F, Math.min(1F, xpIntoLevel / maxXpForLevel));
 		}
 
+		/**
+		 * Soft-cap level plus fractional overflow levels (last step XP repeated past the cap).
+		 * When not maxed, same as {@link #level()}.
+		 */
+		public float overflowLevel() {
+			if (!maxed) {
+				return level;
+			}
+			if (maxXpForLevel <= 0F || overflowXp <= 0F) {
+				return maxLevel;
+			}
+			return maxLevel + overflowXp / maxXpForLevel;
+		}
+
 		public String hoverText() {
 			if (maxed) {
-				return "Overflow: " + FormatUtil.shortXp(Math.max(0F, overflowXp));
+				return "Overflow Level: " + FormatUtil.oneDecimal(overflowLevel())
+					+ " · Overflow: " + FormatUtil.shortXp(Math.max(0F, overflowXp));
 			}
 			long into = Math.round(xpIntoLevel);
 			long need = Math.round(maxXpForLevel);
@@ -43,7 +58,9 @@ public final class Leveling {
 		public String skillHover(String name) {
 			int lvl = (int) Math.floor(level);
 			if (maxed) {
-				return name + " " + lvl + " - Overflow: " + FormatUtil.shortXp(Math.max(0F, overflowXp));
+				return name + " " + lvl
+					+ " - Overflow Level: " + FormatUtil.oneDecimal(overflowLevel())
+					+ " · Overflow: " + FormatUtil.shortXp(Math.max(0F, overflowXp));
 			}
 			int next = Math.min(maxLevel, lvl + 1);
 			long into = Math.round(xpIntoLevel);
@@ -55,12 +72,16 @@ public final class Leveling {
 		public List<PvTooltip.Line> skillHoverLines(String name) {
 			int lvl = (int) Math.floor(level);
 			String title = (name == null ? "?" : name) + " " + lvl;
-			List<PvTooltip.Line> lines = new ArrayList<>(2);
+			List<PvTooltip.Line> lines = new ArrayList<>(3);
 			lines.add(PvTooltip.Line.of(title, PvDraw.COLOR_ACCENT));
 			if (maxed) {
 				lines.add(PvTooltip.Line.of(
-					"Overflow: " + FormatUtil.shortXp(Math.max(0F, overflowXp)),
+					"Overflow Level: " + FormatUtil.oneDecimal(overflowLevel()),
 					PvDraw.COLOR_GOLD
+				));
+				lines.add(PvTooltip.Line.of(
+					"Overflow: " + FormatUtil.shortXp(Math.max(0F, overflowXp)),
+					PvDraw.COLOR_MUTED
 				));
 			} else {
 				int next = Math.min(maxLevel, lvl + 1);
@@ -175,6 +196,7 @@ public final class Leveling {
 			return new Progress(0, 0, false, levelCap, xp, 0, 0);
 		}
 		float xpToCap = xpRequiredForLevel(table, levelCap, cumulative);
+		float overflowStep = overflowStepXp(table, levelCap, cumulative);
 		float remaining = Math.max(0F, xp);
 		for (int level = 0; level < table.size(); level++) {
 			float levelXp = table.get(level).getAsFloat();
@@ -194,7 +216,10 @@ public final class Leveling {
 				}
 				boolean maxed = resultLevel >= levelCap;
 				if (maxed) {
-					return new Progress(levelCap, maxXpForLevel, true, levelCap, xp, maxXpForLevel, Math.max(0F, xp - xpToCap));
+					float step = overflowStep > 0F ? overflowStep : maxXpForLevel;
+					return new Progress(
+						levelCap, step, true, levelCap, xp, step, Math.max(0F, xp - xpToCap)
+					);
 				}
 				return new Progress(resultLevel, maxXpForLevel, false, levelCap, xp, into, 0);
 			}
@@ -203,7 +228,22 @@ public final class Leveling {
 			}
 		}
 		int capped = Math.min(table.size(), levelCap);
-		return new Progress(capped, 0, true, levelCap, xp, 0, Math.max(0F, xp - xpToCap));
+		float step = overflowStep > 0F ? overflowStep : 0F;
+		return new Progress(capped, step, true, levelCap, xp, 0, Math.max(0F, xp - xpToCap));
+	}
+
+	/** XP for one overflow level past the soft cap (repeats the last capped step). */
+	private static float overflowStepXp(JsonArray table, int levelCap, boolean cumulative) {
+		if (table == null || table.isEmpty() || levelCap <= 0) {
+			return 0F;
+		}
+		int capped = Math.min(levelCap, table.size());
+		if (cumulative) {
+			float atCap = table.get(capped - 1).getAsFloat();
+			float previous = capped > 1 ? table.get(capped - 2).getAsFloat() : 0F;
+			return Math.max(0F, atCap - previous);
+		}
+		return Math.max(0F, table.get(capped - 1).getAsFloat());
 	}
 
 	public static float xpRequiredForLevel(JsonArray table, int levelCap, boolean cumulative) {

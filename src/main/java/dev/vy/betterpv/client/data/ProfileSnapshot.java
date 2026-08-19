@@ -64,6 +64,45 @@ public final class ProfileSnapshot {
 		}
 	}
 
+	/** Active {@code slayer.slayer_quest} row. {@code tier} is player-facing (T1+). */
+	public record ActiveSlayerQuest(
+		String typeId,
+		String name,
+		int tier,
+		boolean spawned,
+		boolean solo,
+		float combatXp,
+		String island
+	) {
+		public ActiveSlayerQuest {
+			typeId = typeId == null ? "" : typeId;
+			name = name == null ? "" : name;
+			tier = Math.max(0, tier);
+			combatXp = Math.max(0F, combatXp);
+			island = island == null ? "" : island;
+		}
+
+		public boolean present() {
+			return !name.isBlank() && tier > 0;
+		}
+	}
+
+	/** {@code leveling.emblem_unlocks} + optional {@code leveling.selected_symbol}. */
+	public record EmblemInfo(String selected, List<String> unlocked) {
+		public EmblemInfo {
+			selected = selected == null ? "" : selected;
+			unlocked = List.copyOf(unlocked == null ? List.of() : unlocked);
+		}
+
+		public static EmblemInfo empty() {
+			return new EmblemInfo("", List.of());
+		}
+
+		public boolean present() {
+			return !unlocked.isEmpty() || !selected.isBlank();
+		}
+	}
+
 	private final String playerName;
 	private final UUID playerUuid;
 	private final String profileName;
@@ -77,6 +116,9 @@ public final class ProfileSnapshot {
 	private final List<SkillEntry> skills;
 	private final List<SlayerEntry> slayers;
 	private final SkillEntry social;
+	private final SkillEntry runecrafting;
+	private final ActiveSlayerQuest activeSlayer;
+	private final EmblemInfo emblems;
 
 	public ProfileSnapshot(
 		String playerName,
@@ -92,7 +134,8 @@ public final class ProfileSnapshot {
 	) {
 		this(
 			playerName, playerUuid, profileName, skyBlockLevel, skyBlockXpIntoLevel,
-			weightText, networthText, 0D, 0D, List.of(), skills, slayers, social
+			weightText, networthText, 0D, 0D, List.of(), skills, slayers, social,
+			null, null, EmblemInfo.empty()
 		);
 	}
 
@@ -112,7 +155,8 @@ public final class ProfileSnapshot {
 	) {
 		this(
 			playerName, playerUuid, profileName, skyBlockLevel, skyBlockXpIntoLevel,
-			weightText, networthText, purseCoins, bankCoins, List.of(), skills, slayers, social
+			weightText, networthText, purseCoins, bankCoins, List.of(), skills, slayers, social,
+			null, null, EmblemInfo.empty()
 		);
 	}
 
@@ -131,6 +175,31 @@ public final class ProfileSnapshot {
 		List<SlayerEntry> slayers,
 		SkillEntry social
 	) {
+		this(
+			playerName, playerUuid, profileName, skyBlockLevel, skyBlockXpIntoLevel,
+			weightText, networthText, purseCoins, bankCoins, bankTransactions, skills, slayers, social,
+			null, null, EmblemInfo.empty()
+		);
+	}
+
+	public ProfileSnapshot(
+		String playerName,
+		UUID playerUuid,
+		String profileName,
+		int skyBlockLevel,
+		int skyBlockXpIntoLevel,
+		String weightText,
+		String networthText,
+		double purseCoins,
+		double bankCoins,
+		List<BankTransaction> bankTransactions,
+		List<SkillEntry> skills,
+		List<SlayerEntry> slayers,
+		SkillEntry social,
+		SkillEntry runecrafting,
+		ActiveSlayerQuest activeSlayer,
+		EmblemInfo emblems
+	) {
 		this.playerName = playerName;
 		this.playerUuid = playerUuid;
 		this.profileName = profileName;
@@ -144,6 +213,9 @@ public final class ProfileSnapshot {
 		this.skills = List.copyOf(skills);
 		this.slayers = List.copyOf(slayers);
 		this.social = social == null ? entry("social", "Social") : social;
+		this.runecrafting = runecrafting == null ? entry("runecrafting", "Runecrafting") : runecrafting;
+		this.activeSlayer = activeSlayer != null && activeSlayer.present() ? activeSlayer : null;
+		this.emblems = emblems == null ? EmblemInfo.empty() : emblems;
 	}
 
 	public String playerName() {
@@ -202,11 +274,23 @@ public final class ProfileSnapshot {
 		return this.social;
 	}
 
+	public SkillEntry runecrafting() {
+		return this.runecrafting;
+	}
+
+	public ActiveSlayerQuest activeSlayer() {
+		return this.activeSlayer;
+	}
+
+	public EmblemInfo emblems() {
+		return this.emblems;
+	}
+
 	public ProfileSnapshot withWeightText(String weightText) {
 		return new ProfileSnapshot(
 			this.playerName, this.playerUuid, this.profileName, this.skyBlockLevel, this.skyBlockXpIntoLevel,
 			weightText, this.networthText, this.purseCoins, this.bankCoins, this.bankTransactions,
-			this.skills, this.slayers, this.social
+			this.skills, this.slayers, this.social, this.runecrafting, this.activeSlayer, this.emblems
 		);
 	}
 
@@ -214,7 +298,7 @@ public final class ProfileSnapshot {
 		return new ProfileSnapshot(
 			this.playerName, this.playerUuid, this.profileName, this.skyBlockLevel, this.skyBlockXpIntoLevel,
 			this.weightText, networthText, this.purseCoins, this.bankCoins, this.bankTransactions,
-			this.skills, this.slayers, this.social
+			this.skills, this.slayers, this.social, this.runecrafting, this.activeSlayer, this.emblems
 		);
 	}
 
@@ -233,7 +317,8 @@ public final class ProfileSnapshot {
 			slayer("wolf", "Sven"), slayer("vampire", "Vampire")
 		);
 		return new ProfileSnapshot(
-			player, null, "…", 0, 0, "…", "-", 0D, 0D, List.of(), skills, slayers, entry("social", "Social")
+			player, null, "…", 0, 0, "…", "-", 0D, 0D, List.of(), skills, slayers, entry("social", "Social"),
+			entry("runecrafting", "Runecrafting"), null, EmblemInfo.empty()
 		);
 	}
 

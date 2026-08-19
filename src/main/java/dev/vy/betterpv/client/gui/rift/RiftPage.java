@@ -21,6 +21,7 @@ public final class RiftPage {
 	public void apply(RiftSnapshot snapshot) {
 		this.snapshot = snapshot == null ? RiftSnapshot.empty() : snapshot;
 		this.inventory.resetPage();
+		this.overview.resetScroll();
 		this.ui.clear();
 		SkyBlockItemFactory.prefetch(toWarmSnapshot(this.snapshot));
 		List<String> charmIds = new ArrayList<>();
@@ -34,13 +35,16 @@ public final class RiftPage {
 		return this.snapshot;
 	}
 
-	public boolean mouseClicked(double mx, double my) {
+	public boolean mouseClicked(double mx, double my, PvSubTab sub) {
+		if (sub != PvSubTab.RIFT_INVENTORY && this.overview.mouseClicked(mx, my)) {
+			return true;
+		}
 		return this.ui.mouseClicked(mx, my);
 	}
 
 	public boolean mouseScrolled(double mouseX, double mouseY, double scrollY, PvSubTab sub) {
 		if (sub != PvSubTab.RIFT_INVENTORY) {
-			return false;
+			return this.overview.mouseScrolled(mouseX, mouseY, scrollY);
 		}
 		return this.inventory.mouseScrolled(mouseX, mouseY, scrollY, this.snapshot);
 	}
@@ -74,7 +78,11 @@ public final class RiftPage {
 			List.of(),
 			InventorySnapshot.AccessoryInfo.empty(),
 			InventorySnapshot.emptyPage("Time Pocket", 9),
-			InventorySnapshot.emptyPage("Personal Vault", 9)
+			InventorySnapshot.emptyPage("Personal Vault", 9),
+			InventorySnapshot.emptyPage("Carnival Masks", 9),
+			false,
+			InventorySnapshot.emptyPage("Candy Bag", 9),
+			false
 		);
 	}
 }

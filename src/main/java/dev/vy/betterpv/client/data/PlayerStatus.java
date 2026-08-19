@@ -1,9 +1,58 @@
 package dev.vy.betterpv.client.data;
 
 import java.util.Locale;
+import java.util.Map;
 
 /** Hypixel player online status for the Home Status control. */
 public final class PlayerStatus {
+	private static final Map<String, String> LOCATION_NAMES = Map.ofEntries(
+		Map.entry("dynamic", "Private Island"),
+		Map.entry("hub", "Hub"),
+		Map.entry("farming_1", "The Farming Islands"),
+		Map.entry("combat_1", "Spider's Den"),
+		Map.entry("combat_2", "Blazing Fortress"),
+		Map.entry("combat_3", "The End"),
+		Map.entry("foraging_1", "The Park"),
+		Map.entry("foraging_2", "Galatea"),
+		Map.entry("mining_1", "Gold Mine"),
+		Map.entry("mining_2", "Deep Caverns"),
+		Map.entry("mining_3", "Dwarven Mines"),
+		Map.entry("crystal_hollows", "Crystal Hollows"),
+		Map.entry("mineshaft", "Glacite Mineshafts"),
+		Map.entry("crimson_isle", "Crimson Isle"),
+		Map.entry("fishing_1", "Backwater Bayou"),
+		Map.entry("dungeon", "Dungeon"),
+		Map.entry("dungeon_hub", "Dungeon Hub"),
+		Map.entry("dark_auction", "Dark Auction"),
+		Map.entry("winter", "Jerry's Workshop"),
+		Map.entry("rift", "The Rift"),
+		Map.entry("garden", "Garden"),
+		Map.entry("kuudra", "Kuudra"),
+		Map.entry("instanced", "Kuudra"),
+		Map.entry("skyblock", "SkyBlock"),
+		Map.entry("bedwars", "Bed Wars"),
+		Map.entry("skywars", "SkyWars"),
+		Map.entry("murder_mystery", "Murder Mystery"),
+		Map.entry("build_battle", "Build Battle"),
+		Map.entry("housing", "Housing"),
+		Map.entry("arcade", "Arcade"),
+		Map.entry("survival_games", "Blitz SG"),
+		Map.entry("tntgames", "TNT Games"),
+		Map.entry("uhc", "UHC"),
+		Map.entry("speed_uhc", "Speed UHC"),
+		Map.entry("duels", "Duels"),
+		Map.entry("pit", "The Pit"),
+		Map.entry("replay", "Replay"),
+		Map.entry("wool_games", "Wool Wars"),
+		Map.entry("mcgo", "Cops and Crims"),
+		Map.entry("battleground", "Warlords"),
+		Map.entry("super_smash", "Smash Heroes"),
+		Map.entry("gingerbread", "Turbo Kart Racers"),
+		Map.entry("legacy", "Classic Games"),
+		Map.entry("prototype", "Prototype"),
+		Map.entry("walls3", "Mega Walls"),
+		Map.entry("smp", "SMP")
+	);
 	public enum State {
 		IDLE,
 		LOADING,
@@ -95,13 +144,17 @@ public final class PlayerStatus {
 		};
 	}
 
-	/** {@code dungeon_hub} → {@code Dungeon Hub}. */
+	/** Hypixel {@code combat_3} / {@code dungeon_hub} → display name. */
 	public static String prettyLocation(String raw) {
 		if (raw == null || raw.isBlank()) {
 			return "";
 		}
-		String trimmed = raw.trim().replace('-', '_');
-		String[] parts = trimmed.split("_+");
+		String key = raw.trim().toLowerCase(Locale.ROOT).replace('-', '_');
+		String mapped = LOCATION_NAMES.get(key);
+		if (mapped != null) {
+			return mapped;
+		}
+		String[] parts = key.split("_+");
 		StringBuilder out = new StringBuilder();
 		for (String part : parts) {
 			if (part.isBlank()) {
@@ -112,7 +165,7 @@ public final class PlayerStatus {
 			}
 			out.append(Character.toUpperCase(part.charAt(0)));
 			if (part.length() > 1) {
-				out.append(part.substring(1).toLowerCase(Locale.ROOT));
+				out.append(part.substring(1));
 			}
 		}
 		return out.toString();

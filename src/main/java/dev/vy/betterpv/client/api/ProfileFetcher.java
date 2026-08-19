@@ -675,7 +675,9 @@ public final class ProfileFetcher {
 
 		List<ProfileSnapshot.SkillEntry> skills = buildHomeSkills(member);
 		ProfileSnapshot.SkillEntry social = buildSocial(member);
+		ProfileSnapshot.SkillEntry runecrafting = buildRunecrafting(member);
 		List<ProfileSnapshot.SlayerEntry> slayers = buildHomeSlayers(member);
+		ProfileSnapshot.ActiveSlayerQuest activeSlayer = parseActiveSlayerQuest(member);
 
 		int sbLevel = 0;
 		int sbXp = 0;
@@ -687,6 +689,7 @@ public final class ProfileFetcher {
 				sbXp = Math.round(experience % 100F);
 			}
 		}
+		ProfileSnapshot.EmblemInfo emblems = parseEmblems(leveling);
 
 		double purseCoins = NetworthCalculator.purse(member);
 		double bankCoins = NetworthCalculator.bank(best, member);
@@ -705,7 +708,10 @@ public final class ProfileFetcher {
 			bankTransactions,
 			skills,
 			slayers,
-			social
+			social,
+			runecrafting,
+			activeSlayer,
+			emblems
 		);
 
 		Map<String, List<InventoryDecoder.Stack>> homeGear = InventoryDecoder.parseHomeGear(member);
@@ -784,6 +790,169 @@ public final class ProfileFetcher {
 			socialProgress.skillHover("Social"),
 			socialProgress.skillHoverLines("Social")
 		);
+	}
+
+	private static ProfileSnapshot.SkillEntry buildRunecrafting(JsonObject member) {
+		float xp = Leveling.readSkillXp(member, "runecrafting");
+		int cap = Leveling.skillCap("runecrafting", member);
+		Leveling.Progress progress = Leveling.getLevel(Leveling.skillTable("runecrafting"), xp, cap, false);
+		return new ProfileSnapshot.SkillEntry(
+			"runecrafting",
+			"Runecrafting",
+			(int) Math.floor(progress.level()),
+			progress.fill(),
+			progress.maxed(),
+			progress.skillHover("Runecrafting"),
+			progress.skillHoverLines("Runecrafting")
+		);
+	}
+
+	private static ProfileSnapshot.ActiveSlayerQuest parseActiveSlayerQuest(JsonObject member) {
+		JsonObject slayer = Leveling.obj(member == null ? null : member.get("slayer"));
+		JsonObject quest = slayer == null ? null : Leveling.obj(slayer.get("slayer_quest"));
+		if (quest == null) {
+			return null;
+		}
+		String type = str(quest.get("type"));
+		if (type.isBlank()) {
+			return null;
+		}
+		Float tierRaw = Leveling.num(quest.get("tier"));
+		if (tierRaw == null) {
+			return null;
+		}
+		int tier = Math.max(0, Math.round(tierRaw)) + 1;
+		boolean spawned = Leveling.num(quest.get("spawn_timestamp")) != null;
+		boolean solo = bool(quest, "solo");
+		Float combat = Leveling.num(quest.get("combat_xp"));
+		String island = InventoryDecoder.prettyWords(str(quest.get("last_killed_mob_island")));
+		return new ProfileSnapshot.ActiveSlayerQuest(
+			type.toLowerCase(Locale.ROOT),
+			slayerDisplayName(type),
+			tier,
+			spawned,
+			solo,
+			combat == null ? 0F : Math.max(0F, combat),
+			island
+		);
+	}
+
+	private static String slayerDisplayName(String type) {
+		if (type == null || type.isBlank()) {
+			return "";
+		}
+		String key = type.trim().toLowerCase(Locale.ROOT);
+		for (String[] pair : HOME_SLAYERS) {
+			if (pair[0].equals(key)) {
+				return pair[1];
+			}
+		}
+		return title(key);
+	}
+
+	private static ProfileSnapshot.EmblemInfo parseEmblems(JsonObject leveling) {
+		if (leveling == null) {
+			return ProfileSnapshot.EmblemInfo.empty();
+		}
+		java.util.LinkedHashSet<String> unlocked = new java.util.LinkedHashSet<>();
+		addEmblemIds(unlocked, leveling.get("emblem_unlocks"));
+		addEmblemIds(unlocked, leveling.get("unlocked_emblems"));
+		addEmblemIds(unlocked, leveling.get("emblems"));
+		if (leveling.has("completed_tasks") && leveling.get("completed_tasks").isJsonArray()) {
+			for (JsonElement el : leveling.getAsJsonArray("completed_tasks")) {
+				String id = emblemId(el);
+				if (id.isBlank()) {
+					continue;
+				}
+				String upper = id.toUpperCase(Locale.ROOT);
+				if (upper.contains("EMBLEM") || upper.contains("SYMBOL")) {
+					unlocked.add(id);
+				}
+			}
+		}
+		String selected = str(leveling.get("selected_symbol"));
+		if (selected.isBlank()) {
+			selected = str(leveling.get("selected_emblem"));
+		}
+		if (!selected.isBlank()) {
+			unlocked.add(selected);
+		}
+		if (unlocked.isEmpty() && selected.isBlank()) {
+			return ProfileSnapshot.EmblemInfo.empty();
+		}
+		return new ProfileSnapshot.EmblemInfo(selected, List.copyOf(unlocked));
+	}
+
+	private static void addEmblemIds(java.util.Set<String> out, JsonElement raw) {
+		if (raw == null || raw.isJsonNull()) {
+			return;
+		}
+		if (raw.isJsonArray()) {
+			for (JsonElement el : raw.getAsJsonArray()) {
+				String id = emblemId(el);
+				if (!id.isBlank()) {
+					out.add(id);
+				}
+			}
+			return;
+		}
+		if (raw.isJsonObject()) {
+			for (var entry : raw.getAsJsonObject().entrySet()) {
+				String id = emblemId(entry.getValue());
+				if (id.isBlank()) {
+					id = entry.getKey() == null ? "" : entry.getKey().trim();
+				}
+				if (!id.isBlank()) {
+					out.add(id);
+				}
+			}
+		}
+	}
+
+	private static String emblemId(JsonElement el) {
+		if (el == null || el.isJsonNull()) {
+			return "";
+		}
+		if (el.isJsonPrimitive()) {
+			return str(el);
+		}
+		if (!el.isJsonObject()) {
+			return "";
+		}
+		JsonObject obj = el.getAsJsonObject();
+		String id = str(obj.get("id"));
+		if (id.isBlank()) {
+			id = str(obj.get("emblem"));
+		}
+		if (id.isBlank()) {
+			id = str(obj.get("symbol"));
+		}
+		if (id.isBlank()) {
+			id = str(obj.get("name"));
+		}
+		return id;
+	}
+
+	private static String str(JsonElement element) {
+		if (element == null || element.isJsonNull() || !element.isJsonPrimitive()) {
+			return "";
+		}
+		try {
+			return element.getAsString();
+		} catch (Exception ignored) {
+			return "";
+		}
+	}
+
+	private static boolean bool(JsonObject obj, String key) {
+		if (obj == null || !obj.has(key) || obj.get(key).isJsonNull() || !obj.get(key).isJsonPrimitive()) {
+			return false;
+		}
+		try {
+			return obj.get(key).getAsBoolean();
+		} catch (Exception ignored) {
+			return false;
+		}
 	}
 
 	private static List<ProfileSnapshot.SlayerEntry> buildHomeSlayers(JsonObject member) {
@@ -883,7 +1052,9 @@ public final class ProfileFetcher {
 
 		List<ProfileSnapshot.SkillEntry> skills = buildHomeSkills(member);
 		ProfileSnapshot.SkillEntry social = buildSocial(member);
+		ProfileSnapshot.SkillEntry runecrafting = buildRunecrafting(member);
 		List<ProfileSnapshot.SlayerEntry> slayers = buildHomeSlayers(member);
+		ProfileSnapshot.ActiveSlayerQuest activeSlayer = parseActiveSlayerQuest(member);
 
 		int sbLevel = 0;
 		int sbXp = 0;
@@ -895,6 +1066,7 @@ public final class ProfileFetcher {
 				sbXp = Math.round(experience % 100F);
 			}
 		}
+		ProfileSnapshot.EmblemInfo emblems = parseEmblems(leveling);
 
 		String nwText = !includeNetworth || !pricesReady
 			? "…"
@@ -919,7 +1091,10 @@ public final class ProfileFetcher {
 			bankTransactions,
 			skills,
 			slayers,
-			social
+			social,
+			runecrafting,
+			activeSlayer,
+			emblems
 		);
 
 		DungeonSnapshot dungeons = parseDungeons(member, museumMember, electionRoot, inventoryCategories);

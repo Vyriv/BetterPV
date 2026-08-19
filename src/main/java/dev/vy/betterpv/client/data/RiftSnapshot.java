@@ -105,6 +105,24 @@ public final class RiftSnapshot {
 		}
 	}
 
+	public record QuestLine(String label, String value) {
+		public QuestLine {
+			label = label == null ? "" : label;
+			value = value == null ? "" : value;
+		}
+	}
+
+	public record QuestRegion(String title, List<QuestLine> lines) {
+		public QuestRegion {
+			title = title == null ? "" : title;
+			lines = List.copyOf(lines == null ? List.of() : lines);
+		}
+
+		public boolean present() {
+			return !title.isBlank() && !lines.isEmpty();
+		}
+	}
+
 	private final long motesPurse;
 	private final long lifetimeMotes;
 	private final long visits;
@@ -133,6 +151,7 @@ public final class RiftSnapshot {
 
 	private final InventorySnapshot.Page inventory;
 	private final List<InventorySnapshot.Page> enderPages;
+	private final List<QuestRegion> questRegions;
 
 	private RiftSnapshot(
 		long motesPurse,
@@ -156,7 +175,8 @@ public final class RiftSnapshot {
 		List<String> purchasedBoundaries,
 		VampireProgress vampire,
 		InventorySnapshot.Page inventory,
-		List<InventorySnapshot.Page> enderPages
+		List<InventorySnapshot.Page> enderPages,
+		List<QuestRegion> questRegions
 	) {
 		this.motesPurse = Math.max(0L, motesPurse);
 		this.lifetimeMotes = Math.max(0L, lifetimeMotes);
@@ -182,6 +202,7 @@ public final class RiftSnapshot {
 		this.enderPages = enderPages == null || enderPages.isEmpty()
 			? List.of(InventorySnapshot.emptyPage("Ender Chest", 9))
 			: List.copyOf(enderPages);
+		this.questRegions = List.copyOf(questRegions == null ? List.of() : questRegions);
 	}
 
 	public static RiftSnapshot empty() {
@@ -194,7 +215,8 @@ public final class RiftSnapshot {
 			List.of(),
 			VampireProgress.empty(),
 			InventorySnapshot.emptyPage("Inventory", 9),
-			List.of(InventorySnapshot.emptyPage("Ender Chest", 9))
+			List.of(InventorySnapshot.emptyPage("Ender Chest", 9)),
+			List.of()
 		);
 	}
 
@@ -259,6 +281,7 @@ public final class RiftSnapshot {
 		);
 
 		InventoryDecoder.RiftInventories inv = InventoryDecoder.parseRiftUi(member);
+		List<QuestRegion> quests = parseQuestRegions(rift);
 
 		return new RiftSnapshot(
 			motes,
@@ -282,7 +305,8 @@ public final class RiftSnapshot {
 			boundaries,
 			vampire,
 			inv.inventory(),
-			inv.enderPages()
+			inv.enderPages(),
+			quests
 		);
 	}
 
@@ -392,6 +416,204 @@ public final class RiftSnapshot {
 
 	public List<InventorySnapshot.Page> enderPages() {
 		return this.enderPages;
+	}
+
+	public List<QuestRegion> questRegions() {
+		return this.questRegions;
+	}
+
+	private static List<QuestRegion> parseQuestRegions(JsonObject rift) {
+		if (rift == null) {
+			return List.of();
+		}
+		List<QuestRegion> out = new ArrayList<>();
+		addRegion(out, "Wyld Woods", wyldWoodsLines(Leveling.obj(rift.get("wyld_woods"))));
+		addRegion(out, "Dreadfarm", dreadfarmLines(Leveling.obj(rift.get("dreadfarm"))));
+		addRegion(out, "West Village", westVillageLines(Leveling.obj(rift.get("west_village"))));
+		addRegion(out, "Castle", castleLines(Leveling.obj(rift.get("castle"))));
+		addRegion(out, "Black Lagoon", blackLagoonLines(Leveling.obj(rift.get("black_lagoon"))));
+		addRegion(out, "Village Plaza", villagePlazaLines(Leveling.obj(rift.get("village_plaza"))));
+		addRegion(out, "Wizard Tower", wizardTowerLines(Leveling.obj(rift.get("wizard_tower"))));
+		return List.copyOf(out);
+	}
+
+	private static void addRegion(List<QuestRegion> out, String title, List<QuestLine> lines) {
+		if (lines == null || lines.isEmpty()) {
+			return;
+		}
+		out.add(new QuestRegion(title, lines));
+	}
+
+	private static List<QuestLine> wyldWoodsLines(JsonObject obj) {
+		if (obj == null) {
+			return List.of();
+		}
+		List<QuestLine> lines = new ArrayList<>();
+		int bug = intVal(obj, "bughunter_step");
+		if (bug > 0) {
+			lines.add(new QuestLine("Argofay Bughunter", "Step " + bug));
+		}
+		if (bool(obj, "sirius_completed_q_a") || bool(obj, "sirius_q_a_chain_done")) {
+			lines.add(new QuestLine("Inverted Sirius", bool(obj, "sirius_claimed_doubloon") ? "Claimed" : "Complete"));
+		} else if (bool(obj, "sirius_started_q_a")) {
+			lines.add(new QuestLine("Inverted Sirius", "Started"));
+		}
+		int brothers = stringList(obj.get("talked_threebrothers")).size();
+		if (brothers > 0) {
+			lines.add(new QuestLine("Argofay Threebrothers", brothers + "/3 talked"));
+		}
+		return lines;
+	}
+
+	private static List<QuestLine> dreadfarmLines(JsonObject obj) {
+		if (obj == null) {
+			return List.of();
+		}
+		List<QuestLine> lines = new ArrayList<>();
+		int shania = intVal(obj, "shania_stage");
+		if (shania > 0) {
+			lines.add(new QuestLine("Harvest for Shania", "Stage " + shania));
+		}
+		int feeder = countEntries(obj.get("caducous_feeder_uses"));
+		if (feeder > 0) {
+			lines.add(new QuestLine("Caducous Feeder", feeder == 1 ? "1 use" : feeder + " uses"));
+		}
+		return lines;
+	}
+
+	private static List<QuestLine> westVillageLines(JsonObject obj) {
+		if (obj == null) {
+			return List.of();
+		}
+		List<QuestLine> lines = new ArrayList<>();
+		JsonObject kloon = Leveling.obj(obj.get("crazy_kloon"));
+		if (kloon != null) {
+			if (bool(kloon, "quest_complete")) {
+				lines.add(new QuestLine("Unhinged Kloon", "Complete"));
+			} else {
+				int terminals = stringList(kloon.get("hacked_terminals")).size();
+				if (terminals > 0) {
+					lines.add(new QuestLine("Unhinged Kloon", terminals + "/8 terminals"));
+				} else if (bool(kloon, "talked")) {
+					lines.add(new QuestLine("Unhinged Kloon", "Started"));
+				}
+			}
+		}
+		JsonObject glyphs = Leveling.obj(obj.get("glyphs"));
+		if (glyphs != null) {
+			if (bool(glyphs, "completed")) {
+				lines.add(new QuestLine("Sorcerer Okron", "Complete"));
+			} else {
+				int current = intVal(glyphs, "current_glyph");
+				if (current > 0) {
+					lines.add(new QuestLine("Sorcerer Okron", "Glyph " + current));
+				} else if (bool(glyphs, "claimed_wand")) {
+					lines.add(new QuestLine("Sorcerer Okron", "Wand claimed"));
+				}
+			}
+		}
+		JsonObject kat = Leveling.obj(obj.get("kat_house"));
+		if (kat != null) {
+			int bins = intVal(kat, "bin_collected_mosquito")
+				+ intVal(kat, "bin_collected_silverfish")
+				+ intVal(kat, "bin_collected_spider");
+			if (bins > 0) {
+				lines.add(new QuestLine("Kat's Vermin Bins", bins + "/3 filled"));
+			}
+		}
+		JsonObject mirror = Leveling.obj(obj.get("mirrorverse"));
+		if (mirror != null) {
+			if (bool(mirror, "claimed_reward")) {
+				lines.add(new QuestLine("Mirrorverse", "Reward claimed"));
+			} else {
+				int rooms = stringList(mirror.get("visited_rooms")).size();
+				if (rooms > 0) {
+					lines.add(new QuestLine("Mirrorverse", rooms + "/7 rooms"));
+				}
+			}
+		}
+		return lines;
+	}
+
+	private static List<QuestLine> castleLines(JsonObject obj) {
+		if (obj == null) {
+			return List.of();
+		}
+		List<QuestLine> lines = new ArrayList<>();
+		int fairy = intVal(obj, "fairy_step");
+		if (fairy > 0) {
+			lines.add(new QuestLine("Castle Fairy", "Step " + fairy));
+		}
+		if (bool(obj, "unlocked_pathway_skip")) {
+			lines.add(new QuestLine("Pathway Skip", "Unlocked"));
+		}
+		return lines;
+	}
+
+	private static List<QuestLine> blackLagoonLines(JsonObject obj) {
+		if (obj == null) {
+			return List.of();
+		}
+		List<QuestLine> lines = new ArrayList<>();
+		int step = intVal(obj, "completed_step");
+		if (step > 0) {
+			lines.add(new QuestLine("Dr. Hibble", "Step " + step));
+		}
+		return lines;
+	}
+
+	private static List<QuestLine> villagePlazaLines(JsonObject obj) {
+		if (obj == null) {
+			return List.of();
+		}
+		List<QuestLine> lines = new ArrayList<>();
+		JsonObject murder = Leveling.obj(obj.get("murder"));
+		if (murder != null) {
+			int step = intVal(murder, "step_index");
+			if (step > 0) {
+				lines.add(new QuestLine("Reverse-Murder", "Step " + step));
+			}
+		}
+		JsonObject cowboy = Leveling.obj(obj.get("cowboy"));
+		if (cowboy != null) {
+			int stage = intVal(cowboy, "stage");
+			if (stage > 0) {
+				lines.add(new QuestLine("Cowboy Nick", "Stage " + stage));
+			}
+		}
+		JsonObject seraphine = Leveling.obj(obj.get("seraphine"));
+		if (seraphine != null) {
+			int step = intVal(seraphine, "step_index");
+			if (step > 0) {
+				lines.add(new QuestLine("Seraphine's Face", "Step " + step));
+			}
+		}
+		return lines;
+	}
+
+	private static List<QuestLine> wizardTowerLines(JsonObject obj) {
+		if (obj == null) {
+			return List.of();
+		}
+		List<QuestLine> lines = new ArrayList<>();
+		int step = intVal(obj, "wizard_quest_step");
+		if (step > 0) {
+			lines.add(new QuestLine("Wizard's Quest", "Step " + step));
+		}
+		return lines;
+	}
+
+	private static int countEntries(JsonElement el) {
+		if (el == null || el.isJsonNull()) {
+			return 0;
+		}
+		if (el.isJsonArray()) {
+			return el.getAsJsonArray().size();
+		}
+		if (el.isJsonObject()) {
+			return el.getAsJsonObject().size();
+		}
+		return 0;
 	}
 
 	private static List<Timecharm> parseTimecharms(JsonElement element) {

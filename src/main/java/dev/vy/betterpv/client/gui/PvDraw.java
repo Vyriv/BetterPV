@@ -460,13 +460,20 @@ public final class PvDraw {
 
 	/** Right-align {@code value} after {@code label} within {@code w} using space padding. */
 	public static Component paddedLabelValue(Font font, String label, String value, int w) {
+		return paddedLabelValue(font, label, value, w, COLOR_TEXT, false);
+	}
+
+	public static Component paddedLabelValue(
+		Font font, String label, String value, int w, int labelColor, boolean labelBold
+	) {
 		String left = label == null ? "" : label;
 		String right = value == null ? "" : value;
-		int gap = w - font.width(left) - font.width(right);
+		Component leftComp = styled(left, labelColor, labelBold);
+		int gap = w - font.width(leftComp) - font.width(right);
 		int spaceW = Math.max(1, font.width(" "));
 		int spaces = Math.max(1, gap / spaceW);
 		MutableComponent line = Component.empty();
-		line.append(styled(left, COLOR_TEXT, false));
+		line.append(leftComp);
 		line.append(Component.literal(" ".repeat(spaces)));
 		line.append(styled(right, COLOR_MUTED, false));
 		return line;

@@ -50,15 +50,14 @@ public final class MoulberryMode {
 			if (progress >= SEQUENCE.length) {
 				progress = 0;
 				active = !active;
-				return true;
 			}
-			return false;
+			return true;
 		}
 		if (key == SEQUENCE[0]) {
 			progress = 1;
-		} else {
-			progress = 0;
+			return true;
 		}
+		progress = 0;
 		return false;
 	}
 

@@ -43,6 +43,8 @@ public final class RiftUi {
 	public static final int CAT_COLOR = 0xFFFF77AA;
 	public static final int EYE_COLOR = 0xFFAA55FF;
 	public static final int ZONE_COLOR = 0xFF88AADD;
+	public static final int FLIP_MS = 480;
+	public static final int PANEL_HOVER = 0x0AFFFFFF;
 
 	public final List<HoverZone> zones = new ArrayList<>();
 	public final List<RunnableHit> hits = new ArrayList<>();
@@ -118,6 +120,35 @@ public final class RiftUi {
 		}
 		int pad = Math.max(0, (size - 16) / 2);
 		g.item(stack, x + pad, y + pad);
+	}
+
+	public static int questRow(
+		GuiGraphicsExtractor g, Font font, String label, String value, int x, int y, int w
+	) {
+		String right = value == null || value.isBlank() ? "-" : value;
+		int gap = 8;
+		int valueW = font.width(right);
+		int labelMax = Math.max(8, w - valueW - gap);
+		PvDraw.text(g, font, trim(font, label, labelMax), x, y, PvDraw.COLOR_TEXT);
+		PvDraw.textRight(g, font, right, x + w, y, questValueColor(right));
+		return y + STAT_ROW;
+	}
+
+	private static int questValueColor(String value) {
+		String lower = value.toLowerCase(java.util.Locale.ROOT);
+		if (lower.equals("claimed")
+			|| lower.equals("complete")
+			|| lower.equals("unlocked")
+			|| lower.equals("reward claimed")
+			|| lower.startsWith("3/3")
+			|| lower.startsWith("7/7")
+			|| lower.startsWith("8/8")) {
+			return OBTAINED;
+		}
+		if (lower.equals("started") || lower.equals("wand claimed")) {
+			return PvDraw.COLOR_GOLD;
+		}
+		return PvDraw.COLOR_TEXT;
 	}
 
 	public static int sectionSeparator(GuiGraphicsExtractor g, Font font, int panelX, int y, int panelW) {

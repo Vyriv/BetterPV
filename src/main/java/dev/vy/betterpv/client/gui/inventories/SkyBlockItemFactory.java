@@ -427,7 +427,7 @@ public final class SkyBlockItemFactory {
 		if (slot.lore() != null && !slot.lore().isEmpty()) {
 			for (String raw : slot.lore()) {
 				String cleaned = cleanLoreLine(raw);
-				loreLines.add(cleaned.isBlank() ? Component.empty() : legacyText(cleaned));
+				loreLines.add(cleaned.isBlank() ? Component.empty() : EnchantTooltip.colorize(legacyText(cleaned)));
 			}
 		} else {
 			// Auction PET_* tags often ship with empty lore — resolve NEU pet text.
@@ -439,7 +439,7 @@ public final class SkyBlockItemFactory {
 				}
 				for (String raw : petResolved.lore()) {
 					String cleaned = cleanLoreLine(raw);
-					loreLines.add(cleaned.isBlank() ? Component.empty() : legacyText(cleaned));
+					loreLines.add(cleaned.isBlank() ? Component.empty() : EnchantTooltip.colorize(legacyText(cleaned)));
 				}
 			} else {
 				JsonObject neu = neuItem(slot.id());
@@ -447,7 +447,7 @@ public final class SkyBlockItemFactory {
 					for (var el : neu.getAsJsonArray("lore")) {
 						if (el.isJsonPrimitive()) {
 							String line = el.getAsString();
-							loreLines.add(line == null || line.isBlank() ? Component.empty() : legacyText(line));
+							loreLines.add(line == null || line.isBlank() ? Component.empty() : EnchantTooltip.colorize(legacyText(line)));
 						}
 					}
 				}
@@ -1443,7 +1443,7 @@ public final class SkyBlockItemFactory {
 	}
 
 	public static Component legacyLine(String text) {
-		return legacyText(text);
+		return EnchantTooltip.colorize(legacyText(text));
 	}
 
 	private static Component legacyText(String text) {

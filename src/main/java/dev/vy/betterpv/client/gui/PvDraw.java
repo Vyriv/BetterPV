@@ -356,6 +356,28 @@ public final class PvDraw {
 	}
 
 	/** Hue wheel colour; blends toward cosmetics purple so it still nods to the name gradient. */
+	public static int chromaRgb(float hue) {
+		return rainbowArgb(hue);
+	}
+
+	public static Component chromaText(String text, boolean bold) {
+		if (text == null || text.isEmpty()) {
+			return Component.empty();
+		}
+		float t = (System.currentTimeMillis() % 2800L) / 2800F;
+		MutableComponent out = Component.empty();
+		for (int i = 0; i < text.length(); i++) {
+			int rgb = rainbowArgb(positiveModulo(t + i * 0.07F, 1.0F)) & 0xFFFFFF;
+			Style style = Style.EMPTY.withColor(TextColor.fromRgb(rgb)).withItalic(false);
+			if (bold) {
+				style = style.withBold(true);
+			}
+			out.append(Component.literal(String.valueOf(text.charAt(i))).setStyle(style));
+		}
+		return out;
+	}
+
+	/** Hue wheel colour; blends toward cosmetics purple so it still nods to the name gradient. */
 	private static int rainbowArgb(float hue) {
 		float h = positiveModulo(hue, 1.0F);
 		int rgb = java.awt.Color.HSBtoRGB(h, 0.85F, 1.0F) & 0xFFFFFF;

@@ -1,54 +1,51 @@
 # BetterPV
-SkyBlock Profile Viewer for Fabric
 
-A client-side Hypixel SkyBlock profile viewer for Minecraft **26.1.2** and **26.2**. Peek at a profile without leaving the game: yours with `/pv`, or anyone else's with `/pv <username>`.
+A better profile viewer for Hypixel SkyBlock.
 
-Use the buttons along the top to switch pages. When a page has categories, the buttons on the left switch between them.
+Use `/pv <player>` to open it.
 
-## What it's for
-- Networth, weight, skills, and progress at a glance
-- Inventories, pets, auctions, and more island pages as they land
-- Clean enough to screenshot and share
+## Features
+
+- 15 profile tabs covering pretty much every part of SkyBlock
+- Home overview with skills, slayers, SkyBlock level, networth, weight and stats
+- Dungeon stats, floor times, classes, essence shops and XP calculators
+- Full inventory viewer with backpacks, wardrobe, sacks, accessory bag, carnival masks and more
+- Pets, auctions, collections and minions
+- Garden, Mining, Foraging, Fishing and Crimson Isle progression
+- Rift, Museum and Bestiary
+- Bingo and Chocolate Factory stats
+- Profile switching with co-op member info
+- Search for players, inventories and bestiary entries
+- Senither + Lily weight
+- Networth with multiple calculation modes
+- Skill, Slayer and Dungeon XP calculators
+- Custom item textures and proper SkyBlock item tooltips
+
+BetterPV also hooks into various places in Hypixel chat/UI so player names can open directly in `/pv`.
+
+## Commands
+
+`/pv [player]`
+
+`/betterpv pv [player]`
+
+Running `/pv` without a name opens your own profile.
 
 ## Credits
-- **[NotEnoughUpdates Repo](https://github.com/NotEnoughUpdates/NotEnoughUpdates-REPO)**: item data, leveling tables, and other SkyBlock reference data
-- **[SkyCofl](https://sky.coflnet.com/)**: auction history
-- **[EliteBot](https://elitebot.dev/)**: garden contests and farming weight
 
-## Status
-Work in progress. Home, dungeons, inventories, pets, auctions, collections, and minions are in; more pages (garden, mining, and others) are still coming.
+BetterPV uses data, APIs and formulas from a few community projects:
 
-Fabric 26.1.2 / 26.2 · Client-side
+- [NotEnoughUpdates / NEU-REPO](https://github.com/NotEnoughUpdates/NotEnoughUpdates-REPO) - items, textures, pets, bestiary data and other SkyBlock data
+- [Athen](https://athen.aerii.xyz/prices) - prices
+- [SkyHelper Prices](https://github.com/SkyHelperBot/Prices) - price data and fallback pricing
+- [SkyCofl](https://sky.coflnet.com) - auction history
+- [EliteBot](https://api.elitebot.dev) - Jacob contest history and farming weight
+- [SkyCrypt](https://skycrypt.co) - networth/application worth references
+- Senither - weight formula
+- Lily - weight formula
+- ninjune / Vinxey - ColeWeight display thresholds
 
-## Building
-Builds both Minecraft versions into `dist/`:
+## Links
 
-```powershell
-.\gradlew.bat :26.1.2:buildAndCollect :26.2:buildAndCollect
-```
-
-Run a specific version:
-
-```powershell
-.\gradlew.bat :26.1.2:runClient
-.\gradlew.bat :26.2:runClient
-```
-
-A public clone builds with no secrets. Hypixel proxy routes authenticate with a
-Minecraft session proof (`joinServer` locally → `POST /hypixel/auth` with
-`username` + `serverId` only → short-lived `Authorization: Bearer` JWT). The
-Minecraft access token is never sent to `api.vyriv.dev`. The client is
-JWT-only (no static `X-VyPV-Key` path).
-
-### Offline / Fabric runClient
-Default Loom `runClient` uses an offline `Player###` session (`FabricMC` token).
-That cannot complete Mojang `joinServer` / `hasJoined`, so **`/pv` cannot work
-there**. Test `/pv` from a real Microsoft-authenticated Minecraft launcher
-instance instead. BetterPV shows a clear chat error when offline session proof
-is impossible.
-
-If the API returns session-auth unavailable (missing
-`BETTERPV_SESSION_SIGNING_SECRET` in Coolify), BetterPV shows that in chat.
-
-## About
-BetterPV is developed and maintained by **vyriv** (Minecraft IGN: `catgirllivid` / `vyriv`).
+- [Website](https://vyriv.dev)
+- [GitHub](https://github.com/Vyriv)

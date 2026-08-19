@@ -163,8 +163,7 @@ public final class HotmPage {
 		PvDraw.text(g, font, String.valueOf(unlockedCount), rx, ry, PvDraw.COLOR_ACCENT);
 		zones.add(HoverZone.of(rx, ry - font.lineHeight - 2, rw, font.lineHeight + MiningUi.STAT_ROW,
 			List.of(
-				PvTooltip.Line.of("Unlocked perks: " + unlockedCount, PvDraw.COLOR_TEXT),
-				PvTooltip.Line.of("Click the forge panel to flip", PvDraw.COLOR_MUTED)
+				PvTooltip.Line.of("Unlocked perks: " + unlockedCount, PvDraw.COLOR_TEXT)
 			)));
 	}
 

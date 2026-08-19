@@ -378,16 +378,28 @@ public final class DungeonPage {
 		int rightX = x + leftW + GAP;
 
 		int calcH = Math.min(CALC_H, Math.max(64, h * 24 / 100));
-		int gap = 4;
 		int headerH = font.lineHeight + 4;
 		int lineH = font.lineHeight;
-		int totalGap = lineH;
 		int runsY = y + calcH + GAP;
 		int runsH = h - calcH - GAP;
 
 		drawCalcPanel(g, font, leftX, y, leftW, calcH, mouseX, mouseY);
 		int firstFloorY = runsY + PAD + headerH;
-		int totalY = firstFloorY + 7 * lineH + 6 * gap + totalGap;
+		int totalY = runsY + runsH - PAD - lineH;
+		int floorBlock = 7 * lineH;
+		int stretch = totalY - firstFloorY - floorBlock;
+		int gap;
+		int totalGap;
+		if (stretch < 14) {
+			gap = 2;
+			totalGap = 2;
+			totalY = firstFloorY + floorBlock + 6 * gap + totalGap;
+		} else {
+			gap = Math.max(2, stretch / 7);
+			int usedGaps = gap * 6;
+			totalGap = Math.max(gap, stretch - usedGaps);
+			totalY = firstFloorY + floorBlock + usedGaps + totalGap;
+		}
 		FloorLayout floors = new FloorLayout(firstFloorY, lineH, gap, totalY);
 		drawRunsPanel(g, font, leftX, runsY, leftW, runsH, floors, mouseX, mouseY);
 		drawRightColumn(g, font, rightX, y, rightW, h, floors.totalY(), mouseX, mouseY);
@@ -686,6 +698,7 @@ public final class DungeonPage {
 		g.pose().scale(scaleX, scaleY);
 		g.pose().translate(-cxFlip, -cyFlip);
 
+		this.classHitH = h;
 		PvDraw.innerPanel(g, x, y, w, h);
 		if (hovered && !animating) {
 			PvDraw.fill(g, x + 1, y + 1, w - 2, h - 2, PANEL_HOVER);
@@ -715,7 +728,7 @@ public final class DungeonPage {
 			PvDraw.COLOR_BAR_FILL,
 			this.data.cataMaxed()
 		);
-		this.zones.add(new HoverZone(cx, cataY, barW, labeledH, plainTip(this.data.cataHover())));
+		this.zones.add(new HoverZone(cx, cataY, barW, labeledH, cataTip()));
 
 		int secretsY = cataY + labeledH + 6;
 		PvDraw.text(g, font, "Secrets", cx, secretsY, PvDraw.COLOR_MUTED);
@@ -744,19 +757,32 @@ public final class DungeonPage {
 		}
 		int n = classes.size();
 
+		int extraBottom = extraY;
+		int avgGap = 8;
 		int tankY = totalY + font.lineHeight - labeledH;
 		int rowH = defaultRowH;
-		int firstY = tankY - (n - 1) * rowH;
-
-		int avgGap = 8;
+		int firstY = n <= 1 ? tankY : tankY - (n - 1) * rowH;
 		int avgY = firstY - avgGap - labeledH;
-		int secretsEnd = extraY;
-		if (avgY < secretsEnd + 8 && n > 1) {
-			avgY = secretsEnd + 8;
-			firstY = avgY + labeledH + avgGap;
-			rowH = Math.max(labeledH + 2, (tankY - firstY) / (n - 1));
-			firstY = tankY - (n - 1) * rowH;
-			avgY = firstY - avgGap - labeledH;
+		int minAvgY = extraBottom + 8;
+		if (avgY < minAvgY) {
+			avgY = minAvgY;
+			int afterAvg = avgY + labeledH + avgGap;
+			if (n <= 1) {
+				if (tankY < afterAvg) {
+					tankY = afterAvg;
+					firstY = tankY;
+				}
+			} else {
+				int span = tankY - afterAvg;
+				if (span >= (n - 1) * (labeledH + 2)) {
+					rowH = Math.max(labeledH + 2, span / (n - 1));
+					firstY = tankY - (n - 1) * rowH;
+				} else {
+					firstY = afterAvg;
+					rowH = labeledH + 2;
+					tankY = firstY + (n - 1) * rowH;
+				}
+			}
 		}
 
 		PvDraw.labeledBar(
@@ -955,6 +981,7 @@ public final class DungeonPage {
 		g.pose().scale(scaleX, scaleY);
 		g.pose().translate(-cxFlip, -cyFlip);
 
+		this.runsHitH = h;
 		PvDraw.innerPanel(g, x, y, w, h);
 		if (hovered && !animating) {
 			PvDraw.fill(g, x + 1, y + 1, w - 2, h - 2, PANEL_HOVER);
@@ -1086,6 +1113,31 @@ public final class DungeonPage {
 			x, y - 1, w, lineH + Math.max(2, gap / 2),
 			floorStatsTip(label, floor)
 		));
+	}
+
+	private List<PvTooltip.Line> cataTip() {
+		List<PvTooltip.Line> lines = new ArrayList<>(plainTip(this.data.cataHover()));
+		DungeonSnapshot.HubRace race = this.data.hubRace();
+		if (race != null && race.present()) {
+			lines.add(PvTooltip.Line.divider());
+			lines.add(PvTooltip.Line.title("Dungeon Hub Race", PvDraw.COLOR_ACCENT));
+			if (!race.selectedRace().isBlank()) {
+				lines.add(PvTooltip.Line.row(
+					"Race", PvDraw.COLOR_MUTED, race.selectedRace(), PvDraw.COLOR_TEXT
+				));
+			}
+			if (!race.selectedSetting().isBlank()) {
+				lines.add(PvTooltip.Line.row(
+					"Setting", PvDraw.COLOR_MUTED, race.selectedSetting(), PvDraw.COLOR_TEXT
+				));
+			}
+			if (race.runback() != null) {
+				lines.add(PvTooltip.Line.row(
+					"Runback", PvDraw.COLOR_MUTED, race.runback() ? "On" : "Off", PvDraw.COLOR_TEXT
+				));
+			}
+		}
+		return lines;
 	}
 
 	private static List<PvTooltip.Line> plainTip(String text) {

@@ -2,6 +2,7 @@
 	"modmenu.nameTranslation.betterpv": "BetterPV",
 	"betterpv.command.pv": "Opens the Profile Viewer",
 	"betterpv.screen.title": "BetterPV",
+	"betterpv.screen.flip_tip": "Tip: some panels are clickable to display more data!",
 	"betterpv.home.weight_label": "Weight: ",
 	"betterpv.home.networth_label": "Networth: ",
 	"betterpv.home.purse_label": "Purse: ",
@@ -103,6 +104,8 @@
 	"betterpv.inv.accessory_bag": "Accessory Bag",
 	"betterpv.inv.time_pocket": "Time Pocket",
 	"betterpv.inv.personal_vault": "Personal Vault",
+	"betterpv.inv.carnival_masks": "Carnival Masks",
+	"betterpv.inv.candy_bag": "Candy Bag",
 	"betterpv.inv.search": "Search",
 	"betterpv.inv.search_hint": "Search for item",
 

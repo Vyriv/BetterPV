@@ -507,6 +507,15 @@ public final class ProfileViewerScreen extends Screen {
 		if (scaled) {
 			graphics.pose().popMatrix();
 		}
+
+		PvDraw.text(
+			graphics,
+			this.font,
+			Component.translatable("betterpv.screen.flip_tip").getString(),
+			4,
+			this.height - this.font.lineHeight - 4,
+			0xFFFFFF55
+		);
 	}
 
 	private float openScale() {

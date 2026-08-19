@@ -211,6 +211,37 @@ public final class ForagingOverviewPage {
 				snapshot.galateaBeacon() + " / 10",
 				lx, ly, lw, PvDraw.COLOR_GOLD);
 		}
+
+		ForagingSnapshot.HoneyInfo honey = snapshot.honey();
+		if (honey != null && honey.present()) {
+			ly = ForagingUi.sectionSeparator(g, font, x, ly, w);
+			PvDraw.text(g, font, "Honey", lx, ly, PvDraw.COLOR_MUTED);
+			ly += ForagingUi.STAT_ROW;
+			if (honey.smearedTrees() > 0) {
+				int rowY = ly;
+				ly = ForagingUi.statLine(g, font, "Smeared trees", String.valueOf(honey.smearedTrees()),
+					lx, ly, lw, PvDraw.COLOR_ACCENT);
+				if (!honey.treeNames().isEmpty()) {
+					List<PvTooltip.Line> tip = new ArrayList<>();
+					tip.add(PvTooltip.Line.title("Smeared trees", PvDraw.COLOR_ACCENT));
+					tip.add(PvTooltip.Line.divider());
+					int shown = 0;
+					for (String name : honey.treeNames()) {
+						if (shown >= 12) {
+							tip.add(PvTooltip.Line.meta("+" + (honey.treeNames().size() - shown) + " more"));
+							break;
+						}
+						tip.add(PvTooltip.Line.plain(name));
+						shown++;
+					}
+					this.zones.add(HoverZone.of(lx, rowY, lw, ForagingUi.STAT_ROW, tip));
+				}
+			}
+			if (honey.refills() > 0) {
+				ly = ForagingUi.statLine(g, font, "Refills", String.valueOf(honey.refills()),
+					lx, ly, lw, PvDraw.COLOR_GOLD);
+			}
+		}
 	}
 
 	private void drawMelodySection(

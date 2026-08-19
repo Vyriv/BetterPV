@@ -98,6 +98,22 @@ public final class DungeonSnapshot {
 	private final EssenceShop dragonShop;
 	private final int dailyRuns;
 	private final int journalsUnlocked;
+	private final HubRace hubRace;
+
+	public record HubRace(String selectedRace, String selectedSetting, Boolean runback) {
+		public HubRace {
+			selectedRace = selectedRace == null ? "" : selectedRace;
+			selectedSetting = selectedSetting == null ? "" : selectedSetting;
+		}
+
+		public static HubRace empty() {
+			return new HubRace("", "", null);
+		}
+
+		public boolean present() {
+			return !selectedRace.isBlank() || !selectedSetting.isBlank() || runback != null;
+		}
+	}
 
 	public DungeonSnapshot(
 		int cataLevel,
@@ -127,7 +143,8 @@ public final class DungeonSnapshot {
 		EssenceShop spiderShop,
 		EssenceShop dragonShop,
 		int dailyRuns,
-		int journalsUnlocked
+		int journalsUnlocked,
+		HubRace hubRace
 	) {
 		this.cataLevel = cataLevel;
 		this.cataXp = cataXp;
@@ -159,6 +176,7 @@ public final class DungeonSnapshot {
 		this.dragonShop = dragonShop == null ? EssenceShop.empty("dragon", "Dragon") : dragonShop;
 		this.dailyRuns = Math.max(0, dailyRuns);
 		this.journalsUnlocked = Math.max(0, journalsUnlocked);
+		this.hubRace = hubRace == null ? HubRace.empty() : hubRace;
 	}
 
 	public int cataLevel() {
@@ -282,6 +300,49 @@ public final class DungeonSnapshot {
 		return this.journalsUnlocked;
 	}
 
+	public HubRace hubRace() {
+		return this.hubRace;
+	}
+
+	public static HubRace parseHubRace(com.google.gson.JsonElement raw) {
+		com.google.gson.JsonObject root = raw != null && raw.isJsonObject() ? raw.getAsJsonObject() : null;
+		if (root == null || root.entrySet().isEmpty()) {
+			return HubRace.empty();
+		}
+		String race = "";
+		if (root.has("selected_race") && root.get("selected_race").isJsonPrimitive()) {
+			try {
+				race = root.get("selected_race").getAsString();
+			} catch (Exception ignored) {
+				race = "";
+			}
+		}
+		String setting = "";
+		if (root.has("selected_setting") && root.get("selected_setting").isJsonPrimitive()) {
+			try {
+				setting = root.get("selected_setting").getAsString();
+			} catch (Exception ignored) {
+				setting = "";
+			}
+		}
+		Boolean runback = null;
+		if (root.has("runback") && root.get("runback").isJsonPrimitive()) {
+			try {
+				runback = root.get("runback").getAsBoolean();
+			} catch (Exception ignored) {
+				runback = null;
+			}
+		}
+		if ((race == null || race.isBlank()) && (setting == null || setting.isBlank()) && runback == null) {
+			return HubRace.empty();
+		}
+		return new HubRace(
+			dev.vy.betterpv.client.networth.InventoryDecoder.prettyWords(race),
+			dev.vy.betterpv.client.networth.InventoryDecoder.prettyWords(setting),
+			runback
+		);
+	}
+
 	public static DungeonSnapshot empty() {
 		return new DungeonSnapshot(
 			0, 0F, 0F, false, "Loading…",
@@ -296,7 +357,8 @@ public final class DungeonSnapshot {
 			EssenceShop.empty("ice", "Ice"),
 			EssenceShop.empty("spider", "Spider"),
 			EssenceShop.empty("dragon", "Dragon"),
-			0, 0
+			0, 0,
+			HubRace.empty()
 		);
 	}
 }

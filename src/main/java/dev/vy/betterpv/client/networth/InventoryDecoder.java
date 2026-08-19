@@ -319,6 +319,20 @@ public final class InventoryDecoder {
 		List<InventorySnapshot.Loadout> loadouts = parseNamedLoadouts(member, loadout, accessoryInfo);
 
 		List<InventorySnapshot.Page> sackPages = parseSackPages(member, inventory);
+		JsonObject shared = obj(member.get("shared_inventory"));
+		boolean carnivalPresent = hasInventoryField(shared, "carnival_mask_inventory_contents")
+			|| hasInventoryField(inventory, "carnival_mask_inventory_contents")
+			|| hasInventoryField(member, "carnival_mask_inventory_contents");
+		boolean candyPresent = hasInventoryField(shared, "candy_inventory_contents")
+			|| hasInventoryField(inventory, "candy_inventory_contents")
+			|| hasInventoryField(bags, "candy_inventory_contents")
+			|| hasInventoryField(member, "candy_inventory_contents");
+		InventorySnapshot.Page carnivalPage = sharedPage(
+			shared, inventory, member, "carnival_mask_inventory_contents", "Carnival Masks"
+		);
+		InventorySnapshot.Page candyPage = sharedPage(
+			shared, inventory, member, "candy_inventory_contents", "Candy Bag"
+		);
 
 		return new InventorySnapshot(
 			new InventorySnapshot.Page("Inventory", combinedInv, 9),
@@ -338,8 +352,34 @@ public final class InventoryDecoder {
 				"Personal Vault",
 				toUiSlots(decodeFieldKeepingEmpty(inventory, "personal_vault_contents", 27)),
 				9
-			)
+			),
+			carnivalPage,
+			carnivalPresent,
+			candyPage,
+			candyPresent
 		);
+	}
+
+	private static boolean hasInventoryField(JsonObject container, String field) {
+		if (container == null || field == null || !container.has(field) || container.get(field).isJsonNull()) {
+			return false;
+		}
+		return !extractData(container.get(field)).isBlank();
+	}
+
+	private static InventorySnapshot.Page sharedPage(
+		JsonObject shared, JsonObject inventory, JsonObject member, String field, String title
+	) {
+		if (shared != null && shared.has(field)) {
+			return new InventorySnapshot.Page(title, toUiSlots(decodeFieldKeepingEmpty(shared, field, 27)), 9);
+		}
+		if (inventory != null && inventory.has(field)) {
+			return new InventorySnapshot.Page(title, toUiSlots(decodeFieldKeepingEmpty(inventory, field, 27)), 9);
+		}
+		if (member != null && member.has(field)) {
+			return new InventorySnapshot.Page(title, toUiSlots(decodeFieldKeepingEmpty(member, field, 27)), 9);
+		}
+		return InventorySnapshot.emptyPage(title, 9);
 	}
 
 	private static InventorySnapshot.Page bagPage(JsonObject bags, String field, String title) {

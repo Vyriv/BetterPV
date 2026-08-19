@@ -121,6 +121,10 @@ public final class InventorySnapshot {
 	private final AccessoryInfo accessoryInfo;
 	private final Page timePocket;
 	private final Page personalVault;
+	private final Page carnivalMasks;
+	private final boolean carnivalPresent;
+	private final Page candyBag;
+	private final boolean candyPresent;
 
 	public InventorySnapshot(
 		Page inventory,
@@ -136,7 +140,11 @@ public final class InventorySnapshot {
 		List<Page> accessoryBag,
 		AccessoryInfo accessoryInfo,
 		Page timePocket,
-		Page personalVault
+		Page personalVault,
+		Page carnivalMasks,
+		boolean carnivalPresent,
+		Page candyBag,
+		boolean candyPresent
 	) {
 		this.inventory = inventory == null ? emptyPage("Inventory", 9) : inventory;
 		this.enderChest = enderChest == null ? List.of() : List.copyOf(enderChest);
@@ -156,6 +164,10 @@ public final class InventorySnapshot {
 		this.accessoryInfo = accessoryInfo == null ? AccessoryInfo.empty() : accessoryInfo;
 		this.timePocket = timePocket == null ? emptyPage("Time Pocket", 9) : timePocket;
 		this.personalVault = personalVault == null ? emptyPage("Personal Vault", 9) : personalVault;
+		this.carnivalMasks = carnivalMasks == null ? emptyPage("Carnival Masks", 9) : carnivalMasks;
+		this.carnivalPresent = carnivalPresent;
+		this.candyBag = candyBag == null ? emptyPage("Candy Bag", 9) : candyBag;
+		this.candyPresent = candyPresent;
 	}
 
 	public static InventorySnapshot empty() {
@@ -173,7 +185,11 @@ public final class InventorySnapshot {
 			List.of(emptyPage("Accessory Bag", 9)),
 			AccessoryInfo.empty(),
 			emptyPage("Time Pocket", 9),
-			emptyPage("Personal Vault", 9)
+			emptyPage("Personal Vault", 9),
+			emptyPage("Carnival Masks", 9),
+			false,
+			emptyPage("Candy Bag", 9),
+			false
 		);
 	}
 
@@ -235,5 +251,21 @@ public final class InventorySnapshot {
 
 	public Page personalVault() {
 		return this.personalVault;
+	}
+
+	public Page carnivalMasks() {
+		return this.carnivalMasks;
+	}
+
+	public boolean carnivalPresent() {
+		return this.carnivalPresent;
+	}
+
+	public Page candyBag() {
+		return this.candyBag;
+	}
+
+	public boolean candyPresent() {
+		return this.candyPresent;
 	}
 }

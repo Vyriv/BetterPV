@@ -147,6 +147,8 @@ public final class SkyBlockItemFactory {
 		for (InventorySnapshot.Page page : snapshot.accessoryBag()) collectIds(page, ids);
 		collectIds(snapshot.timePocket(), ids);
 		collectIds(snapshot.personalVault(), ids);
+		collectIds(snapshot.carnivalMasks(), ids);
+		collectIds(snapshot.candyBag(), ids);
 		for (String id : ids) {
 			for (String candidate : neuCandidates(id)) {
 				if (NeuRepoCache.get(candidate) == null) {
@@ -246,6 +248,8 @@ public final class SkyBlockItemFactory {
 		for (InventorySnapshot.Page page : snapshot.accessoryBag()) collectIds(page, ids);
 		collectIds(snapshot.timePocket(), ids);
 		collectIds(snapshot.personalVault(), ids);
+		collectIds(snapshot.carnivalMasks(), ids);
+		collectIds(snapshot.candyBag(), ids);
 		// Inventory pane button skulls (backpack / sacks / bags).
 		ids.add("JUMBO_BACKPACK");
 		ids.add("POCKET_SACK_IN_A_SACK");

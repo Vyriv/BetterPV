@@ -1513,6 +1513,9 @@ public final class ProfileFetcher {
 		if (journal != null && journal.has("unlocked_journals") && journal.get("unlocked_journals").isJsonArray()) {
 			journals = journal.getAsJsonArray("unlocked_journals").size();
 		}
+		DungeonSnapshot.HubRace race = DungeonSnapshot.parseHubRace(
+			dungeons == null ? null : dungeons.get("dungeon_hub_race_settings")
+		);
 
 		return new DungeonSnapshot(
 			(int) Math.floor(cata.level()),
@@ -1542,7 +1545,8 @@ public final class ProfileFetcher {
 			EssenceShopData.spider(member),
 			EssenceShopData.dragon(member),
 			dailyCount,
-			journals
+			journals,
+			race
 		);
 	}
 

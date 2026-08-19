@@ -319,9 +319,6 @@ public final class MiscStatsPage {
 				));
 		}
 
-		if (cy + font.lineHeight < bottom) {
-			PvDraw.text(g, font, "Click panel to flip →", x, bottom - font.lineHeight, PvDraw.COLOR_MUTED);
-		}
 	}
 
 	private void drawExtrasFace(
@@ -396,9 +393,6 @@ public final class MiscStatsPage {
 			}
 		}
 
-		if (cy + font.lineHeight < bottom) {
-			PvDraw.text(g, font, "← Click panel to flip", x, bottom - font.lineHeight, PvDraw.COLOR_MUTED);
-		}
 	}
 
 	/** Two-column essence-shop style rows: icon + name + T#/#. */

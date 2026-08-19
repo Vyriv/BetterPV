@@ -92,6 +92,9 @@ public final class InventoryPage {
 		this.gemScroll = 0;
 		this.stackCache.clear();
 		resetAccessoryFlip();
+		if (!this.pane.visibleOn(this.snapshot)) {
+			this.pane = InventoryPane.INVENTORY;
+		}
 		rebuildSearchIndex();
 		SkyBlockItemFactory.prefetch(this.snapshot);
 	}
@@ -118,6 +121,16 @@ public final class InventoryPage {
 
 	public InventoryPane pane() {
 		return this.pane;
+	}
+
+	public List<InventoryPane> visiblePanes() {
+		List<InventoryPane> out = new ArrayList<>();
+		for (InventoryPane pane : InventoryPane.values()) {
+			if (pane.visibleOn(this.snapshot)) {
+				out.add(pane);
+			}
+		}
+		return out;
 	}
 
 	public void setSearchQuery(String query) {
@@ -1102,6 +1115,9 @@ public final class InventoryPage {
 			return;
 		}
 		for (InventoryPane pane : InventoryPane.values()) {
+			if (!pane.visibleOn(this.snapshot)) {
+				continue;
+			}
 			if (pane == InventoryPane.LOADOUTS) {
 				List<InventorySnapshot.Loadout> loadouts = this.snapshot.loadouts();
 				for (int i = 0; i < loadouts.size(); i++) {
@@ -1228,6 +1244,8 @@ public final class InventoryPage {
 			case ACCESSORY_BAG -> this.snapshot.accessoryBag();
 			case TIME_POCKET -> List.of(this.snapshot.timePocket());
 			case PERSONAL_VAULT -> List.of(this.snapshot.personalVault());
+			case CARNIVAL_MASKS -> List.of(this.snapshot.carnivalMasks());
+			case CANDY_BAG -> List.of(this.snapshot.candyBag());
 		};
 	}
 

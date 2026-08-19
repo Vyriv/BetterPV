@@ -1,6 +1,7 @@
 package dev.vy.betterpv.client.gui.nav;
 
 import dev.vy.betterpv.BetterPV;
+import dev.vy.betterpv.client.data.InventorySnapshot;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
@@ -29,7 +30,9 @@ public enum InventoryPane {
 	 */
 	ACCESSORY_BAG(null, "textures/gui/inventories/accessory_bag.png", Items.GOLDEN_APPLE, "betterpv.inv.accessory_bag"),
 	TIME_POCKET(null, null, Items.CLOCK, "betterpv.inv.time_pocket"),
-	PERSONAL_VAULT(null, null, Items.ENDER_EYE, "betterpv.inv.personal_vault");
+	PERSONAL_VAULT(null, null, Items.ENDER_EYE, "betterpv.inv.personal_vault"),
+	CARNIVAL_MASKS("CARNIVAL_MASK_BAG", null, Items.LEATHER_HELMET, "betterpv.inv.carnival_masks"),
+	CANDY_BAG(null, null, Items.COOKIE, "betterpv.inv.candy_bag");
 
 	private final String skyblockIconId;
 	private final Identifier textureIcon;
@@ -58,8 +61,10 @@ public enum InventoryPane {
 	public ItemStack icon() {
 		if (this.skyblockIconId != null) {
 			ItemStack sky = SkyBlockItemFactory.iconStack(this.skyblockIconId);
-			if (sky != null && !sky.isEmpty() && sky.is(Items.PLAYER_HEAD)) {
-				return sky;
+			if (sky != null && !sky.isEmpty()) {
+				if (this == CARNIVAL_MASKS || sky.is(Items.PLAYER_HEAD)) {
+					return sky;
+				}
 			}
 		}
 		return new ItemStack(this.fallback);
@@ -67,5 +72,16 @@ public enum InventoryPane {
 
 	public Component label() {
 		return Component.translatable(this.langKey);
+	}
+
+	public boolean visibleOn(InventorySnapshot snapshot) {
+		if (snapshot == null) {
+			return this != CARNIVAL_MASKS && this != CANDY_BAG;
+		}
+		return switch (this) {
+			case CARNIVAL_MASKS -> snapshot.carnivalPresent();
+			case CANDY_BAG -> snapshot.candyPresent();
+			default -> true;
+		};
 	}
 }

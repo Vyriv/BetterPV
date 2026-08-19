@@ -84,6 +84,22 @@ public final class ForagingSnapshot {
 		}
 	}
 
+	public record HoneyInfo(int smearedTrees, int refills, List<String> treeNames) {
+		public HoneyInfo {
+			smearedTrees = Math.max(0, smearedTrees);
+			refills = Math.max(0, refills);
+			treeNames = List.copyOf(treeNames == null ? List.of() : treeNames);
+		}
+
+		public static HoneyInfo empty() {
+			return new HoneyInfo(0, 0, List.of());
+		}
+
+		public boolean present() {
+			return smearedTrees > 0 || refills > 0;
+		}
+	}
+
 	private final int foragingLevel;
 	private final float foragingFill;
 	private final boolean foragingMaxed;
@@ -170,6 +186,7 @@ public final class ForagingSnapshot {
 	private final long uniqueShards;
 	private final DungeonSnapshot.EssenceShop safariShop;
 	private final long peltCount;
+	private final HoneyInfo honey;
 
 	private ForagingSnapshot(
 		int foragingLevel, float foragingFill, boolean foragingMaxed, String foragingHover,
@@ -192,7 +209,8 @@ public final class ForagingSnapshot {
 		SafariInfo safari,
 		long uniqueShards,
 		DungeonSnapshot.EssenceShop safariShop,
-		long peltCount
+		long peltCount,
+		HoneyInfo honey
 	) {
 		this.foragingLevel = foragingLevel;
 		this.foragingFill = Math.max(0f, Math.min(1f, foragingFill));
@@ -246,6 +264,7 @@ public final class ForagingSnapshot {
 			? DungeonSnapshot.EssenceShop.empty("safari", "Safari")
 			: safariShop;
 		this.peltCount = Math.max(0L, peltCount);
+		this.honey = honey == null ? HoneyInfo.empty() : honey;
 	}
 
 	public static ForagingSnapshot empty() {
@@ -262,7 +281,8 @@ public final class ForagingSnapshot {
 			SafariInfo.empty(),
 			0L,
 			DungeonSnapshot.EssenceShop.empty("safari", "Safari"),
-			0L
+			0L,
+			HoneyInfo.empty()
 		);
 	}
 
@@ -378,6 +398,7 @@ public final class ForagingSnapshot {
 		SafariInfo safari = parseSafari(Leveling.obj(member.get("safari")));
 		JsonObject trapper = Leveling.obj(quests == null ? null : quests.get("trapper_quest"));
 		long pelts = longOf(trapper, "pelt_count");
+		HoneyInfo honey = parseHoney(Leveling.obj(foragingObj == null ? null : foragingObj.get("honey")));
 
 		return new ForagingSnapshot(
 			(int) Math.floor(foraging.level()), foraging.fill(), foraging.maxed(), foraging.skillHover("Foraging"),
@@ -394,7 +415,8 @@ public final class ForagingSnapshot {
 			safari,
 			longOf(stats, "unique_shards"),
 			EssenceShopData.safari(member),
-			pelts
+			pelts,
+			honey
 		);
 	}
 
@@ -492,6 +514,53 @@ public final class ForagingSnapshot {
 			}
 		}
 		return new SafariInfo(critters, captures, tickets, milestones);
+	}
+
+	private static HoneyInfo parseHoney(JsonObject root) {
+		if (root == null || root.entrySet().isEmpty()) {
+			return HoneyInfo.empty();
+		}
+		JsonElement smeared = root.get("smeared_trees");
+		JsonElement refills = root.get("refill_times");
+		int smearedCount = countEntries(smeared);
+		int refillCount = countEntries(refills);
+		List<String> names = new ArrayList<>();
+		if (smeared != null && smeared.isJsonObject()) {
+			for (String key : smeared.getAsJsonObject().keySet()) {
+				if (key != null && !key.isBlank()) {
+					names.add(InventoryDecoder.prettyWords(key));
+				}
+			}
+		} else if (smeared != null && smeared.isJsonArray()) {
+			for (JsonElement el : smeared.getAsJsonArray()) {
+				if (el != null && el.isJsonPrimitive()) {
+					try {
+						String id = el.getAsString();
+						if (id != null && !id.isBlank()) {
+							names.add(InventoryDecoder.prettyWords(id));
+						}
+					} catch (Exception ignored) {
+					}
+				}
+			}
+		}
+		if (smearedCount <= 0 && refillCount <= 0) {
+			return HoneyInfo.empty();
+		}
+		return new HoneyInfo(smearedCount, refillCount, names);
+	}
+
+	private static int countEntries(JsonElement el) {
+		if (el == null || el.isJsonNull()) {
+			return 0;
+		}
+		if (el.isJsonObject()) {
+			return el.getAsJsonObject().size();
+		}
+		if (el.isJsonArray()) {
+			return el.getAsJsonArray().size();
+		}
+		return 0;
 	}
 
 	private static List<CollectionRow> parseCollections(JsonObject collection) {
@@ -1104,6 +1173,8 @@ public final class ForagingSnapshot {
 	public long safariEssence() { return safariShop.balance(); }
 
 	public long peltCount() { return peltCount; }
+
+	public HoneyInfo honey() { return honey; }
 
 	public int hotfNodeLevel(String id) {
 		if (id == null || id.isBlank()) {

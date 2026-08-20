@@ -72,15 +72,25 @@ public final class Leveling {
 		public List<PvTooltip.Line> skillHoverLines(String name) {
 			int lvl = (int) Math.floor(level);
 			String title = (name == null ? "?" : name) + " " + lvl;
-			List<PvTooltip.Line> lines = new ArrayList<>(3);
+			List<PvTooltip.Line> lines = new ArrayList<>(5);
 			lines.add(PvTooltip.Line.of(title, PvDraw.COLOR_ACCENT));
+			lines.add(PvTooltip.Line.row(
+				"Total XP",
+				PvDraw.COLOR_MUTED,
+				FormatUtil.commas(Math.round(Math.max(0F, totalXp))),
+				PvDraw.COLOR_GOLD
+			));
+			if (overflowXp > 0.5F) {
+				lines.add(PvTooltip.Line.row(
+					"Overflow",
+					PvDraw.COLOR_MUTED,
+					FormatUtil.shortXp(overflowXp),
+					PvDraw.COLOR_GOLD
+				));
+			}
 			if (maxed) {
 				lines.add(PvTooltip.Line.of(
 					"Overflow Level: " + FormatUtil.oneDecimal(overflowLevel()),
-					PvDraw.COLOR_GOLD
-				));
-				lines.add(PvTooltip.Line.of(
-					"Overflow: " + FormatUtil.shortXp(Math.max(0F, overflowXp)),
 					PvDraw.COLOR_MUTED
 				));
 			} else {
@@ -109,12 +119,26 @@ public final class Leveling {
 		public List<PvTooltip.Line> slayerHoverLines(String name) {
 			int tier = (int) Math.floor(level);
 			String title = (name == null ? "?" : name) + " " + tier;
-			List<PvTooltip.Line> lines = new ArrayList<>(2);
+			List<PvTooltip.Line> lines = new ArrayList<>(5);
 			lines.add(PvTooltip.Line.of(title, PvDraw.COLOR_ACCENT));
+			lines.add(PvTooltip.Line.row(
+				"Total XP",
+				PvDraw.COLOR_MUTED,
+				FormatUtil.commas(Math.round(Math.max(0F, totalXp))),
+				PvDraw.COLOR_GOLD
+			));
+			if (overflowXp > 0.5F) {
+				lines.add(PvTooltip.Line.row(
+					"Overflow",
+					PvDraw.COLOR_MUTED,
+					FormatUtil.shortXp(overflowXp),
+					PvDraw.COLOR_GOLD
+				));
+			}
 			if (maxed) {
 				lines.add(PvTooltip.Line.of(
-					"Overflow: " + FormatUtil.shortXp(Math.max(0F, overflowXp)),
-					PvDraw.COLOR_GOLD
+					"Overflow Level: " + FormatUtil.oneDecimal(overflowLevel()),
+					PvDraw.COLOR_MUTED
 				));
 			} else {
 				long into = Math.round(xpIntoLevel);
@@ -278,7 +302,15 @@ public final class Leveling {
 				}
 			}
 			for (var entry : experience.entrySet()) {
-				if (entry.getKey() != null && entry.getKey().toUpperCase(Locale.ROOT).contains(apiSkill)) {
+				String key = entry.getKey();
+				if (key == null) {
+					continue;
+				}
+				String upper = key.toUpperCase(Locale.ROOT);
+				if (upper.contains("EXTRA_LEVEL_CAP")) {
+					continue;
+				}
+				if (upper.contains(apiSkill)) {
 					Float value = num(entry.getValue());
 					if (value != null && value > 0F) {
 						return value;
@@ -372,6 +404,9 @@ public final class Leveling {
 				base += perks.get("farming_level_cap").getAsInt();
 			}
 		}
+		if ("foraging".equals(skill)) {
+			base += foragingExtraLevelCap(member);
+		}
 		if ("taming".equals(skill)) {
 			// George pet sacrifices raise the taming cap by 1 each (50 → 60).
 			JsonObject petsData = obj(member.get("pets_data"));
@@ -389,6 +424,23 @@ public final class Leveling {
 			return Math.min(base, 25);
 		}
 		return base;
+	}
+
+	/**
+	 * Extra Foraging levels from {@code player_data.experience.SKILL_FORAGING_extra_level_cap}.
+	 * Absent or malformed values are treated as {@code 0}. Does not affect other skills.
+	 */
+	public static int foragingExtraLevelCap(JsonObject member) {
+		JsonObject playerData = obj(member == null ? null : member.get("player_data"));
+		JsonObject experience = playerData == null ? null : obj(playerData.get("experience"));
+		if (experience == null) {
+			return 0;
+		}
+		Float extra = num(experience.get("SKILL_FORAGING_extra_level_cap"));
+		if (extra == null || extra.isNaN() || extra.isInfinite()) {
+			return 0;
+		}
+		return Math.max(0, Math.round(extra));
 	}
 
 	public static JsonArray skillTable(String skill) {

@@ -973,6 +973,7 @@ public final class ProfileFetcher {
 				(int) Math.floor(progress.level()),
 				progress.fill(),
 				progress.maxed(),
+				progress.totalXp(),
 				progress.slayerHoverWithKills(pair[1], pair[0], kills),
 				killList,
 				progress.slayerHoverLinesWithKills(pair[1], pair[0], kills)
@@ -1094,7 +1095,8 @@ public final class ProfileFetcher {
 			social,
 			runecrafting,
 			activeSlayer,
-			emblems
+			emblems,
+			dev.vy.betterpv.client.slayer.SlayerMayorMods.from(electionRoot)
 		);
 
 		DungeonSnapshot dungeons = parseDungeons(member, museumMember, electionRoot, inventoryCategories);

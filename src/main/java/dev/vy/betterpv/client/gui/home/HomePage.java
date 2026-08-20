@@ -16,10 +16,14 @@ import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
 import dev.vy.betterpv.client.gui.SkyBlockLevelColors;
 import dev.vy.betterpv.client.gui.SkyBlockStats;
+import dev.vy.betterpv.client.networth.InventoryDecoder;
 import dev.vy.betterpv.client.networth.NetworthBreakdown;
 import dev.vy.betterpv.client.networth.NetworthMode;
+import dev.vy.betterpv.client.slayer.SlayerCalcOverlay;
 import dev.vy.betterpv.client.weight.WeightBreakdown;
 import dev.vy.betterpv.client.weight.WeightSystem;
+import dev.vy.betterpv.client.util.LegacyChatFormatting;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -69,6 +73,8 @@ public final class HomePage {
 	private WeightSystem weightSystem = WeightSystem.SENITHER;
 	private NetworthMode networthMode = NetworthMode.NORMAL;
 	private String loadError;
+	private final SlayerCalcOverlay slayerOverlay = new SlayerCalcOverlay();
+	private final List<SlayerNameHit> slayerNameHits = new ArrayList<>();
 
 	private int weightHitX;
 	private int weightHitY;
@@ -128,8 +134,12 @@ public final class HomePage {
 	private final int[] modelBoxScratch = new int[4];
 	private Component cachedNwLine;
 	private Component cachedWeightLine;
-	private Component cachedSocialLine;
-	private int cachedSocialBarW = -1;
+	private int emblemScroll;
+	private int emblemMaxScroll;
+	private int emblemListX;
+	private int emblemListY;
+	private int emblemListW;
+	private int emblemListH;
 
 	public HomePage(ProfileSnapshot snapshot) {
 		this.snapshot = snapshot;
@@ -160,11 +170,12 @@ public final class HomePage {
 		this.cachedStatusKey = "";
 		this.cachedBarColW = -1;
 		this.cachedSkillBars = List.of();
+		this.cachedExtraSkillBars = List.of();
 		this.cachedSlayerBars = List.of();
+		this.cachedActiveSlayerId = "";
 		this.cachedNwLine = null;
 		this.cachedWeightLine = null;
-		this.cachedSocialLine = null;
-		this.cachedSocialBarW = -1;
+		this.emblemScroll = 0;
 		this.senither = senither == null ? WeightBreakdown.empty(WeightSystem.SENITHER) : senither;
 		this.lily = lily == null ? WeightBreakdown.empty(WeightSystem.LILY) : lily;
 		this.networthNormal = networthNormal == null ? NetworthBreakdown.empty("") : networthNormal;
@@ -176,6 +187,7 @@ public final class HomePage {
 			: armor;
 		this.playerStats = playerStats == null ? PlayerStatsSnapshot.empty() : playerStats;
 		this.loadError = error;
+		this.slayerOverlay.close();
 		this.usernameHistory = UsernameHistory.idle();
 		this.playerStatus = PlayerStatus.idle();
 		if (nextUuid == null || prevUuid == null || !nextUuid.equals(prevUuid)) {
@@ -250,7 +262,71 @@ public final class HomePage {
 		return false;
 	}
 
+	public boolean slayerMouseClicked(double mouseX, double mouseY) {
+		if (this.slayerOverlay.isOpen()) {
+			return this.slayerOverlay.mouseClicked(mouseX, mouseY);
+		}
+		return clickSlayerName(mouseX, mouseY);
+	}
+
+	public boolean slayerKeyPressed(int key) {
+		return this.slayerOverlay.keyPressed(key);
+	}
+
+	public boolean slayerCharTyped(char ch) {
+		return this.slayerOverlay.charTyped(ch);
+	}
+
+	public boolean slayerOverlayOpen() {
+		return this.slayerOverlay.isOpen();
+	}
+
+	public void renderSlayerOverlay(GuiGraphicsExtractor g, Font font, int screenW, int screenH, int mouseX, int mouseY) {
+		this.slayerOverlay.render(g, font, screenW, screenH, mouseX, mouseY);
+	}
+
+	private boolean clickSlayerName(double mouseX, double mouseY) {
+		if (this.sbXpPhase != SbXpExpandPhase.CLOSED) {
+			return false;
+		}
+		for (SlayerNameHit hit : this.slayerNameHits) {
+			if (mouseX < hit.x() || mouseX >= hit.x() + hit.w()
+				|| mouseY < hit.y() || mouseY >= hit.y() + hit.h()) {
+				continue;
+			}
+			ProfileSnapshot.SlayerEntry slayer = slayerById(hit.slayerId());
+			if (slayer == null) {
+				return false;
+			}
+			this.slayerOverlay.open(
+				slayer,
+				this.snapshot == null ? null : this.snapshot.slayerMods(),
+				hit.accent()
+			);
+			return true;
+		}
+		return false;
+	}
+
+	private ProfileSnapshot.SlayerEntry slayerById(String id) {
+		if (this.snapshot == null || id == null || id.isBlank()) {
+			return null;
+		}
+		for (ProfileSnapshot.SlayerEntry slayer : this.snapshot.slayers()) {
+			if (id.equalsIgnoreCase(slayer.id())) {
+				return slayer;
+			}
+		}
+		return null;
+	}
+
 	public boolean clickLeftPanel(double mouseX, double mouseY) {
+		if (this.slayerOverlay.isOpen()) {
+			return true;
+		}
+		if (clickSlayerName(mouseX, mouseY)) {
+			return true;
+		}
 		if (this.sbXpPhase != SbXpExpandPhase.CLOSED) {
 			return false;
 		}
@@ -549,6 +625,9 @@ public final class HomePage {
 		GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH
 	) {
 		List<PvTooltip.Line> styledTip = null;
+		if (this.slayerOverlay.isOpen()) {
+			return;
+		}
 		boolean onProfileFace = !showingLeftStatsFace() && this.sbXpPhase == SbXpExpandPhase.CLOSED;
 		if (onProfileFace && hitName(mouseX, mouseY)) {
 			drawUsernameHistoryTooltip(g, font, mouseX, mouseY, screenW, screenH);
@@ -611,20 +690,20 @@ public final class HomePage {
 		layout.barsW = w - layout.leftW - layout.levelW - layout.gap * 2;
 		layout.line = font.lineHeight + 2;
 		layout.rowH = font.lineHeight + BAR_LABEL_GAP + BAR_H + BAR_AFTER_GAP;
-		layout.barsInnerH = SKILL_ROWS * layout.rowH + SECTION_GAP + SLAYER_ROWS * layout.rowH - BAR_AFTER_GAP;
+		int extraSkillH = layout.rowH;
+		layout.barsInnerH = SKILL_ROWS * layout.rowH + extraSkillH + SECTION_GAP
+			+ SLAYER_ROWS * layout.rowH - BAR_AFTER_GAP;
 		layout.barsH = PAD * 2 + layout.barsInnerH;
-		layout.lastSlayerNameY = PAD + SKILL_ROWS * layout.rowH + SECTION_GAP + (SLAYER_ROWS - 1) * layout.rowH;
+		layout.lastSlayerNameY = PAD + SKILL_ROWS * layout.rowH + extraSkillH + SECTION_GAP
+			+ (SLAYER_ROWS - 1) * layout.rowH;
 		layout.statsH = PAD + layout.line * 4 + 6;
 		layout.profileLineH = font.lineHeight;
 		layout.nameLineH = font.lineHeight;
 		layout.nameGap = 2;
-		layout.boxToSocialGap = 6;
-		layout.socialToFooterGap = 6;
+		layout.boxToFooterGap = 8;
 		layout.statusH = font.lineHeight + 4;
 		layout.footerH = layout.statusH;
 		layout.footerY = 0;
-		layout.socialBarY = 0;
-		layout.socialLabelY = 0;
 		layout.boxBottom = 0;
 		layout.nameY = layout.statsH;
 		layout.boxTop = layout.nameY + layout.nameLineH + layout.nameGap;
@@ -632,9 +711,7 @@ public final class HomePage {
 		layout.levelH = layout.contentH;
 		layout.leftH = layout.contentH;
 		layout.footerY = layout.leftH - PAD - layout.statusH;
-		layout.socialBarY = layout.footerY - layout.socialToFooterGap - BAR_H;
-		layout.socialLabelY = layout.socialBarY - BAR_LABEL_GAP - layout.nameLineH;
-		layout.boxBottom = layout.socialLabelY - layout.boxToSocialGap;
+		layout.boxBottom = layout.footerY - layout.boxToFooterGap;
 		layout.boxH = Math.max(48, layout.boxBottom - layout.boxTop);
 		return layout;
 	}
@@ -888,37 +965,13 @@ public final class HomePage {
 			);
 		}
 
-		ProfileSnapshot.SkillEntry social = this.snapshot.social();
-		int socialLabelY = y + layout.socialLabelY;
-		int socialBarW = Math.min(boxW, Math.max(48, boxW - 8));
-		int socialBarX = cx - socialBarW / 2;
-		if (this.cachedSocialLine == null || this.cachedSocialBarW != socialBarW) {
-			this.cachedSocialBarW = socialBarW;
-			this.cachedSocialLine = PvDraw.paddedLabelValue(
-				font, social.name(), String.valueOf(social.level()), socialBarW
-			);
-		}
-		PvDraw.labeledBar(
-			g, font,
-			this.cachedSocialLine, social.progress(),
-			socialBarX, socialLabelY, socialBarW,
-			PvDraw.COLOR_BAR_FILL, social.maxed()
-		);
-		this.zones.add(new HoverZone(
-			socialBarX,
-			socialLabelY,
-			socialBarW,
-			font.lineHeight + BAR_LABEL_GAP + BAR_H + 2,
-			social.hoverLines()
-		));
-
 		int footerY = y + layout.footerY;
 		String statusLabel = this.playerStatus.buttonLabel();
 		int statusColor = this.playerStatus.buttonColor(
 			PvDraw.COLOR_ACCENT, ENABLED_GREEN, OFFLINE_RED, PvDraw.COLOR_MUTED);
-		int statusW = socialBarW;
+		int statusW = Math.min(boxW, Math.max(48, boxW - 8));
 		int statusH = layout.statusH;
-		int statusX = socialBarX;
+		int statusX = cx - statusW / 2;
 		int statusY = footerY;
 		this.statusHitX = statusX;
 		this.statusHitY = statusY;
@@ -956,6 +1009,18 @@ public final class HomePage {
 	}
 
 	public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
+		if (this.sbXpPhase == SbXpExpandPhase.OPEN && this.emblemMaxScroll > 0
+			&& mouseX >= this.emblemListX && mouseX < this.emblemListX + this.emblemListW
+			&& mouseY >= this.emblemListY && mouseY < this.emblemListY + this.emblemListH) {
+			int next = Math.max(0, Math.min(
+				this.emblemMaxScroll,
+				this.emblemScroll - (int) Math.round(scrollY * 12)
+			));
+			if (next != this.emblemScroll) {
+				this.emblemScroll = next;
+				return true;
+			}
+		}
 		if (!showingLeftStatsFace() && hitName(mouseX, mouseY)
 			&& this.usernameHistory.state() == UsernameHistory.State.READY
 			&& this.historyMaxScroll > 0) {
@@ -1165,10 +1230,34 @@ public final class HomePage {
 	private String cachedStatusKey = "";
 	private String cachedStatusDrawn = "";
 	private List<CachedBar> cachedSkillBars = List.of();
+	private List<CachedBar> cachedExtraSkillBars = List.of();
 	private List<CachedBar> cachedSlayerBars = List.of();
 	private int cachedBarColW = -1;
+	private String cachedActiveSlayerId = "";
 
-	private record CachedBar(Component line, float progress, boolean maxed, int fillColor, List<PvTooltip.Line> hover) {
+	private record CachedBar(
+		Component line,
+		float progress,
+		boolean maxed,
+		int fillColor,
+		int accent,
+		List<PvTooltip.Line> hover,
+		String slayerId,
+		int nameW
+	) {
+		private CachedBar(
+			Component line,
+			float progress,
+			boolean maxed,
+			int fillColor,
+			int accent,
+			List<PvTooltip.Line> hover
+		) {
+			this(line, progress, maxed, fillColor, accent, hover, "", 0);
+		}
+	}
+
+	private record SlayerNameHit(int x, int y, int w, int h, String slayerId, int accent) {
 	}
 
 	private static String NW_LABEL;
@@ -1248,8 +1337,11 @@ public final class HomePage {
 		boolean emptyPage = this.sbXpPhase == SbXpExpandPhase.OPEN
 			|| (this.sbXpPhase == SbXpExpandPhase.EXPANDING_RIGHT && contentAlpha < 0.05F)
 			|| (this.sbXpPhase == SbXpExpandPhase.COLLAPSING_RIGHT && contentAlpha < 0.05F);
-		if (emptyPage || contentAlpha < 0.04F) {
-			// Intentionally empty foundation page for future SB XP / Guide content.
+		if (emptyPage) {
+			drawSkyBlockXpExpanded(g, font, x, y, w, h);
+			return;
+		}
+		if (contentAlpha < 0.04F) {
 			return;
 		}
 
@@ -1263,6 +1355,11 @@ public final class HomePage {
 		int cx = x + w / 2;
 
 		int blockH = font.lineHeight + 4 + ICON_SIZE + 4 + font.lineHeight + 2 + BAR_H;
+		ProfileSnapshot.EmblemInfo compactEmblems = this.snapshot.emblems();
+		boolean showEmblemCount = compactEmblems != null && compactEmblems.present();
+		if (showEmblemCount) {
+			blockH += 4 + font.lineHeight;
+		}
 		int ty = y + Math.max(PAD, (h - blockH) / 2);
 
 		PvDraw.textCentered(g, font, levelText, cx, ty, levelColor);
@@ -1287,15 +1384,97 @@ public final class HomePage {
 
 		int barX = cx - barW / 2;
 		PvDraw.progressBar(g, barX, ty, barW, BAR_H, this.snapshot.skyBlockProgress(), levelColor);
+		if (showEmblemCount) {
+			ty += BAR_H + 4;
+			PvDraw.textCentered(
+				g, font,
+				"Emblems: " + compactEmblems.unlocked().size(),
+				cx, ty, muted
+			);
+		}
 		if (registerHover && contentAlpha > 0.85F) {
 			double pct = this.snapshot.skyBlockProgress() * 100.0;
-			List<PvTooltip.Line> xpHover = List.of(
-				PvTooltip.Line.of("SkyBlock Level " + level, SkyBlockLevelColors.colorFor(level)),
-				PvTooltip.Line.of(xp + "/100 (" + Math.round(pct) + "%)", PvDraw.COLOR_GOLD),
-				PvTooltip.Line.of("Click to open", PvDraw.COLOR_MUTED)
-			);
+			List<PvTooltip.Line> xpHover = new ArrayList<>();
+			xpHover.add(PvTooltip.Line.of("SkyBlock Level " + level, SkyBlockLevelColors.colorFor(level)));
+			xpHover.add(PvTooltip.Line.of(xp + "/100 (" + Math.round(pct) + "%)", PvDraw.COLOR_GOLD));
+			xpHover.addAll(emblemHoverLines(this.snapshot.emblems(), true));
+			xpHover.add(PvTooltip.Line.of("Click to open", PvDraw.COLOR_MUTED));
 			this.zones.add(new HoverZone(x, y, w, h, xpHover));
 		}
+	}
+
+	private void drawSkyBlockXpExpanded(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h) {
+		int level = this.snapshot.skyBlockLevel();
+		int xp = this.snapshot.skyBlockXpIntoLevel();
+		int levelColor = SkyBlockLevelColors.colorFor(level);
+		int lx = x + PAD + 4;
+		int ly = y + PAD + 4;
+		int lw = w - PAD * 2 - 8;
+		PvDraw.text(g, font, Component.translatable("betterpv.home.sb_level", level).getString(), lx, ly, levelColor);
+		ly += font.lineHeight + 4;
+		Component xpLine = Component.empty()
+			.append(PvDraw.styled(String.valueOf(xp), PvDraw.COLOR_WHITE, false))
+			.append(PvDraw.styled("/", PvDraw.COLOR_MUTED, false))
+			.append(PvDraw.styled("100", levelColor, false));
+		PvDraw.text(g, font, xpLine, lx, ly);
+		ly += font.lineHeight + 2;
+		PvDraw.progressBar(g, lx, ly, Math.min(120, lw), BAR_H, this.snapshot.skyBlockProgress(), levelColor);
+		ly += BAR_H + 10;
+
+		ProfileSnapshot.EmblemInfo emblems = this.snapshot.emblems();
+		if (emblems == null || !emblems.present()) {
+			this.emblemListH = 0;
+			this.emblemMaxScroll = 0;
+			return;
+		}
+		PvDraw.text(g, font, "Emblems", lx, ly, PvDraw.COLOR_MUTED);
+		String count = emblems.unlocked().size() + " unlocked";
+		PvDraw.textRight(g, font, count, lx + lw, ly, PvDraw.COLOR_ACCENT);
+		this.zones.add(new HoverZone(lx, ly, lw, font.lineHeight, emblemHoverLines(emblems, false)));
+		ly += font.lineHeight + 4;
+		if (!emblems.selected().isBlank()) {
+			PvDraw.text(g, font, "Selected", lx, ly, PvDraw.COLOR_MUTED);
+			PvDraw.textRight(
+				g, font, InventoryDecoder.prettyWords(emblems.selected()), lx + lw, ly, PvDraw.COLOR_GOLD
+			);
+			ly += font.lineHeight + 6;
+		}
+		int rowH = font.lineHeight + 2;
+		this.emblemListX = lx;
+		this.emblemListY = ly;
+		this.emblemListW = lw;
+		this.emblemListH = Math.max(rowH, y + h - PAD - ly);
+		int contentH = emblems.unlocked().size() * rowH;
+		this.emblemMaxScroll = Math.max(0, contentH - this.emblemListH);
+		this.emblemScroll = Math.max(0, Math.min(this.emblemScroll, this.emblemMaxScroll));
+		g.enableScissor(lx, ly, lx + lw, ly + this.emblemListH);
+		int rowY = ly - this.emblemScroll;
+		for (String id : emblems.unlocked()) {
+			if (rowY + font.lineHeight >= ly && rowY < ly + this.emblemListH) {
+				PvDraw.text(g, font, InventoryDecoder.prettyWords(id), lx, rowY, PvDraw.COLOR_TEXT);
+			}
+			rowY += rowH;
+		}
+		g.disableScissor();
+	}
+
+	private static List<PvTooltip.Line> emblemHoverLines(ProfileSnapshot.EmblemInfo emblems, boolean includeHeader) {
+		if (emblems == null || !emblems.present()) {
+			return List.of();
+		}
+		List<PvTooltip.Line> lines = new ArrayList<>();
+		if (includeHeader) {
+			lines.add(PvTooltip.Line.divider());
+		}
+		lines.add(PvTooltip.Line.row(
+			"Emblems", PvDraw.COLOR_MUTED, emblems.unlocked().size() + " unlocked", PvDraw.COLOR_ACCENT
+		));
+		if (!emblems.selected().isBlank()) {
+			lines.add(PvTooltip.Line.row(
+				"Selected", PvDraw.COLOR_MUTED, InventoryDecoder.prettyWords(emblems.selected()), PvDraw.COLOR_GOLD
+			));
+		}
+		return lines;
 	}
 
 	private static int fadeColor(int argb, float alpha) {
@@ -1385,7 +1564,9 @@ public final class HomePage {
 		return String.format(java.util.Locale.US, "%.1f%s", one, suffix);
 	}
 
-	private void drawBarsColumn(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, Layout layout) {
+	private void drawBarsColumn(
+		GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, Layout layout
+	) {
 		PvDraw.innerPanel(g, x, y, w, h);
 		int colGap = 8;
 		int colW = (w - PAD * 2 - colGap) / 2;
@@ -1394,8 +1575,10 @@ public final class HomePage {
 
 		int ty = y + PAD;
 		drawSkillGrid(g, font, leftX, rightX, ty, colW, layout.rowH);
-		int skillsBarsBottom = ty + (SKILL_ROWS - 1) * layout.rowH + font.lineHeight + BAR_LABEL_GAP + BAR_H;
-		int slayersTop = ty + SKILL_ROWS * layout.rowH + SECTION_GAP;
+		int extraY = ty + SKILL_ROWS * layout.rowH;
+		drawExtraSkillRow(g, font, leftX, rightX, extraY, colW, layout.rowH);
+		int skillsBarsBottom = extraY + font.lineHeight + BAR_LABEL_GAP + BAR_H;
+		int slayersTop = extraY + layout.rowH + SECTION_GAP;
 		int lineInset = PAD + 6;
 		int lineY = (skillsBarsBottom + slayersTop) / 2;
 		int lineW = Math.max(0, w - lineInset * 2);
@@ -1406,10 +1589,15 @@ public final class HomePage {
 	}
 
 	private void ensureBarCaches(Font font, int colW) {
-		if (colW == this.cachedBarColW && !this.cachedSkillBars.isEmpty()) {
+		ProfileSnapshot.ActiveSlayerQuest quest = this.snapshot == null ? null : this.snapshot.activeSlayer();
+		String activeId = quest != null && quest.present() ? quest.typeId() : "";
+		if (colW == this.cachedBarColW
+			&& activeId.equals(this.cachedActiveSlayerId)
+			&& !this.cachedSkillBars.isEmpty()) {
 			return;
 		}
 		this.cachedBarColW = colW;
+		this.cachedActiveSlayerId = activeId;
 		List<ProfileSnapshot.SkillEntry> skills = this.snapshot.skills();
 		int skillLimit = Math.min(skills.size(), SKILL_ROWS * 2);
 		List<CachedBar> skillBars = new ArrayList<>(skillLimit);
@@ -1420,53 +1608,185 @@ public final class HomePage {
 				skill.progress(),
 				skill.maxed(),
 				PvDraw.COLOR_BAR_FILL,
+				0,
 				skill.hoverLines()
 			));
 		}
 		this.cachedSkillBars = skillBars;
+
+		List<CachedBar> extra = new ArrayList<>(2);
+		ProfileSnapshot.SkillEntry rune = this.snapshot.runecrafting();
+		if (rune != null) {
+			extra.add(skillBar(font, rune, colW));
+		}
+		ProfileSnapshot.SkillEntry social = this.snapshot.social();
+		if (social != null) {
+			extra.add(skillBar(font, social, colW));
+		}
+		this.cachedExtraSkillBars = extra;
 
 		List<ProfileSnapshot.SlayerEntry> slayers = this.snapshot.slayers();
 		int slayerLimit = Math.min(slayers.size(), SLAYER_ROWS * 2);
 		List<CachedBar> slayerBars = new ArrayList<>(slayerLimit);
 		for (int i = 0; i < slayerLimit; i++) {
 			ProfileSnapshot.SlayerEntry slayer = slayers.get(i);
+			boolean active = !activeId.isBlank() && activeId.equalsIgnoreCase(slayer.id());
+			int accent = slayerColor(slayer.id());
 			slayerBars.add(new CachedBar(
-				PvDraw.paddedLabelValue(font, slayer.name(), "T" + slayer.tier(), colW),
+				PvDraw.paddedLabelValue(
+					font, slayer.name(), "T" + slayer.tier(), colW, accent, active
+				),
 				slayer.progress(),
 				slayer.maxed(),
 				PvDraw.COLOR_BAR_FILL_SLAYER,
-				slayer.hoverLines()
+				accent,
+				slayerHoverLines(slayer, active ? quest : null, accent),
+				slayer.id(),
+				font.width(slayer.name())
 			));
 		}
 		this.cachedSlayerBars = slayerBars;
 	}
 
+	private static CachedBar skillBar(Font font, ProfileSnapshot.SkillEntry skill, int colW) {
+		return new CachedBar(
+			PvDraw.paddedLabelValue(font, skill.name(), String.valueOf(skill.level()), colW),
+			skill.progress(),
+			skill.maxed(),
+			PvDraw.COLOR_BAR_FILL,
+			0,
+			skill.hoverLines()
+		);
+	}
+
 	private void drawSkillGrid(GuiGraphicsExtractor g, Font font, int leftX, int rightX, int startY, int colW, int rowH) {
 		ensureBarCaches(font, colW);
-		List<CachedBar> bars = this.cachedSkillBars;
-		for (int i = 0; i < bars.size(); i++) {
-			CachedBar bar = bars.get(i);
+		drawBarGrid(g, font, this.cachedSkillBars, leftX, rightX, startY, colW, rowH);
+	}
+
+	private void drawExtraSkillRow(
+		GuiGraphicsExtractor g, Font font, int leftX, int rightX, int startY, int colW, int rowH
+	) {
+		ensureBarCaches(font, colW);
+		drawBarGrid(g, font, this.cachedExtraSkillBars, leftX, rightX, startY, colW, rowH);
+	}
+
+	private void drawSlayerGrid(
+		GuiGraphicsExtractor g, Font font, int leftX, int rightX, int startY, int colW, int rowH
+	) {
+		ensureBarCaches(font, colW);
+		this.slayerNameHits.clear();
+		for (int i = 0; i < this.cachedSlayerBars.size(); i++) {
+			CachedBar bar = this.cachedSlayerBars.get(i);
 			boolean left = (i % 2) == 0;
 			int row = i / 2;
 			int bx = left ? leftX : rightX;
 			int by = startY + row * rowH;
+			int zoneH = rowH - 2;
 			PvDraw.labeledBar(g, font, bar.line(), bar.progress(), bx, by, colW, bar.fillColor(), bar.maxed());
-			this.zones.add(new HoverZone(bx, by, colW, rowH - 2, bar.hover()));
+			this.zones.add(new HoverZone(bx, by, colW, zoneH, bar.hover()));
+			if (!bar.slayerId().isBlank()) {
+				this.slayerNameHits.add(new SlayerNameHit(
+					bx, by, colW, zoneH, bar.slayerId(), bar.accent()
+				));
+			}
 		}
 	}
 
-	private void drawSlayerGrid(GuiGraphicsExtractor g, Font font, int leftX, int rightX, int startY, int colW, int rowH) {
-		ensureBarCaches(font, colW);
-		List<CachedBar> bars = this.cachedSlayerBars;
+	private void drawBarGrid(
+		GuiGraphicsExtractor g,
+		Font font,
+		List<CachedBar> bars,
+		int leftX,
+		int rightX,
+		int startY,
+		int colW,
+		int rowH
+	) {
 		for (int i = 0; i < bars.size(); i++) {
 			CachedBar bar = bars.get(i);
 			boolean left = (i % 2) == 0;
 			int row = i / 2;
 			int bx = left ? leftX : rightX;
 			int by = startY + row * rowH;
+			int zoneH = rowH - 2;
 			PvDraw.labeledBar(g, font, bar.line(), bar.progress(), bx, by, colW, bar.fillColor(), bar.maxed());
-			this.zones.add(new HoverZone(bx, by, colW, rowH - 2, bar.hover()));
+			this.zones.add(new HoverZone(bx, by, colW, zoneH, bar.hover()));
 		}
+	}
+
+	private static List<PvTooltip.Line> slayerHoverLines(
+		ProfileSnapshot.SlayerEntry slayer,
+		ProfileSnapshot.ActiveSlayerQuest quest,
+		int accent
+	) {
+		List<PvTooltip.Line> lines = new ArrayList<>();
+		lines.add(PvTooltip.Line.title(slayer.name() + " " + slayer.tier(), accent));
+		List<PvTooltip.Line> base = slayer.hoverLines();
+		for (int i = 0; i < base.size(); i++) {
+			if (i == 0) {
+				continue;
+			}
+			lines.add(base.get(i));
+		}
+		if (quest != null && quest.present()) {
+			lines.add(PvTooltip.Line.blank());
+			lines.add(PvTooltip.Line.title("Active Quest", accent));
+			lines.add(PvTooltip.Line.row("Tier", PvDraw.COLOR_MUTED, roman(quest.tier()), PvDraw.COLOR_TEXT));
+			lines.add(PvTooltip.Line.row(
+				"Boss",
+				PvDraw.COLOR_MUTED,
+				quest.spawned() ? "Spawned" : "Not spawned",
+				PvDraw.COLOR_TEXT
+			));
+			lines.add(PvTooltip.Line.row(
+				"Spawn Progress",
+				PvDraw.COLOR_MUTED,
+				FormatUtil.commas(Math.round(quest.combatXp())) + " Combat XP",
+				PvDraw.COLOR_GOLD
+			));
+			if (!quest.island().isBlank()) {
+				lines.add(PvTooltip.Line.row("Island", PvDraw.COLOR_MUTED, quest.island(), PvDraw.COLOR_TEXT));
+			}
+			lines.add(PvTooltip.Line.row(
+				"Mode", PvDraw.COLOR_MUTED, quest.solo() ? "Solo" : "Group", PvDraw.COLOR_TEXT
+			));
+		}
+		lines.add(PvTooltip.Line.blank());
+		lines.add(PvTooltip.Line.action("Click to open calculator"));
+		return lines;
+	}
+
+	private static int slayerColor(String id) {
+		if (id == null || id.isBlank()) {
+			return PvDraw.COLOR_ACCENT;
+		}
+		ChatFormatting fmt = switch (id.toLowerCase(java.util.Locale.ROOT)) {
+			case "zombie" -> ChatFormatting.GREEN;
+			case "spider" -> ChatFormatting.RED;
+			case "wolf" -> ChatFormatting.AQUA;
+			case "enderman" -> ChatFormatting.DARK_PURPLE;
+			case "blaze", "vampire" -> ChatFormatting.DARK_RED;
+			default -> ChatFormatting.BLUE;
+		};
+		Integer rgb = LegacyChatFormatting.rgb(fmt);
+		return rgb == null ? PvDraw.COLOR_ACCENT : 0xFF000000 | rgb;
+	}
+
+	private static String roman(int value) {
+		return switch (value) {
+			case 1 -> "I";
+			case 2 -> "II";
+			case 3 -> "III";
+			case 4 -> "IV";
+			case 5 -> "V";
+			case 6 -> "VI";
+			case 7 -> "VII";
+			case 8 -> "VIII";
+			case 9 -> "IX";
+			case 10 -> "X";
+			default -> String.valueOf(value);
+		};
 	}
 
 	private record HoverZone(int x, int y, int w, int h, List<PvTooltip.Line> lines) {
@@ -1487,13 +1807,10 @@ public final class HomePage {
 		int statusH;
 		int nameLineH;
 		int nameGap;
-		int boxToSocialGap;
-		int socialToFooterGap;
+		int boxToFooterGap;
 		int footerH;
 		int footerY;
 		int nameY;
-		int socialLabelY;
-		int socialBarY;
 		int boxTop;
 		int boxBottom;
 		int boxH;

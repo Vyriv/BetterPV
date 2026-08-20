@@ -69,6 +69,7 @@ public final class ProfileViewerScreen extends Screen {
 	private static final int PAD = 8;
 	private static final int SEARCH_H = 16;
 	private static final int SEARCH_GAP = 4;
+	private static final int INV_SELECTOR_COLS = 5;
 	private static final long OPEN_ANIM_MS = 260L;
 	private static final float OPEN_SCALE_START = 0.12F;
 	private static final int PROFILE_MENU_PAD = 6;
@@ -132,6 +133,12 @@ public final class ProfileViewerScreen extends Screen {
 	private Component inventoryPaneTip;
 	private int inventoryPaneTipX;
 	private int inventoryPaneTipY;
+	private int invSelectorX;
+	private int invSelectorY;
+	private int invSelectorW;
+	private int invSelectorH;
+	private int invSelectorScroll;
+	private int invSelectorMaxScroll;
 	private Component bestiaryCategoryTip;
 	private int bestiaryCategoryTipX;
 	private int bestiaryCategoryTipY;
@@ -501,6 +508,8 @@ public final class ProfileViewerScreen extends Screen {
 
 			if (this.tab == PvTab.DUNGEONS) {
 				this.dungeonPage.renderOverlay(graphics, this.font, this.width, this.height, mouseX, mouseY);
+			} else if (this.tab == PvTab.HOME && activeSub(PvSubTab.HOME_OVERVIEW) == PvSubTab.HOME_OVERVIEW) {
+				this.homePage.renderSlayerOverlay(graphics, this.font, this.width, this.height, mouseX, mouseY);
 			}
 		}
 
@@ -765,18 +774,16 @@ public final class ProfileViewerScreen extends Screen {
 		int bodyY = y + SEARCH_H + SEARCH_GAP;
 		int bodyH = h - SEARCH_H - SEARCH_GAP;
 
-		InventoryPane[] panes = InventoryPane.values();
-		int[] rowWidths = {5, 5, 3};
+		List<InventoryPane> panes = this.inventoryPage.visiblePanes();
+		int[] rowWidths = inventoryRowWidths(panes.size());
 		int btn = 22;
 		int btnGap = 14;
 		int pad = 10;
 		int rows = rowWidths.length;
-		int maxCols = 0;
-		for (int width : rowWidths) {
-			maxCols = Math.max(maxCols, width);
-		}
+		// Keep the pre-Carnival selector width (5 columns) so extra icons wrap
+		// inside the selector instead of shifting the inventory split.
+		int maxCols = INV_SELECTOR_COLS;
 		int gridW = maxCols * btn + (maxCols - 1) * btnGap;
-		int gridH = rows * btn + (rows - 1) * btnGap;
 
 		int gap = 8;
 		int rightW = gridW + pad * 2;
@@ -795,19 +802,34 @@ public final class ProfileViewerScreen extends Screen {
 
 		int startX = rightX + (rightW - gridW) / 2;
 		int startY = bodyY + pad;
+		int searchBoxY = bodyY + bodyH - pad - SEARCH_H;
+		int gridClipBottom = Math.max(startY + btn, searchBoxY - pad);
+		int gridAreaH = Math.max(btn, gridClipBottom - startY);
+		int gridContentH = rows <= 0 ? 0 : rows * btn + Math.max(0, rows - 1) * btnGap;
+		this.invSelectorMaxScroll = Math.max(0, gridContentH - gridAreaH);
+		this.invSelectorScroll = Math.max(0, Math.min(this.invSelectorScroll, this.invSelectorMaxScroll));
+		this.invSelectorX = rightX;
+		this.invSelectorY = startY;
+		this.invSelectorW = rightW;
+		this.invSelectorH = gridAreaH;
 
 		int index = 0;
 		this.inventoryPaneTip = null;
-		for (int row = 0; row < rows && index < panes.length; row++) {
+		g.enableScissor(rightX + 1, startY, rightX + rightW - 1, gridClipBottom);
+		for (int row = 0; row < rows && index < panes.size(); row++) {
 			int width = rowWidths[row];
 			int rowW = width * btn + (width - 1) * btnGap;
 			int rowStartX = rightX + (rightW - rowW) / 2;
-			for (int col = 0; col < width && index < panes.length; col++) {
-				InventoryPane pane = panes[index++];
+			for (int col = 0; col < width && index < panes.size(); col++) {
+				InventoryPane pane = panes.get(index++);
 				int bx = rowStartX + col * (btn + btnGap);
-				int by = startY + row * (btn + btnGap);
+				int by = startY + row * (btn + btnGap) - this.invSelectorScroll;
+				if (by + btn <= startY || by >= gridClipBottom) {
+					continue;
+				}
 				boolean selected = pane == this.inventoryPage.pane();
-				boolean hovered = mouseX >= bx && mouseX < bx + btn && mouseY >= by && mouseY < by + btn;
+				boolean hovered = mouseX >= bx && mouseX < bx + btn
+					&& mouseY >= Math.max(by, startY) && mouseY < Math.min(by + btn, gridClipBottom);
 				boolean searchHit = this.inventoryPage.searchHighlightsPane(pane);
 				int bg = selected ? 0xFF2A3A55 : hovered ? 0xFF222230 : 0xFF16161E;
 				int border = searchHit ? 0xFF55FF55 : selected ? PvDraw.COLOR_ACCENT : PvDraw.COLOR_BORDER;
@@ -838,8 +860,8 @@ public final class ProfileViewerScreen extends Screen {
 				}
 			}
 		}
+		g.disableScissor();
 
-		int searchBoxY = bodyY + bodyH - pad - SEARCH_H;
 		int searchBoxX = rightX + pad;
 		int searchBoxW = rightW - pad * 2;
 		PvDraw.fill(g, searchBoxX, searchBoxY, searchBoxW, SEARCH_H, 0xFF101018);
@@ -964,6 +986,29 @@ public final class ProfileViewerScreen extends Screen {
 				PvDraw.COLOR_MUTED
 			);
 		}
+	}
+
+	private static int[] inventoryRowWidths(int count) {
+		if (count <= 0) {
+			return new int[0];
+		}
+		int rows = (count + INV_SELECTOR_COLS - 1) / INV_SELECTOR_COLS;
+		int[] widths = new int[rows];
+		int remaining = count;
+		for (int i = 0; i < rows; i++) {
+			widths[i] = Math.min(INV_SELECTOR_COLS, remaining);
+			remaining -= widths[i];
+		}
+		return widths;
+	}
+
+	private static boolean isDirectionalKey(int key) {
+		return key == 262 || key == 263 || key == 264 || key == 265;
+	}
+
+	private boolean hitInvSelector(double mouseX, double mouseY) {
+		return mouseX >= this.invSelectorX && mouseX < this.invSelectorX + this.invSelectorW
+			&& mouseY >= this.invSelectorY && mouseY < this.invSelectorY + this.invSelectorH;
 	}
 
 	private static int[] bestiaryRowWidths(int count) {
@@ -1668,6 +1713,9 @@ public final class ProfileViewerScreen extends Screen {
 			return true;
 		}
 		if (this.tab == PvTab.HOME && activeSub(PvSubTab.HOME_OVERVIEW) == PvSubTab.HOME_OVERVIEW) {
+			if (this.homePage.slayerMouseClicked(mx, my)) {
+				return true;
+			}
 			if (this.homePage.clickSbLevelPanel(mx, my)) {
 				return true;
 			}
@@ -1704,7 +1752,7 @@ public final class ProfileViewerScreen extends Screen {
 			case FORAGING -> this.foragingPage.mouseClicked(mx, my);
 			case FISHING -> this.fishingPage.mouseClicked(mx, my);
 			case CRIMSON -> this.crimsonPage.mouseClicked(mx, my);
-			case RIFT -> this.riftPage.mouseClicked(mx, my);
+			case RIFT -> this.riftPage.mouseClicked(mx, my, activeSub(PvSubTab.RIFT_OVERVIEW));
 			case MUSEUM -> {
 				if (this.museumPage.clickRefresh(mx, my)) {
 					ensureMuseum(true);
@@ -1772,7 +1820,19 @@ public final class ProfileViewerScreen extends Screen {
 			case BESTIARY -> this.bestiaryPage.mouseScrolled(mouseX, mouseY, scrollY);
 			case EVENTS -> this.eventsPage.mouseScrolled(
 				mouseX, mouseY, scrollY, activeSub(PvSubTab.EVENTS_BINGO));
-			case INVENTORIES -> this.inventoryPage.mouseScrolled(mouseX, mouseY, scrollY);
+			case INVENTORIES -> {
+				if (hitInvSelector(mouseX, mouseY) && this.invSelectorMaxScroll > 0) {
+					int next = Math.max(0, Math.min(
+						this.invSelectorMaxScroll,
+						this.invSelectorScroll - (int) Math.round(scrollY * 18)
+					));
+					if (next != this.invSelectorScroll) {
+						this.invSelectorScroll = next;
+						yield true;
+					}
+				}
+				yield this.inventoryPage.mouseScrolled(mouseX, mouseY, scrollY);
+			}
 			default -> false;
 		};
 	}
@@ -2211,8 +2271,24 @@ public final class ProfileViewerScreen extends Screen {
 				submitPlayerSearch();
 				return true;
 			}
-			// Always feed arrows / BA / Enter into Konami unless typing in search.
+			boolean directional = isDirectionalKey(event.key());
+			if (directional && !typingInvSearch && !typingPlayerSearch) {
+				MoulberryMode.keyPressed(event.key());
+				if (uiInteractive() && this.tab == PvTab.DUNGEONS && this.dungeonPage.keyPressed(event.key())) {
+					return true;
+				}
+				// Screen arrow-key focus navigation would otherwise steal these
+				// into the inventory/player search boxes.
+				return true;
+			}
+			// Always feed B/A/Enter into Konami unless typing in search.
 			if (!typingInvSearch && !typingPlayerSearch && MoulberryMode.keyPressed(event.key())) {
+				return true;
+			}
+			if (uiInteractive()
+				&& this.tab == PvTab.HOME
+				&& activeSub(PvSubTab.HOME_OVERVIEW) == PvSubTab.HOME_OVERVIEW
+				&& this.homePage.slayerKeyPressed(event.key())) {
 				return true;
 			}
 			if (uiInteractive()
@@ -2253,6 +2329,14 @@ public final class ProfileViewerScreen extends Screen {
 			if (uiInteractive() && this.tab == PvTab.DUNGEONS) {
 				String text = event.codepointAsString();
 				if (text != null && !text.isEmpty() && this.dungeonPage.charTyped(text.charAt(0))) {
+					return true;
+				}
+			}
+			if (uiInteractive()
+				&& this.tab == PvTab.HOME
+				&& activeSub(PvSubTab.HOME_OVERVIEW) == PvSubTab.HOME_OVERVIEW) {
+				String text = event.codepointAsString();
+				if (text != null && !text.isEmpty() && this.homePage.slayerCharTyped(text.charAt(0))) {
 					return true;
 				}
 			}

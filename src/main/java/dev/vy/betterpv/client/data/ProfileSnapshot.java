@@ -32,6 +32,7 @@ public final class ProfileSnapshot {
 		int tier,
 		float progress,
 		boolean maxed,
+		float xp,
 		String xpHover,
 		List<Integer> tierKills,
 		List<PvTooltip.Line> hoverLines
@@ -41,16 +42,17 @@ public final class ProfileSnapshot {
 			hoverLines = hoverLines == null || hoverLines.isEmpty()
 				? List.of(PvTooltip.Line.of(xpHover == null ? "" : xpHover, PvDraw.COLOR_TEXT))
 				: List.copyOf(hoverLines);
+			xp = Math.max(0F, xp);
 		}
 
 		public SlayerEntry(String id, String name, int tier, float progress, boolean maxed, String xpHover) {
-			this(id, name, tier, progress, maxed, xpHover, List.of(), List.of());
+			this(id, name, tier, progress, maxed, 0F, xpHover, List.of(), List.of());
 		}
 
 		public SlayerEntry(
 			String id, String name, int tier, float progress, boolean maxed, String xpHover, List<Integer> tierKills
 		) {
-			this(id, name, tier, progress, maxed, xpHover, tierKills, List.of());
+			this(id, name, tier, progress, maxed, 0F, xpHover, tierKills, List.of());
 		}
 	}
 
@@ -119,6 +121,7 @@ public final class ProfileSnapshot {
 	private final SkillEntry runecrafting;
 	private final ActiveSlayerQuest activeSlayer;
 	private final EmblemInfo emblems;
+	private final dev.vy.betterpv.client.slayer.SlayerMayorMods slayerMods;
 
 	public ProfileSnapshot(
 		String playerName,
@@ -200,6 +203,33 @@ public final class ProfileSnapshot {
 		ActiveSlayerQuest activeSlayer,
 		EmblemInfo emblems
 	) {
+		this(
+			playerName, playerUuid, profileName, skyBlockLevel, skyBlockXpIntoLevel,
+			weightText, networthText, purseCoins, bankCoins, bankTransactions,
+			skills, slayers, social, runecrafting, activeSlayer, emblems,
+			dev.vy.betterpv.client.slayer.SlayerMayorMods.none()
+		);
+	}
+
+	public ProfileSnapshot(
+		String playerName,
+		UUID playerUuid,
+		String profileName,
+		int skyBlockLevel,
+		int skyBlockXpIntoLevel,
+		String weightText,
+		String networthText,
+		double purseCoins,
+		double bankCoins,
+		List<BankTransaction> bankTransactions,
+		List<SkillEntry> skills,
+		List<SlayerEntry> slayers,
+		SkillEntry social,
+		SkillEntry runecrafting,
+		ActiveSlayerQuest activeSlayer,
+		EmblemInfo emblems,
+		dev.vy.betterpv.client.slayer.SlayerMayorMods slayerMods
+	) {
 		this.playerName = playerName;
 		this.playerUuid = playerUuid;
 		this.profileName = profileName;
@@ -216,6 +246,7 @@ public final class ProfileSnapshot {
 		this.runecrafting = runecrafting == null ? entry("runecrafting", "Runecrafting") : runecrafting;
 		this.activeSlayer = activeSlayer != null && activeSlayer.present() ? activeSlayer : null;
 		this.emblems = emblems == null ? EmblemInfo.empty() : emblems;
+		this.slayerMods = slayerMods == null ? dev.vy.betterpv.client.slayer.SlayerMayorMods.none() : slayerMods;
 	}
 
 	public String playerName() {
@@ -286,11 +317,16 @@ public final class ProfileSnapshot {
 		return this.emblems;
 	}
 
+	public dev.vy.betterpv.client.slayer.SlayerMayorMods slayerMods() {
+		return this.slayerMods;
+	}
+
 	public ProfileSnapshot withWeightText(String weightText) {
 		return new ProfileSnapshot(
 			this.playerName, this.playerUuid, this.profileName, this.skyBlockLevel, this.skyBlockXpIntoLevel,
 			weightText, this.networthText, this.purseCoins, this.bankCoins, this.bankTransactions,
-			this.skills, this.slayers, this.social, this.runecrafting, this.activeSlayer, this.emblems
+			this.skills, this.slayers, this.social, this.runecrafting, this.activeSlayer, this.emblems,
+			this.slayerMods
 		);
 	}
 
@@ -298,7 +334,8 @@ public final class ProfileSnapshot {
 		return new ProfileSnapshot(
 			this.playerName, this.playerUuid, this.profileName, this.skyBlockLevel, this.skyBlockXpIntoLevel,
 			this.weightText, networthText, this.purseCoins, this.bankCoins, this.bankTransactions,
-			this.skills, this.slayers, this.social, this.runecrafting, this.activeSlayer, this.emblems
+			this.skills, this.slayers, this.social, this.runecrafting, this.activeSlayer, this.emblems,
+			this.slayerMods
 		);
 	}
 

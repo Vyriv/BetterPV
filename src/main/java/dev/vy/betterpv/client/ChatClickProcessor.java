@@ -13,7 +13,7 @@ import net.minecraft.network.chat.Style;
 /**
  * Rewrites Hypixel chat name clicks/hovers to open BetterPV, and makes
  * party/guild/officer/PM/all-chat sender names clickable when needed.
- * Also marks party / Party Finder join names for PV (no duplicate messages).
+ * Live party-join BPV lines are handled by {@link PartyJoinPvNotifier}.
  */
 public final class ChatClickProcessor {
 	private static final Pattern PLAYER_NAME_PATTERN = Pattern.compile("[A-Za-z0-9_]{3,16}");
@@ -59,12 +59,9 @@ public final class ChatClickProcessor {
 			return Optional.empty();
 		}, Style.EMPTY);
 
-		Component rewritten = changed[0] ? result : component;
-		String joinName = PartyJoinPvNotifier.extractJoinName(plain);
-		if (joinName != null) {
-			PartyJoinPvNotifier.schedule(joinName);
-		}
-		return rewritten;
+		// Party-join BPV lines are scheduled from live receive events only.
+		// Chat Patches / More Chat History replay old joins through addMessage.
+		return changed[0] ? result : component;
 	}
 
 	private static NameRange findClickableNameRange(String text) {

@@ -2,10 +2,13 @@ package dev.vy.betterpv.client;
 
 import java.util.Iterator;
 import java.util.Locale;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.ClickEvent;
@@ -16,7 +19,11 @@ import net.minecraft.network.chat.Style;
 
 /**
  * Builds the coloured {@code [BPV] Click to open <name>'s pv.} chat line,
- * posted ~1s after a party-join message so it does not stack instantly.
+ * posted ~1s after a live party-join message so it does not stack instantly.
+ *
+ * <p>Scheduling is tied to {@link ClientReceiveMessageEvents} only. Chat history
+ * restore (Chat Patches / More Chat History) also calls {@code addMessage}, and
+ * must not spawn BPV lines for old joins.
  */
 public final class PartyJoinPvNotifier {
 	private static final Pattern PLAYER_NAME = Pattern.compile("[A-Za-z0-9_]{3,16}");
@@ -30,13 +37,21 @@ public final class PartyJoinPvNotifier {
 		"(?i)^Party Finder\\s*>\\s*(?:\\[[^\\]]+]\\s*)?([A-Za-z0-9_]{3,16})\\s+joined the (?:dungeon )?group!"
 	);
 	private static final long DELAY_MS = 1000L;
+	/** Ignore duplicate live joins for the same name within this window. */
+	private static final long DEDUPE_MS = 2500L;
 	private static final ConcurrentLinkedQueue<Pending> PENDING = new ConcurrentLinkedQueue<>();
+	private static final ConcurrentHashMap<String, Long> RECENT = new ConcurrentHashMap<>();
 
 	private PartyJoinPvNotifier() {
 	}
 
 	public static void register() {
-		ClientTickEvents.END_CLIENT_TICK.register(client -> tick(client));
+		ClientTickEvents.END_CLIENT_TICK.register(PartyJoinPvNotifier::tick);
+		ClientReceiveMessageEvents.GAME.register((message, overlay) -> onLiveMessage(message));
+		ClientReceiveMessageEvents.CHAT.register((message, signedMessage, sender, params, receptionTimestamp) ->
+			onLiveMessage(message)
+		);
+		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> clear());
 	}
 
 	/** Queue a delayed BPV line for a party-join player name. */
@@ -45,7 +60,28 @@ public final class PartyJoinPvNotifier {
 		if (cleaned == null) {
 			return;
 		}
-		PENDING.add(new Pending(cleaned, System.currentTimeMillis() + DELAY_MS));
+		long now = System.currentTimeMillis();
+		String key = cleaned.toLowerCase(Locale.ROOT);
+		Long last = RECENT.put(key, now);
+		if (last != null && now - last < DEDUPE_MS) {
+			return;
+		}
+		PENDING.add(new Pending(cleaned, now + DELAY_MS));
+	}
+
+	private static void onLiveMessage(Component message) {
+		if (message == null) {
+			return;
+		}
+		String joinName = extractJoinName(message.getString());
+		if (joinName != null) {
+			schedule(joinName);
+		}
+	}
+
+	private static void clear() {
+		PENDING.clear();
+		RECENT.clear();
 	}
 
 	private static void tick(Minecraft client) {

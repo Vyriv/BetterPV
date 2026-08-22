@@ -761,13 +761,14 @@ public final class ProfileFetcher {
 	private static List<ProfileSnapshot.SkillEntry> buildHomeSkills(JsonObject member) {
 		List<ProfileSnapshot.SkillEntry> skills = new ArrayList<>();
 		for (String skill : HOME_SKILLS) {
-			float xp = Leveling.readSkillXp(member, skill);
 			int cap = Leveling.skillCap(skill, member);
-			Leveling.Progress progress = Leveling.getLevel(Leveling.skillTable(skill), xp, cap, false);
+			Leveling.Progress progress = Leveling.getLevel(
+				Leveling.skillTable(skill), Leveling.readSkillXpDouble(member, skill), cap, false
+			);
 			skills.add(new ProfileSnapshot.SkillEntry(
 				skill,
 				title(skill),
-				(int) Math.floor(progress.level()),
+				progress.displayLevel(),
 				progress.fill(),
 				progress.maxed(),
 				progress.skillHover(title(skill)),
@@ -778,13 +779,13 @@ public final class ProfileFetcher {
 	}
 
 	private static ProfileSnapshot.SkillEntry buildSocial(JsonObject member) {
-		float socialXp = Leveling.readSkillXp(member, "social");
+		float socialXp = (float) Leveling.readSkillXpDouble(member, "social");
 		int socialCap = Leveling.skillCap("social", member);
 		Leveling.Progress socialProgress = Leveling.getLevel(Leveling.skillTable("social"), socialXp, socialCap, false);
 		return new ProfileSnapshot.SkillEntry(
 			"social",
 			"Social",
-			(int) Math.floor(socialProgress.level()),
+			socialProgress.displayLevel(),
 			socialProgress.fill(),
 			socialProgress.maxed(),
 			socialProgress.skillHover("Social"),
@@ -793,13 +794,13 @@ public final class ProfileFetcher {
 	}
 
 	private static ProfileSnapshot.SkillEntry buildRunecrafting(JsonObject member) {
-		float xp = Leveling.readSkillXp(member, "runecrafting");
+		float xp = (float) Leveling.readSkillXpDouble(member, "runecrafting");
 		int cap = Leveling.skillCap("runecrafting", member);
 		Leveling.Progress progress = Leveling.getLevel(Leveling.skillTable("runecrafting"), xp, cap, false);
 		return new ProfileSnapshot.SkillEntry(
 			"runecrafting",
 			"Runecrafting",
-			(int) Math.floor(progress.level()),
+			progress.displayLevel(),
 			progress.fill(),
 			progress.maxed(),
 			progress.skillHover("Runecrafting"),

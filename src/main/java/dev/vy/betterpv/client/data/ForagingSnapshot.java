@@ -132,6 +132,11 @@ public final class ForagingSnapshot {
 			return balance > 0L || spent > 0L || !spentByPage.isEmpty();
 		}
 
+		/** Lifetime earned. API {@code total} is the unspent balance, so spent can exceed it. */
+		public long earned() {
+			return balance + spent;
+		}
+
 		private static String prettyWhisperLabel(String id) {
 			if (id == null || id.isBlank()) {
 				return "Whispers";
@@ -460,12 +465,13 @@ public final class ForagingSnapshot {
 		if (pool == null || pool.entrySet().isEmpty()) {
 			return null;
 		}
-		long balance = longOf(pool, "total");
+		long balance = firstLong(pool, "total", "current", "balance");
+		long spentField = firstLong(pool, "spent");
 		Map<Integer, Long> byPage = new LinkedHashMap<>();
-		long spent = 0L;
+		long spentPages = 0L;
 		for (Map.Entry<String, JsonElement> e : pool.entrySet()) {
 			String key = e.getKey();
-			if (key == null || "total".equalsIgnoreCase(key)) {
+			if (key == null || isWhisperMetaKey(key)) {
 				continue;
 			}
 			Integer page = null;
@@ -482,15 +488,36 @@ public final class ForagingSnapshot {
 			if (pageSpent <= 0L) {
 				continue;
 			}
-			spent += pageSpent;
+			spentPages += pageSpent;
 			if (page != null) {
 				byPage.put(page, pageSpent);
 			}
 		}
+		long spent = spentField > 0L ? spentField : spentPages;
 		if (balance <= 0L && spent <= 0L) {
 			return null;
 		}
 		return new WhisperPool(id, WhisperPool.prettyWhisperLabel(id), balance, spent, byPage);
+	}
+
+	private static boolean isWhisperMetaKey(String key) {
+		return "total".equalsIgnoreCase(key)
+			|| "current".equalsIgnoreCase(key)
+			|| "balance".equalsIgnoreCase(key)
+			|| "spent".equalsIgnoreCase(key);
+	}
+
+	private static long firstLong(JsonObject obj, String... keys) {
+		if (obj == null) {
+			return 0L;
+		}
+		for (String key : keys) {
+			long value = longOf(obj, key);
+			if (value > 0L) {
+				return value;
+			}
+		}
+		return 0L;
 	}
 
 	private static SafariInfo parseSafari(JsonObject root) {

@@ -896,7 +896,7 @@ public final class ProfileViewerScreen extends Screen {
 			+ "/"
 			+ FormatUtil.commas(this.bestiaryPage.totalMaxTiers())
 			+ "  ·  Milestone "
-			+ FormatUtil.commas(this.bestiaryPage.claimedMilestone());
+			+ FormatUtil.commas(this.bestiaryPage.milestone());
 		PvDraw.text(g, this.font, header, x + 6, y + (SEARCH_H - this.font.lineHeight) / 2, PvDraw.COLOR_MUTED);
 
 		int bodyY = y + SEARCH_H + SEARCH_GAP;

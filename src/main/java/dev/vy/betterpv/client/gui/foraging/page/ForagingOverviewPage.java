@@ -345,7 +345,7 @@ public final class ForagingOverviewPage {
 			ForagingUi.statLine(g, font, "Balance", "-", rx, ry, rw, PvDraw.COLOR_MUTED);
 		} else {
 			for (ForagingSnapshot.WhisperPool pool : pools) {
-				ry = ForagingUi.statLine(g, font, pool.label(), FormatUtil.commas(pool.balance()),
+				ry = ForagingUi.statLine(g, font, pool.label(), FormatUtil.commas(pool.earned()),
 					rx, ry, rw, PvDraw.COLOR_ACCENT) + 1;
 				ry = ForagingUi.statLine(g, font, pool.label() + " spent", FormatUtil.commas(pool.spent()),
 					rx, ry, rw, PvDraw.COLOR_MUTED) + 1;

@@ -198,6 +198,15 @@ public final class BestiarySnapshot {
 		return claimedMilestone;
 	}
 
+	/** In-game Bestiary milestone = unique family tiers / 10 (not last claimed reward). */
+	public int milestone() {
+		return totalUnlockedTiers / 10;
+	}
+
+	public int milestoneProgress() {
+		return totalUnlockedTiers % 10;
+	}
+
 	public boolean maxKillsVisible() {
 		return maxKillsVisible;
 	}
@@ -228,7 +237,7 @@ public final class BestiarySnapshot {
 		if (fam.cap() > 0) {
 			killSum = Math.min(killSum, fam.cap());
 		}
-		List<Integer> ladder = BestiaryData.bracket(fam.bracket());
+		List<Integer> ladder = BestiaryData.bracket(fam.bracketType(), fam.bracket());
 		// NEU brackets are cumulative kill thresholds. Family cap = kills for that family's max tier.
 		int tiersMax = tiersMaxFor(ladder, fam.cap());
 		int tier = 0;

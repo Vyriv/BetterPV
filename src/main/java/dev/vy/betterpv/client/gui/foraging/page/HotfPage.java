@@ -93,6 +93,8 @@ public final class HotfPage {
 					List<PvTooltip.Line> tip = new ArrayList<>();
 					tip.add(PvTooltip.Line.title(pool.label() + " whispers", PvDraw.COLOR_TEXT));
 					tip.add(PvTooltip.Line.divider());
+					tip.add(PvTooltip.Line.row("Earned", PvDraw.COLOR_MUTED,
+						FormatUtil.commas(pool.earned()), PvDraw.COLOR_ACCENT));
 					tip.add(PvTooltip.Line.row("Balance", PvDraw.COLOR_MUTED,
 						FormatUtil.commas(pool.balance()), PvDraw.COLOR_ACCENT));
 					tip.add(PvTooltip.Line.row("Spent", PvDraw.COLOR_MUTED,

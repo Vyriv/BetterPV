@@ -58,7 +58,13 @@ public final class BestiaryPage {
 		this.scroll = 0;
 		if (this.categoryId.isBlank()) {
 			List<BestiaryData.Category> cats = BestiaryData.categories();
-			if (!cats.isEmpty()) {
+			for (BestiaryData.Category cat : cats) {
+				if (cat != null && !cat.families().isEmpty()) {
+					this.categoryId = cat.id();
+					break;
+				}
+			}
+			if (this.categoryId.isBlank() && !cats.isEmpty()) {
 				this.categoryId = cats.get(0).id();
 			}
 		}
@@ -74,6 +80,10 @@ public final class BestiaryPage {
 
 	public int claimedMilestone() {
 		return this.snapshot.claimedMilestone();
+	}
+
+	public int milestone() {
+		return this.snapshot.milestone();
 	}
 
 	public String lastKilledMob() {
@@ -156,8 +166,8 @@ public final class BestiaryPage {
 		}
 		ly += font.lineHeight + 4;
 
-		String milestone = "Milestone " + FormatUtil.commas(this.snapshot.claimedMilestone())
-			+ "  ·  +" + FormatUtil.commas(this.snapshot.claimedMilestone() * 2L) + " HP";
+		String milestone = "Milestone " + FormatUtil.commas(this.snapshot.milestone())
+			+ "  ·  +" + FormatUtil.commas(this.snapshot.claimedMilestone()) + " HP";
 		PvDraw.text(g, font, milestone, lx, ly, PvDraw.COLOR_GOLD);
 		ly += font.lineHeight + 2;
 		if (!this.snapshot.lastKilledMob().isBlank()) {

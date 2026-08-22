@@ -387,7 +387,7 @@ public final class PlayerStatsCalculator {
 		if (claimed <= 0) {
 			return false;
 		}
-		add(totals, "health", 2.0 * claimed);
+		add(totals, "health", 1.0 * claimed);
 		return true;
 	}
 

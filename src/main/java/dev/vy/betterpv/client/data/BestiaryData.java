@@ -24,6 +24,7 @@ public final class BestiaryData {
 		String name,
 		String categoryId,
 		int bracket,
+		String bracketType,
 		int cap,
 		List<String> mobIds,
 		String textureValue,
@@ -34,6 +35,7 @@ public final class BestiaryData {
 			name = name == null || name.isBlank() ? id : name;
 			categoryId = categoryId == null ? "" : categoryId;
 			bracket = Math.max(1, bracket);
+			bracketType = bracketType == null ? "" : bracketType;
 			cap = Math.max(0, cap);
 			mobIds = mobIds == null ? List.of() : List.copyOf(mobIds);
 			textureValue = textureValue == null ? "" : textureValue;
@@ -60,6 +62,7 @@ public final class BestiaryData {
 	private static volatile boolean loaded;
 	private static List<Category> categories = List.of();
 	private static Map<String, List<Integer>> brackets = Map.of();
+	private static Map<String, Map<String, List<Integer>>> bracketSets = Map.of();
 	private static Map<String, Family> familiesById = Map.of();
 
 	private BestiaryData() {
@@ -97,8 +100,22 @@ public final class BestiaryData {
 	}
 
 	public static List<Integer> bracket(int bracketId) {
+		return bracket("", bracketId);
+	}
+
+	public static List<Integer> bracket(String bracketType, int bracketId) {
 		ensureLoaded();
-		return brackets.getOrDefault(String.valueOf(bracketId), List.of());
+		String id = String.valueOf(bracketId);
+		if (bracketType != null && !bracketType.isBlank()) {
+			Map<String, List<Integer>> set = bracketSets.get(bracketType);
+			if (set != null) {
+				List<Integer> ladder = set.get(id);
+				if (ladder != null && !ladder.isEmpty()) {
+					return ladder;
+				}
+			}
+		}
+		return brackets.getOrDefault(id, List.of());
 	}
 
 	public static Family family(String id) {
@@ -119,6 +136,7 @@ public final class BestiaryData {
 			BetterPV.LOGGER.warn("Missing NEU bestiary.json at {}", path);
 			categories = List.of();
 			brackets = Map.of();
+			bracketSets = Map.of();
 			familiesById = Map.of();
 			return;
 		}
@@ -128,23 +146,15 @@ public final class BestiaryData {
 				return;
 			}
 			JsonObject root = rootEl.getAsJsonObject();
-			Map<String, List<Integer>> br = new LinkedHashMap<>();
-			JsonObject bracketsObj = obj(root.get("brackets"));
-			if (bracketsObj != null) {
-				for (var entry : bracketsObj.entrySet()) {
-					if (!entry.getValue().isJsonArray()) {
+			Map<String, List<Integer>> br = parseBracketLadders(obj(root.get("brackets")));
+			Map<String, Map<String, List<Integer>>> sets = new LinkedHashMap<>();
+			JsonObject setsObj = obj(root.get("bracketSets"));
+			if (setsObj != null) {
+				for (var setEntry : setsObj.entrySet()) {
+					if (setEntry.getKey() == null || !setEntry.getValue().isJsonObject()) {
 						continue;
 					}
-					List<Integer> ladder = new ArrayList<>();
-					for (JsonElement el : entry.getValue().getAsJsonArray()) {
-						if (el != null && el.isJsonPrimitive()) {
-							try {
-								ladder.add(Math.max(0, el.getAsInt()));
-							} catch (Exception ignored) {
-							}
-						}
-					}
-					br.put(entry.getKey(), List.copyOf(ladder));
+					sets.put(setEntry.getKey(), parseBracketLadders(setEntry.getValue().getAsJsonObject()));
 				}
 			}
 
@@ -152,12 +162,13 @@ public final class BestiaryData {
 			Map<String, Family> byId = new LinkedHashMap<>();
 			for (var entry : root.entrySet()) {
 				String key = entry.getKey();
-				if (key == null || "brackets".equals(key) || !entry.getValue().isJsonObject()) {
+				if (isCatalogMetaKey(key) || !entry.getValue().isJsonObject()) {
 					continue;
 				}
 				parseCategory(key, entry.getValue().getAsJsonObject(), cats, byId);
 			}
 			brackets = Map.copyOf(br);
+			bracketSets = copyBracketSets(sets);
 			categories = List.copyOf(cats);
 			familiesById = Map.copyOf(byId);
 			BetterPV.LOGGER.info("Loaded bestiary catalog ({} categories, {} families)", cats.size(), byId.size());
@@ -165,6 +176,7 @@ public final class BestiaryData {
 			BetterPV.LOGGER.warn("Failed to load bestiary.json", exception);
 			categories = List.of();
 			brackets = Map.of();
+			bracketSets = Map.of();
 			familiesById = Map.of();
 		}
 	}
@@ -197,6 +209,9 @@ public final class BestiaryData {
 		} else {
 			families.addAll(parseFamilies(id, obj.get("mobs"), byId));
 		}
+		if (families.isEmpty()) {
+			return;
+		}
 		cats.add(new Category(id, name, icon.texture(), icon.item(), families));
 	}
 
@@ -214,6 +229,7 @@ public final class BestiaryData {
 			JsonObject mob = el.getAsJsonObject();
 			String name = strip(str(mob, "name"));
 			int bracket = Math.max(1, intOr(mob, "bracket", 1));
+			String bracketType = str(mob, "bracketType");
 			int cap = Math.max(0, intOr(mob, "cap", 0));
 			List<String> mobIds = new ArrayList<>();
 			if (mob.has("mobs") && mob.get("mobs").isJsonArray()) {
@@ -228,7 +244,7 @@ public final class BestiaryData {
 			}
 			Icon icon = parseIcon(mob);
 			String famId = categoryId + ":" + index + ":" + slug(name.isBlank() ? "mob" : name);
-			Family family = new Family(famId, name.isBlank() ? pretty(famId) : name, categoryId, bracket, cap, mobIds,
+			Family family = new Family(famId, name.isBlank() ? pretty(famId) : name, categoryId, bracket, bracketType, cap, mobIds,
 				icon.texture(), icon.item());
 			out.add(family);
 			byId.put(famId, family);
@@ -254,6 +270,45 @@ public final class BestiaryData {
 			return new Icon(texture, item);
 		}
 		return new Icon("", "");
+	}
+
+	private static boolean isCatalogMetaKey(String key) {
+		return key == null
+			|| "brackets".equalsIgnoreCase(key)
+			|| "bracketSets".equalsIgnoreCase(key);
+	}
+
+	private static Map<String, List<Integer>> parseBracketLadders(JsonObject obj) {
+		Map<String, List<Integer>> out = new LinkedHashMap<>();
+		if (obj == null) {
+			return out;
+		}
+		for (var entry : obj.entrySet()) {
+			if (entry.getKey() == null || !entry.getValue().isJsonArray()) {
+				continue;
+			}
+			List<Integer> ladder = new ArrayList<>();
+			for (JsonElement el : entry.getValue().getAsJsonArray()) {
+				if (el != null && el.isJsonPrimitive()) {
+					try {
+						ladder.add(Math.max(0, el.getAsInt()));
+					} catch (Exception ignored) {
+					}
+				}
+			}
+			out.put(entry.getKey(), List.copyOf(ladder));
+		}
+		return out;
+	}
+
+	private static Map<String, Map<String, List<Integer>>> copyBracketSets(
+		Map<String, Map<String, List<Integer>>> sets
+	) {
+		Map<String, Map<String, List<Integer>>> out = new LinkedHashMap<>();
+		for (var entry : sets.entrySet()) {
+			out.put(entry.getKey(), Map.copyOf(entry.getValue()));
+		}
+		return Map.copyOf(out);
 	}
 
 	private static JsonObject obj(JsonElement el) {

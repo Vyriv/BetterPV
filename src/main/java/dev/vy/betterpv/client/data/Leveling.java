@@ -17,8 +17,30 @@ public final class Leveling {
 		int maxLevel,
 		float totalXp,
 		float xpIntoLevel,
-		float overflowXp
+		float overflowXp,
+		float overflowLevel
 	) {
+		public Progress(
+			float level,
+			float maxXpForLevel,
+			boolean maxed,
+			int maxLevel,
+			float totalXp,
+			float xpIntoLevel,
+			float overflowXp
+		) {
+			this(
+				level,
+				maxXpForLevel,
+				maxed,
+				maxLevel,
+				totalXp,
+				xpIntoLevel,
+				overflowXp,
+				repeatedStepOverflowLevel(maxed, level, maxLevel, overflowXp, maxXpForLevel)
+			);
+		}
+
 		public float fill() {
 			if (maxed || maxXpForLevel <= 0F) {
 				return 1.0f;
@@ -26,24 +48,17 @@ public final class Leveling {
 			return Math.max(0F, Math.min(1F, xpIntoLevel / maxXpForLevel));
 		}
 
-		/**
-		 * Soft-cap level plus fractional overflow levels (last step XP repeated past the cap).
-		 * When not maxed, same as {@link #level()}.
-		 */
-		public float overflowLevel() {
-			if (!maxed) {
-				return level;
+		/** Uncapped skill level including overflow (SkyHanni / in-game Skills menu). */
+		public int displayLevel() {
+			if (maxed) {
+				return Math.max(maxLevel, (int) Math.floor(overflowLevel));
 			}
-			if (maxXpForLevel <= 0F || overflowXp <= 0F) {
-				return maxLevel;
-			}
-			return maxLevel + overflowXp / maxXpForLevel;
+			return (int) Math.floor(level);
 		}
 
 		public String hoverText() {
 			if (maxed) {
-				return "Overflow Level: " + FormatUtil.oneDecimal(overflowLevel())
-					+ " · Overflow: " + FormatUtil.shortXp(Math.max(0F, overflowXp));
+				return overflowHoverText();
 			}
 			long into = Math.round(xpIntoLevel);
 			long need = Math.round(maxXpForLevel);
@@ -56,11 +71,9 @@ public final class Leveling {
 
 		/** Skill hover used by Mining HOTM bars, e.g. {@code HOTM 7 - 60k / 300k to Level 8}. */
 		public String skillHover(String name) {
-			int lvl = (int) Math.floor(level);
+			int lvl = displayLevel();
 			if (maxed) {
-				return name + " " + lvl
-					+ " - Overflow Level: " + FormatUtil.oneDecimal(overflowLevel())
-					+ " · Overflow: " + FormatUtil.shortXp(Math.max(0F, overflowXp));
+				return name + " " + lvl + " - " + overflowHoverText();
 			}
 			int next = Math.min(maxLevel, lvl + 1);
 			long into = Math.round(xpIntoLevel);
@@ -70,9 +83,9 @@ public final class Leveling {
 		}
 
 		public List<PvTooltip.Line> skillHoverLines(String name) {
-			int lvl = (int) Math.floor(level);
+			int lvl = displayLevel();
 			String title = (name == null ? "?" : name) + " " + lvl;
-			List<PvTooltip.Line> lines = new ArrayList<>(5);
+			List<PvTooltip.Line> lines = new ArrayList<>(6);
 			lines.add(PvTooltip.Line.of(title, PvDraw.COLOR_ACCENT));
 			lines.add(PvTooltip.Line.row(
 				"Total XP",
@@ -82,17 +95,26 @@ public final class Leveling {
 			));
 			if (overflowXp > 0.5F) {
 				lines.add(PvTooltip.Line.row(
-					"Overflow",
+					"Overflow XP",
 					PvDraw.COLOR_MUTED,
-					FormatUtil.shortXp(overflowXp),
+					FormatUtil.commas(Math.round(overflowXp)),
 					PvDraw.COLOR_GOLD
 				));
 			}
 			if (maxed) {
 				lines.add(PvTooltip.Line.of(
-					"Overflow Level: " + FormatUtil.oneDecimal(overflowLevel()),
+					"Overflow Level: " + FormatUtil.oneDecimal(overflowLevel),
 					PvDraw.COLOR_MUTED
 				));
+				if (maxXpForLevel > 0F) {
+					int next = lvl + 1;
+					long into = Math.round(xpIntoLevel);
+					long need = Math.round(maxXpForLevel);
+					lines.add(PvTooltip.Line.of(
+						FormatUtil.commas(into) + " / " + FormatUtil.commas(need) + " to Level " + next,
+						PvDraw.COLOR_GOLD
+					));
+				}
 			} else {
 				int next = Math.min(maxLevel, lvl + 1);
 				long into = Math.round(xpIntoLevel);
@@ -103,6 +125,17 @@ public final class Leveling {
 				));
 			}
 			return lines;
+		}
+
+		private String overflowHoverText() {
+			String text = "Overflow Level: " + FormatUtil.oneDecimal(overflowLevel)
+				+ " · Overflow XP: " + FormatUtil.shortXp(Math.max(0F, overflowXp));
+			if (maxXpForLevel > 0F) {
+				text += " · " + FormatUtil.commas(Math.round(xpIntoLevel))
+					+ " / " + FormatUtil.commas(Math.round(maxXpForLevel))
+					+ " to " + (displayLevel() + 1);
+			}
+			return text;
 		}
 
 		/** e.g. {@code Revenant 9 - 1,240,000 / 2,000,000 XP} or overflow when maxed. */
@@ -137,7 +170,7 @@ public final class Leveling {
 			}
 			if (maxed) {
 				lines.add(PvTooltip.Line.of(
-					"Overflow Level: " + FormatUtil.oneDecimal(overflowLevel()),
+					"Overflow Level: " + FormatUtil.oneDecimal(overflowLevel),
 					PvDraw.COLOR_MUTED
 				));
 			} else {
@@ -214,38 +247,54 @@ public final class Leveling {
 	private Leveling() {
 	}
 
+	/**
+	 * SkyHanni {@code SkillUtil.calculateSkillLevel}: after 60 the step starts at 7.6M and
+	 * the slope doubles every tenth level. Matches the in-game Skills menu overflow level.
+	 */
+	private static final int HYPIXEL_OVERFLOW_START = 60;
+	private static final long HYPIXEL_OVERFLOW_BASE = 7_000_000L;
+	private static final long HYPIXEL_OVERFLOW_SLOPE = 600_000L;
+
 	/** Non-cumulative table (skills / cata): each entry is XP required for that level step. */
 	public static Progress getLevel(JsonArray table, float xp, int levelCap, boolean cumulative) {
+		return getLevel(table, (double) xp, levelCap, cumulative);
+	}
+
+	public static Progress getLevel(JsonArray table, double xp, int levelCap, boolean cumulative) {
+		float xpF = (float) Math.max(0D, xp);
 		if (table == null || table.isEmpty()) {
-			return new Progress(0, 0, false, levelCap, xp, 0, 0);
+			return new Progress(0, 0, false, levelCap, xpF, 0, 0);
 		}
-		float xpToCap = xpRequiredForLevel(table, levelCap, cumulative);
+		if (!cumulative && usesHypixelSkillOverflow(table)) {
+			return hypixelSkillProgress(table, xp, levelCap);
+		}
+		double xpToCap = xpRequiredForLevel(table, levelCap, cumulative);
 		float overflowStep = overflowStepXp(table, levelCap, cumulative);
-		float remaining = Math.max(0F, xp);
+		double remaining = Math.max(0D, xp);
 		for (int level = 0; level < table.size(); level++) {
-			float levelXp = table.get(level).getAsFloat();
+			double levelXp = table.get(level).getAsDouble();
 			if (levelXp > remaining) {
 				float maxXpForLevel;
 				float resultLevel;
 				float into;
 				if (cumulative) {
-					float previous = level > 0 ? table.get(level - 1).getAsFloat() : 0F;
-					maxXpForLevel = levelXp - previous;
-					into = remaining - previous;
+					double previous = level > 0 ? table.get(level - 1).getAsDouble() : 0D;
+					maxXpForLevel = (float) (levelXp - previous);
+					into = (float) (remaining - previous);
 					resultLevel = level + into / Math.max(1F, maxXpForLevel);
 				} else {
-					maxXpForLevel = levelXp;
-					into = remaining;
-					resultLevel = level + remaining / Math.max(1F, levelXp);
+					maxXpForLevel = (float) levelXp;
+					into = (float) remaining;
+					resultLevel = level + (float) (remaining / Math.max(1D, levelXp));
 				}
 				boolean maxed = resultLevel >= levelCap;
 				if (maxed) {
 					float step = overflowStep > 0F ? overflowStep : maxXpForLevel;
 					return new Progress(
-						levelCap, step, true, levelCap, xp, step, Math.max(0F, xp - xpToCap)
+						levelCap, step, true, levelCap, xpF, step, (float) Math.max(0D, xp - xpToCap)
 					);
 				}
-				return new Progress(resultLevel, maxXpForLevel, false, levelCap, xp, into, 0);
+				return new Progress(resultLevel, maxXpForLevel, false, levelCap, xpF, into, 0);
 			}
 			if (!cumulative) {
 				remaining -= levelXp;
@@ -253,7 +302,88 @@ public final class Leveling {
 		}
 		int capped = Math.min(table.size(), levelCap);
 		float step = overflowStep > 0F ? overflowStep : 0F;
-		return new Progress(capped, step, true, levelCap, xp, 0, Math.max(0F, xp - xpToCap));
+		return new Progress(capped, step, true, levelCap, xpF, 0, (float) Math.max(0D, xp - xpToCap));
+	}
+
+	/**
+	 * Walk the 60-step skill table, then Hypixel's overflow slope (SkyHanni SkillUtil).
+	 * {@code level} stays capped; {@code overflowLevel} is the uncapped in-game level.
+	 */
+	private static Progress hypixelSkillProgress(JsonArray table, double xp, int levelCap) {
+		double remaining = Math.max(0D, xp);
+		int level = 0;
+		int tableLevels = Math.min(HYPIXEL_OVERFLOW_START, table.size());
+		while (level < tableLevels) {
+			double need = table.get(level).getAsDouble();
+			if (remaining < need) {
+				break;
+			}
+			remaining -= need;
+			level++;
+		}
+		double xpForNext;
+		if (level >= HYPIXEL_OVERFLOW_START) {
+			long slope = HYPIXEL_OVERFLOW_SLOPE;
+			xpForNext = HYPIXEL_OVERFLOW_BASE + slope;
+			while (remaining >= xpForNext) {
+				level++;
+				remaining -= xpForNext;
+				xpForNext += slope;
+				if (level % 10 == 0) {
+					slope *= 2L;
+				}
+			}
+		} else if (level < table.size()) {
+			xpForNext = table.get(level).getAsDouble();
+		} else {
+			xpForNext = 0D;
+		}
+		double xpToCap = 0D;
+		int capSteps = Math.min(Math.max(1, levelCap), table.size());
+		for (int i = 0; i < capSteps; i++) {
+			xpToCap += table.get(i).getAsDouble();
+		}
+		float overflowXp = (float) Math.max(0D, xp - xpToCap);
+		boolean maxed = level >= levelCap || xp + 0.5D >= xpToCap;
+		float overflowLevel = (float) (level + (xpForNext > 0D ? remaining / xpForNext : 0D));
+		float cappedLevel = maxed ? levelCap : overflowLevel;
+		float into = maxed ? (float) remaining : (float) remaining;
+		float step = (float) xpForNext;
+		if (maxed && step <= 0F) {
+			step = overflowStepXp(table, levelCap, false);
+			into = step;
+		}
+		return new Progress(
+			cappedLevel, step, maxed, levelCap, (float) Math.max(0D, xp), into, overflowXp, overflowLevel
+		);
+	}
+
+	private static boolean usesHypixelSkillOverflow(JsonArray table) {
+		if (table == null || table.size() < HYPIXEL_OVERFLOW_START) {
+			return false;
+		}
+		try {
+			return Math.abs(table.get(0).getAsDouble() - 50D) < 0.01D
+				&& Math.abs(table.get(HYPIXEL_OVERFLOW_START - 1).getAsDouble() - 7_000_000D) < 0.01D;
+		} catch (Exception ignored) {
+			return false;
+		}
+	}
+
+	private static float repeatedStepOverflowLevel(
+		boolean maxed,
+		float level,
+		int maxLevel,
+		float overflowXp,
+		float maxXpForLevel
+	) {
+		if (!maxed) {
+			return level;
+		}
+		if (maxXpForLevel <= 0F || overflowXp <= 0F) {
+			return maxLevel;
+		}
+		return maxLevel + overflowXp / maxXpForLevel;
 	}
 
 	/** XP for one overflow level past the soft cap (repeats the last capped step). */
@@ -278,16 +408,20 @@ public final class Leveling {
 		if (cumulative) {
 			return table.get(capped - 1).getAsFloat();
 		}
-		float sum = 0F;
+		double sum = 0D;
 		for (int i = 0; i < capped; i++) {
-			sum += table.get(i).getAsFloat();
+			sum += table.get(i).getAsDouble();
 		}
-		return sum;
+		return (float) sum;
 	}
 
 	public static float readSkillXp(JsonObject member, String skill) {
+		return (float) readSkillXpDouble(member, skill);
+	}
+
+	public static double readSkillXpDouble(JsonObject member, String skill) {
 		String apiSkill = skill.equals("social") ? "SOCIAL" : skill.toUpperCase(Locale.ROOT);
-		JsonObject playerData = obj(member.get("player_data"));
+		JsonObject playerData = obj(member == null ? null : member.get("player_data"));
 		JsonObject experience = playerData == null ? null : obj(playerData.get("experience"));
 		if (experience != null) {
 			String[] keys = {
@@ -296,8 +430,8 @@ public final class Leveling {
 				skill.toUpperCase(Locale.ROOT)
 			};
 			for (String key : keys) {
-				Float value = num(experience.get(key));
-				if (value != null && value > 0F) {
+				Double value = numDouble(experience.get(key));
+				if (value != null && value > 0D) {
 					return value;
 				}
 			}
@@ -311,15 +445,16 @@ public final class Leveling {
 					continue;
 				}
 				if (upper.contains(apiSkill)) {
-					Float value = num(entry.getValue());
-					if (value != null && value > 0F) {
+					Double value = numDouble(entry.getValue());
+					if (value != null && value > 0D) {
 						return value;
 					}
 				}
 			}
 		}
-		Float legacy = num(member.get("experience_skill_" + (skill.equals("social") ? "social2" : skill)));
-		return legacy == null ? 0F : legacy;
+		Double legacy = numDouble(member == null ? null
+			: member.get("experience_skill_" + (skill.equals("social") ? "social2" : skill)));
+		return legacy == null ? 0D : legacy;
 	}
 
 	public static float readSlayerXp(JsonObject member, String slayer) {
@@ -458,11 +593,16 @@ public final class Leveling {
 	}
 
 	public static Float num(JsonElement element) {
+		Double value = numDouble(element);
+		return value == null ? null : value.floatValue();
+	}
+
+	public static Double numDouble(JsonElement element) {
 		if (element == null || element.isJsonNull() || !element.isJsonPrimitive()) {
 			return null;
 		}
 		try {
-			return element.getAsFloat();
+			return element.getAsDouble();
 		} catch (Exception exception) {
 			return null;
 		}

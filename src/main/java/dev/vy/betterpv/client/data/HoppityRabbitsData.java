@@ -35,6 +35,15 @@ public final class HoppityRabbitsData {
 		}
 	}
 
+	/** Reload after NEU-REPO updates. */
+	public static void reload() {
+		synchronized (HoppityRabbitsData.class) {
+			loaded = false;
+			loadFromDisk();
+			loaded = true;
+		}
+	}
+
 	/** Uppercase rarity, or {@code COMMON} when unknown. */
 	public static String rarityOf(String rabbitId) {
 		ensureLoaded();

@@ -3,6 +3,12 @@ package dev.vy.betterpv.client.neu;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.vy.betterpv.BetterPV;
+import dev.vy.betterpv.client.data.AttributeShardsData;
+import dev.vy.betterpv.client.data.BestiaryData;
+import dev.vy.betterpv.client.data.ForagingHotfData;
+import dev.vy.betterpv.client.data.HoppityRabbitsData;
+import dev.vy.betterpv.client.data.MiningHotmData;
+import dev.vy.betterpv.client.data.TrophyFishData;
 import java.io.IOException;
 import java.io.Reader;
 import java.net.URI;
@@ -14,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -26,6 +33,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -42,6 +51,8 @@ public final class NeuRepoCache {
 		"https://raw.githubusercontent.com/" + REPO_USER + "/" + REPO_NAME + "/" + REPO_BRANCH + "/items/";
 	private static final Duration TIMEOUT = Duration.ofSeconds(90);
 	private static final Duration ITEM_TIMEOUT = Duration.ofSeconds(8);
+	private static final long REFRESH_HOURS = 24L;
+	private static final String UPDATED_AT = "updated-at.txt";
 
 	private static final HttpClient HTTP = HttpClient.newBuilder()
 		.connectTimeout(Duration.ofSeconds(10))
@@ -52,10 +63,16 @@ public final class NeuRepoCache {
 		t.setDaemon(true);
 		return t;
 	});
+	private static final ScheduledExecutorService SCHEDULER = Executors.newSingleThreadScheduledExecutor(r -> {
+		Thread t = new Thread(r, "BetterPV-NeuRepoRefresh");
+		t.setDaemon(true);
+		return t;
+	});
 
 	private static final Map<String, JsonObject> ITEMS = new ConcurrentHashMap<>();
 	private static final Map<String, Boolean> MISS = new ConcurrentHashMap<>();
 	private static final AtomicBoolean FULL_LOAD_STARTED = new AtomicBoolean(false);
+	private static final AtomicBoolean REFRESH_IN_FLIGHT = new AtomicBoolean(false);
 	private static final Object FULL_LOAD_LOCK = new Object();
 	private static volatile boolean fullLoadDone;
 
@@ -67,6 +84,9 @@ public final class NeuRepoCache {
 			return;
 		}
 		EXECUTOR.execute(NeuRepoCache::loadFullRepoSafely);
+		SCHEDULER.scheduleAtFixedRate(
+			NeuRepoCache::refreshIfStaleSafely, REFRESH_HOURS, REFRESH_HOURS, TimeUnit.HOURS
+		);
 	}
 
 	/** Wait for the zip index (or finish a sync load) before warming item stacks. */
@@ -334,11 +354,83 @@ public final class NeuRepoCache {
 		if (!diskOk) {
 			BetterPV.LOGGER.info("Downloading NotEnoughUpdates-REPO…");
 			downloadAndExtract(base, repoRoot);
+			writeUpdatedAt(base);
 		}
 		if (!Files.isDirectory(repoRoot.resolve("items"))) {
 			return;
 		}
 		int before = ITEMS.size();
+		int indexed = indexRepoItems(repoRoot);
+		BetterPV.LOGGER.info("NEU-REPO ready ({} items, +{})", indexed, Math.max(0, indexed - before));
+		dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory.clearCache();
+		if (needsRefresh(base)) {
+			refreshInBackground(base, repoRoot);
+		}
+	}
+
+	private static void refreshIfStaleSafely() {
+		try {
+			Path base = Path.of(System.getProperty("user.home"), ".betterpv", "neu-repo");
+			Path repoRoot = base.resolve("repo");
+			if (!Files.isDirectory(repoRoot.resolve("items")) || !needsRefresh(base)) {
+				return;
+			}
+			refreshInBackground(base, repoRoot);
+		} catch (Exception exception) {
+			BetterPV.LOGGER.warn("Failed to check NEU-REPO for updates", exception);
+		}
+	}
+
+	private static void refreshInBackground(Path base, Path repoRoot) {
+		if (!REFRESH_IN_FLIGHT.compareAndSet(false, true)) {
+			return;
+		}
+		EXECUTOR.execute(() -> {
+			try {
+				BetterPV.LOGGER.info("Updating NotEnoughUpdates-REPO…");
+				downloadAndExtract(base, repoRoot);
+				writeUpdatedAt(base);
+				int indexed = indexRepoItems(repoRoot);
+				reloadDependentCaches();
+				BetterPV.LOGGER.info("NEU-REPO updated ({} items)", indexed);
+			} catch (Exception exception) {
+				BetterPV.LOGGER.warn("Failed to update NEU-REPO (using cached copy)", exception);
+			} finally {
+				REFRESH_IN_FLIGHT.set(false);
+			}
+		});
+	}
+
+	private static boolean needsRefresh(Path base) {
+		Path repoRoot = base.resolve("repo");
+		if (!Files.isDirectory(repoRoot.resolve("items"))) {
+			return false;
+		}
+		Path marker = base.resolve(UPDATED_AT);
+		if (!Files.isRegularFile(marker)) {
+			// Existing installs from before auto-update never wrote a marker.
+			return true;
+		}
+		try {
+			long updated = Long.parseLong(Files.readString(marker, StandardCharsets.UTF_8).trim());
+			return System.currentTimeMillis() - updated > Duration.ofHours(REFRESH_HOURS).toMillis();
+		} catch (Exception ignored) {
+			return true;
+		}
+	}
+
+	private static void writeUpdatedAt(Path base) throws IOException {
+		Files.writeString(
+			base.resolve(UPDATED_AT),
+			Long.toString(System.currentTimeMillis()),
+			StandardCharsets.UTF_8,
+			StandardOpenOption.CREATE,
+			StandardOpenOption.TRUNCATE_EXISTING
+		);
+	}
+
+	private static int indexRepoItems(Path repoRoot) throws IOException {
+		Map<String, JsonObject> next = new ConcurrentHashMap<>();
 		try (var paths = Files.walk(repoRoot.resolve("items"))) {
 			paths.filter(path -> path.toString().endsWith(".json")).forEach(path -> {
 				try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
@@ -346,13 +438,31 @@ public final class NeuRepoCache {
 					String internal = object.has("internalname")
 						? object.get("internalname").getAsString()
 						: path.getFileName().toString().replace(".json", "");
-					ITEMS.put(internal.toUpperCase(Locale.ROOT), object);
-					MISS.remove(internal.toUpperCase(Locale.ROOT));
+					next.put(internal.toUpperCase(Locale.ROOT), object);
 				} catch (Exception ignored) {
 				}
 			});
 		}
-		BetterPV.LOGGER.info("NEU-REPO ready ({} items, +{})", ITEMS.size(), Math.max(0, ITEMS.size() - before));
+		ITEMS.clear();
+		MISS.clear();
+		ITEMS.putAll(next);
+		return next.size();
+	}
+
+	private static void reloadDependentCaches() {
+		synchronized (SACKS) {
+			SACKS.clear();
+			SACK_ITEMS.clear();
+		}
+		synchronized (MINIONS) {
+			MINIONS.clear();
+		}
+		BestiaryData.reload();
+		AttributeShardsData.reload();
+		HoppityRabbitsData.reload();
+		TrophyFishData.reload();
+		ForagingHotfData.reload();
+		MiningHotmData.reload();
 		dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory.clearCache();
 	}
 

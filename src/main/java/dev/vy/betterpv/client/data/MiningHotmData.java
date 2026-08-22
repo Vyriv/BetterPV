@@ -58,6 +58,15 @@ public final class MiningHotmData {
 		}
 	}
 
+	/** Reload after NEU-REPO updates. */
+	public static void reload() {
+		synchronized (MiningHotmData.class) {
+			loaded = false;
+			loadFromDisk();
+			loaded = true;
+		}
+	}
+
 	public static List<PerkDef> perks() {
 		ensureLoaded();
 		return perks;

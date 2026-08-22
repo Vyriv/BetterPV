@@ -41,6 +41,15 @@ public final class ForagingHotfData {
 		}
 	}
 
+	/** Reload after NEU-REPO updates. */
+	public static void reload() {
+		synchronized (ForagingHotfData.class) {
+			loaded = false;
+			loadFromDisk();
+			loaded = true;
+		}
+	}
+
 	public static List<PerkDef> perks() {
 		ensureLoaded();
 		return perks;

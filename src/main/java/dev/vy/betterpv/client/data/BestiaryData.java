@@ -81,6 +81,15 @@ public final class BestiaryData {
 		}
 	}
 
+	/** Reload after NEU-REPO updates. */
+	public static void reload() {
+		synchronized (BestiaryData.class) {
+			loaded = false;
+			loadFromDisk();
+			loaded = true;
+		}
+	}
+
 	public static List<Category> categories() {
 		ensureLoaded();
 		return categories;

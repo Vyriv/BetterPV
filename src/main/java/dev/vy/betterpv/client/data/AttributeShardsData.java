@@ -58,6 +58,15 @@ public final class AttributeShardsData {
 		}
 	}
 
+	/** Reload after NEU-REPO updates. */
+	public static void reload() {
+		synchronized (AttributeShardsData.class) {
+			loaded = false;
+			loadFromDisk();
+			loaded = true;
+		}
+	}
+
 	public static List<Def> all() {
 		ensureLoaded();
 		return defs;

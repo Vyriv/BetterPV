@@ -68,6 +68,15 @@ public final class TrophyFishData {
 		}
 	}
 
+	/** Reload after NEU-REPO updates. */
+	public static void reload() {
+		synchronized (TrophyFishData.class) {
+			loaded = false;
+			loadFromDisk();
+			loaded = true;
+		}
+	}
+
 	public static List<Def> all() {
 		ensureLoaded();
 		return defs;

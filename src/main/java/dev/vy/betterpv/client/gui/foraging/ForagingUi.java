@@ -2,6 +2,7 @@ package dev.vy.betterpv.client.gui.foraging;
 
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
+import dev.vy.betterpv.client.gui.inventories.SkyBlockIconRenderer;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import java.util.List;
 import java.util.Locale;
@@ -157,29 +158,25 @@ public final class ForagingUi {
 		return parts[0] + " " + parts[parts.length - 1];
 	}
 
-	/** Native 16×16 fish-family icon (no fractional downscale). */
+	/** Native 16x16 fish-family icon (no fractional downscale). */
 	public static void drawFishFamilyIcon(GuiGraphicsExtractor g, String id, int x, int y) {
-		Identifier texture = id == null || id.isBlank() ? null : SkyBlockItemFactory.customIcon(id);
-		if (texture != null) {
-			int tex = SkyBlockItemFactory.customIconSize(id);
-			g.blit(RenderPipelines.GUI_TEXTURED, texture, x, y, 0, 0, 16, 16, tex, tex, tex, tex);
+		if (id != null && !id.isBlank() && SkyBlockIconRenderer.hasKnownIcon(id)) {
+			SkyBlockIconRenderer.draw(g, id, x, y, 16);
 			return;
 		}
 		ItemStack stack = id == null || id.isBlank() ? ItemStack.EMPTY : SkyBlockItemFactory.iconStack(id);
-		if (stack == null || stack.isEmpty()) {
+		if (stack == null || stack.isEmpty() || stack.is(Items.PAPER)) {
 			stack = new ItemStack(Items.TROPICAL_FISH);
 		}
-		g.item(stack, x, y);
+		SkyBlockIconRenderer.draw(g, stack, id, x, y, 16);
 	}
 
 	public static void drawSkyblockIcon(GuiGraphicsExtractor g, String id, int x, int y, int size) {
-		Identifier texture = id == null || id.isBlank() ? null : SkyBlockItemFactory.customIcon(id);
-		if (texture != null) {
-			int tex = SkyBlockItemFactory.customIconSize(id);
-			g.blit(RenderPipelines.GUI_TEXTURED, texture, x, y, 0, 0, size, size, tex, tex, tex, tex);
+		ItemStack stack = id == null || id.isBlank() ? ItemStack.EMPTY : SkyBlockItemFactory.iconStack(id);
+		if (id != null && !id.isBlank() && SkyBlockIconRenderer.hasKnownIcon(id)) {
+			SkyBlockIconRenderer.draw(g, stack, id, x, y, size);
 			return;
 		}
-		ItemStack stack = id == null || id.isBlank() ? ItemStack.EMPTY : SkyBlockItemFactory.iconStack(id);
 		if (stack == null || stack.isEmpty() || stack.is(Items.PAPER)) {
 			String upper = id == null ? "" : id.toUpperCase(Locale.ROOT);
 			if (upper.contains("TREE")) {
@@ -187,17 +184,20 @@ public final class ForagingUi {
 			} else {
 				stack = new ItemStack(Items.TROPICAL_FISH);
 			}
-		}
-		if (size == 16) {
-			g.item(stack, x, y);
+			// No known SkyBlock model/PNG: keep foraging-specific vanilla stand-ins.
+			if (size == 16) {
+				g.item(stack, x, y);
+			} else {
+				g.pose().pushMatrix();
+				g.pose().translate(x, y);
+				float s = size / 16f;
+				g.pose().scale(s, s);
+				g.item(stack, 0, 0);
+				g.pose().popMatrix();
+			}
 			return;
 		}
-		g.pose().pushMatrix();
-		g.pose().translate(x, y);
-		float s = size / 16f;
-		g.pose().scale(s, s);
-		g.item(stack, 0, 0);
-		g.pose().popMatrix();
+		SkyBlockIconRenderer.draw(g, stack, id, x, y, size);
 	}
 
 	public static String pretty(String id) {

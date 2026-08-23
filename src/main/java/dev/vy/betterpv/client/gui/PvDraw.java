@@ -438,7 +438,26 @@ public final class PvDraw {
 		int fillColor,
 		boolean maxedShiny
 	) {
-		labeledBar(g, font, paddedLabelValue(font, label, value, w), progress, x, y, w, fillColor, maxedShiny);
+		labeledBar(g, font, label, value, progress, x, y, w, fillColor, maxedShiny, COLOR_TEXT, false);
+	}
+
+	public static void labeledBar(
+		GuiGraphicsExtractor g,
+		Font font,
+		String label,
+		String value,
+		float progress,
+		int x,
+		int y,
+		int w,
+		int fillColor,
+		boolean maxedShiny,
+		int labelColor,
+		boolean labelBold
+	) {
+		drawLabelValue(g, font, label, value, x, y, w, labelColor, labelBold);
+		int barY = y + font.lineHeight + 2;
+		progressBar(g, x, barY, w, BAR_HEIGHT, progress, fillColor, maxedShiny);
 	}
 
 	/** Prefers a prebuilt label line (one prepareText) for skill / slayer grids. */
@@ -456,6 +475,28 @@ public final class PvDraw {
 		g.text(font, labelLine, x, y, COLOR_WHITE, false);
 		int barY = y + font.lineHeight + 2;
 		progressBar(g, x, barY, w, BAR_HEIGHT, progress, fillColor, maxedShiny);
+	}
+
+	/** Label left, value flush-right within {@code w} (true alignment, not space padding). */
+	public static void drawLabelValue(
+		GuiGraphicsExtractor g,
+		Font font,
+		String label,
+		String value,
+		int x,
+		int y,
+		int w,
+		int labelColor,
+		boolean labelBold
+	) {
+		String left = label == null ? "" : label;
+		String right = value == null ? "" : value;
+		Component leftComp = styled(left, labelColor, labelBold);
+		g.text(font, leftComp, x, y, COLOR_WHITE, false);
+		if (!right.isEmpty()) {
+			int vw = font.width(right);
+			g.text(font, styled(right, COLOR_MUTED, false), x + Math.max(0, w - vw), y, COLOR_WHITE, false);
+		}
 	}
 
 	/** Right-align {@code value} after {@code label} within {@code w} using space padding. */

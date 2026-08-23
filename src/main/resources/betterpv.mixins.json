@@ -7,6 +7,7 @@
 		"EntityCosmeticsMixin",
 		"EntityRendererCosmeticsMixin",
 		"FontCosmeticsMixin",
+		"ItemModelResolverIconProbeMixin",
 		"PlayerInfoCosmeticsMixin",
 		"PlayerTabOverlayCosmeticsMixin",
 		"SkyHanniAdvancedPlayerListCosmeticsMixin",

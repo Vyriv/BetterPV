@@ -24,6 +24,7 @@ import dev.vy.betterpv.client.data.GuildStatus;
 import dev.vy.betterpv.client.data.MiscStatsSnapshot;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
+import dev.vy.betterpv.client.gui.inventories.SkyBlockIconRenderer;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import java.util.ArrayList;
 import java.util.List;
@@ -455,15 +456,10 @@ public final class MiscStatsPage {
 	private static void drawCommunityIcon(GuiGraphicsExtractor g, String upgrade, int x, int y, int size) {
 		String sbId = communitySkyblockId(upgrade);
 		if (sbId != null && !sbId.isBlank()) {
-			Identifier custom = SkyBlockItemFactory.customIcon(sbId);
-			if (custom != null) {
-				int tex = SkyBlockItemFactory.customIconSize(sbId);
-				g.blit(RenderPipelines.GUI_TEXTURED, custom, x, y, 0, 0, size, size, tex, tex, tex, tex);
-				return;
-			}
 			ItemStack sky = SkyBlockItemFactory.iconStack(sbId);
-			if (sky != null && !sky.isEmpty() && !sky.is(Items.PAPER) && !sky.is(Items.BARRIER)) {
-				drawItemIcon(g, sky, x, y, size);
+			if (SkyBlockIconRenderer.hasKnownIcon(sbId)
+				|| (sky != null && !sky.isEmpty() && !sky.is(Items.PAPER) && !sky.is(Items.BARRIER))) {
+				SkyBlockIconRenderer.draw(g, sky, sbId, x, y, size);
 				return;
 			}
 		}

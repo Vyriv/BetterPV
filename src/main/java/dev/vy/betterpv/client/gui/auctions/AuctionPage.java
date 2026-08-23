@@ -6,6 +6,7 @@ import dev.vy.betterpv.client.data.AuctionSnapshot;
 import dev.vy.betterpv.client.data.FormatUtil;
 import dev.vy.betterpv.client.data.InventorySnapshot;
 import dev.vy.betterpv.client.gui.PvDraw;
+import dev.vy.betterpv.client.gui.inventories.SkyBlockIconRenderer;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import dev.vy.betterpv.client.gui.nav.PvSubTab;
 import dev.vy.betterpv.client.networth.InventoryDecoder;
@@ -470,17 +471,9 @@ public final class AuctionPage {
 		ItemStack stack = ItemStack.EMPTY;
 		if (slot != null && !slot.isEmpty()) {
 			stack = SkyBlockItemFactory.toStack(slot);
-			Identifier custom = SkyBlockItemFactory.customIcon(slot.id());
 			int ix = x + 1;
-			if (custom != null) {
-				int size = Math.min(ITEM, SkyBlockItemFactory.customIconSize(slot.id()));
-				int iy = y + (ROW_H - size) / 2;
-				int ox = ix + (ITEM - size) / 2;
-				g.blit(RenderPipelines.GUI_TEXTURED, custom, ox, iy, 0, 0, size, size, size, size, size, size);
-			} else if (!stack.isEmpty()) {
-				int iy = y + (ROW_H - ITEM) / 2;
-				g.item(stack, ix, iy);
-			}
+			int iy = y + (ROW_H - ITEM) / 2;
+			SkyBlockIconRenderer.draw(g, stack, slot.id(), ix, iy, ITEM);
 			if (hover) {
 				this.hoveredSlot = slot;
 				this.hoveredStack = stack;

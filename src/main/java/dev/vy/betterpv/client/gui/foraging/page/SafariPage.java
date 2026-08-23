@@ -17,6 +17,7 @@ import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
 import dev.vy.betterpv.client.gui.foraging.ForagingUi;
 import dev.vy.betterpv.client.gui.foraging.ForagingUi.HoverZone;
+import dev.vy.betterpv.client.gui.inventories.SkyBlockIconRenderer;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -319,13 +320,9 @@ public final class SafariPage {
 			g.item(stack, x, y);
 			return;
 		}
-		if (critterId != null && !critterId.isBlank()) {
-			Identifier custom = SkyBlockItemFactory.customIcon(critterId);
-			if (custom != null) {
-				int tex = SkyBlockItemFactory.customIconSize(critterId);
-				g.blit(RenderPipelines.GUI_TEXTURED, custom, x, y, 0, 0, 16, 16, tex, tex, tex, tex);
-				return;
-			}
+		if (critterId != null && !critterId.isBlank() && SkyBlockIconRenderer.hasKnownIcon(critterId)) {
+			SkyBlockIconRenderer.draw(g, fallback, critterId, x, y, 16);
+			return;
 		}
 		g.item(fallback, x, y);
 	}

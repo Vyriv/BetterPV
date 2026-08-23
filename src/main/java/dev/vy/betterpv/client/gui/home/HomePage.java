@@ -1236,24 +1236,27 @@ public final class HomePage {
 	private String cachedActiveSlayerId = "";
 
 	private record CachedBar(
-		Component line,
+		String label,
+		String value,
 		float progress,
 		boolean maxed,
 		int fillColor,
 		int accent,
+		boolean labelBold,
 		List<PvTooltip.Line> hover,
 		String slayerId,
 		int nameW
 	) {
 		private CachedBar(
-			Component line,
+			String label,
+			String value,
 			float progress,
 			boolean maxed,
 			int fillColor,
 			int accent,
 			List<PvTooltip.Line> hover
 		) {
-			this(line, progress, maxed, fillColor, accent, hover, "", 0);
+			this(label, value, progress, maxed, fillColor, accent, false, hover, "", 0);
 		}
 	}
 
@@ -1603,25 +1606,18 @@ public final class HomePage {
 		List<CachedBar> skillBars = new ArrayList<>(skillLimit);
 		for (int i = 0; i < skillLimit; i++) {
 			ProfileSnapshot.SkillEntry skill = skills.get(i);
-			skillBars.add(new CachedBar(
-				PvDraw.paddedLabelValue(font, skill.name(), String.valueOf(skill.level()), colW),
-				skill.progress(),
-				skill.maxed(),
-				PvDraw.COLOR_BAR_FILL,
-				0,
-				skill.hoverLines()
-			));
+			skillBars.add(skillBar(skill));
 		}
 		this.cachedSkillBars = skillBars;
 
 		List<CachedBar> extra = new ArrayList<>(2);
 		ProfileSnapshot.SkillEntry rune = this.snapshot.runecrafting();
 		if (rune != null) {
-			extra.add(skillBar(font, rune, colW));
+			extra.add(skillBar(rune));
 		}
 		ProfileSnapshot.SkillEntry social = this.snapshot.social();
 		if (social != null) {
-			extra.add(skillBar(font, social, colW));
+			extra.add(skillBar(social));
 		}
 		this.cachedExtraSkillBars = extra;
 
@@ -1633,13 +1629,13 @@ public final class HomePage {
 			boolean active = !activeId.isBlank() && activeId.equalsIgnoreCase(slayer.id());
 			int accent = slayerColor(slayer.id());
 			slayerBars.add(new CachedBar(
-				PvDraw.paddedLabelValue(
-					font, slayer.name(), "T" + slayer.tier(), colW, accent, active
-				),
+				slayer.name(),
+				"T" + slayer.tier(),
 				slayer.progress(),
 				slayer.maxed(),
 				PvDraw.COLOR_BAR_FILL_SLAYER,
 				accent,
+				active,
 				slayerHoverLines(slayer, active ? quest : null, accent),
 				slayer.id(),
 				font.width(slayer.name())
@@ -1648,9 +1644,10 @@ public final class HomePage {
 		this.cachedSlayerBars = slayerBars;
 	}
 
-	private static CachedBar skillBar(Font font, ProfileSnapshot.SkillEntry skill, int colW) {
+	private static CachedBar skillBar(ProfileSnapshot.SkillEntry skill) {
 		return new CachedBar(
-			PvDraw.paddedLabelValue(font, skill.name(), String.valueOf(skill.level()), colW),
+			skill.name(),
+			String.valueOf(skill.level()),
 			skill.progress(),
 			skill.maxed(),
 			PvDraw.COLOR_BAR_FILL,
@@ -1683,7 +1680,7 @@ public final class HomePage {
 			int bx = left ? leftX : rightX;
 			int by = startY + row * rowH;
 			int zoneH = rowH - 2;
-			PvDraw.labeledBar(g, font, bar.line(), bar.progress(), bx, by, colW, bar.fillColor(), bar.maxed());
+			drawCachedBar(g, font, bar, bx, by, colW);
 			this.zones.add(new HoverZone(bx, by, colW, zoneH, bar.hover()));
 			if (!bar.slayerId().isBlank()) {
 				this.slayerNameHits.add(new SlayerNameHit(
@@ -1710,9 +1707,19 @@ public final class HomePage {
 			int bx = left ? leftX : rightX;
 			int by = startY + row * rowH;
 			int zoneH = rowH - 2;
-			PvDraw.labeledBar(g, font, bar.line(), bar.progress(), bx, by, colW, bar.fillColor(), bar.maxed());
+			drawCachedBar(g, font, bar, bx, by, colW);
 			this.zones.add(new HoverZone(bx, by, colW, zoneH, bar.hover()));
 		}
+	}
+
+	private static void drawCachedBar(
+		GuiGraphicsExtractor g, Font font, CachedBar bar, int x, int y, int w
+	) {
+		int labelColor = bar.accent() != 0 ? bar.accent() : PvDraw.COLOR_TEXT;
+		PvDraw.labeledBar(
+			g, font, bar.label(), bar.value(), bar.progress(), x, y, w, bar.fillColor(), bar.maxed(),
+			labelColor, bar.labelBold()
+		);
 	}
 
 	private static List<PvTooltip.Line> slayerHoverLines(

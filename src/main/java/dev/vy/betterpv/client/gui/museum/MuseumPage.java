@@ -7,6 +7,7 @@ import dev.vy.betterpv.client.data.InventorySnapshot;
 import dev.vy.betterpv.client.data.MuseumCatalog;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
+import dev.vy.betterpv.client.gui.inventories.SkyBlockIconRenderer;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import dev.vy.betterpv.client.gui.nav.MuseumSort;
 import dev.vy.betterpv.client.networth.InventoryDecoder;
@@ -557,7 +558,7 @@ public final class MuseumPage {
 			icon = MISSING_ICON;
 		}
 		// Paper+item_model is normal until the pack texture resolves - keep retrying.
-		if (!isWeakIcon(icon) || SkyBlockItemFactory.customIcon(row.iconId()) != null) {
+		if (!isWeakIcon(icon) || SkyBlockIconRenderer.hasKnownIcon(row.iconId())) {
 			this.missingIconById.put(row.donationId(), icon);
 		}
 		return icon;
@@ -567,25 +568,8 @@ public final class MuseumPage {
 	private static void drawSkyblockIcon(
 		GuiGraphicsExtractor g, String iconId, ItemStack fallback, int x, int y, int size
 	) {
-		Identifier texture = iconId == null || iconId.isBlank()
-			? null
-			: SkyBlockItemFactory.customIcon(iconId);
-		if (texture != null) {
-			int tex = SkyBlockItemFactory.customIconSize(iconId);
-			g.blit(
-				RenderPipelines.GUI_TEXTURED,
-				texture,
-				x, y,
-				0, 0,
-				size, size,
-				tex, tex,
-				tex, tex
-			);
-			return;
-		}
-		if (fallback != null && !fallback.isEmpty()) {
-			g.item(fallback, x, y);
-		}
+		ItemStack stack = fallback == null ? ItemStack.EMPTY : fallback;
+		SkyBlockIconRenderer.draw(g, stack, iconId, x, y, size);
 	}
 
 	private static String resolveIconId(Slot slot) {
@@ -714,7 +698,7 @@ public final class MuseumPage {
 			icon = new ItemStack(Items.BARRIER);
 		}
 		// Don't freeze paper before pack/NEU textures arrive.
-		if (!isWeakIcon(icon) || SkyBlockItemFactory.customIcon(iconId) != null) {
+		if (!isWeakIcon(icon) || SkyBlockIconRenderer.hasKnownIcon(iconId)) {
 			this.iconByIndex.put(index, icon);
 		}
 		return icon;

@@ -1069,21 +1069,7 @@ public final class InventoryPage {
 
 		if (slot != null && !slot.isEmpty()) {
 			ItemStack stack = cachedStack(slot);
-			Identifier icon = SkyBlockItemFactory.customIcon(slot.id());
-			if (icon != null) {
-				int tex = SkyBlockItemFactory.customIconSize(slot.id());
-				g.blit(
-					RenderPipelines.GUI_TEXTURED,
-					icon,
-					sx + 1, sy + 1,
-					0, 0,
-					16, 16,
-					tex, tex,
-					tex, tex
-				);
-			} else {
-				g.item(stack, sx + 1, sy + 1);
-			}
+			SkyBlockIconRenderer.draw(g, stack, slot.id(), sx + 1, sy + 1, 16);
 			if (slot.count() > 1) {
 				String count = slot.count() <= 64
 					? String.valueOf(slot.count())

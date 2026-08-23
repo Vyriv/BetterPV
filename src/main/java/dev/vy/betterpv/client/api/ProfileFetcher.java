@@ -768,7 +768,7 @@ public final class ProfileFetcher {
 			skills.add(new ProfileSnapshot.SkillEntry(
 				skill,
 				title(skill),
-				progress.displayLevel(),
+				progress.cappedLevel(),
 				progress.fill(),
 				progress.maxed(),
 				progress.skillHover(title(skill)),
@@ -785,7 +785,7 @@ public final class ProfileFetcher {
 		return new ProfileSnapshot.SkillEntry(
 			"social",
 			"Social",
-			socialProgress.displayLevel(),
+			socialProgress.cappedLevel(),
 			socialProgress.fill(),
 			socialProgress.maxed(),
 			socialProgress.skillHover("Social"),
@@ -800,7 +800,7 @@ public final class ProfileFetcher {
 		return new ProfileSnapshot.SkillEntry(
 			"runecrafting",
 			"Runecrafting",
-			progress.displayLevel(),
+			progress.cappedLevel(),
 			progress.fill(),
 			progress.maxed(),
 			progress.skillHover("Runecrafting"),

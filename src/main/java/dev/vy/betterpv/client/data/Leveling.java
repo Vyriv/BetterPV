@@ -56,6 +56,14 @@ public final class Leveling {
 			return (int) Math.floor(level);
 		}
 
+		/** Soft-cap level for skill bar labels. Overflow stays hover-only. */
+		public int cappedLevel() {
+			if (maxed) {
+				return maxLevel;
+			}
+			return (int) Math.floor(level);
+		}
+
 		public String hoverText() {
 			if (maxed) {
 				return overflowHoverText();
@@ -551,9 +559,6 @@ public final class Leveling {
 				int sacrificed = petCare.getAsJsonArray("pet_types_sacrificed").size();
 				base = Math.min(60, base + Math.max(0, sacrificed));
 			}
-		}
-		if ("hunting".equals(skill)) {
-			return Math.min(base, 25);
 		}
 		if ("runecrafting".equals(skill) || "social".equals(skill)) {
 			return Math.min(base, 25);

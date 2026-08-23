@@ -17,6 +17,7 @@ import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
 import dev.vy.betterpv.client.gui.foraging.ForagingUi;
 import dev.vy.betterpv.client.gui.foraging.ForagingUi.HoverZone;
+import dev.vy.betterpv.client.gui.inventories.SkyBlockIconRenderer;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import dev.vy.betterpv.client.price.ItemPricer;
 import java.util.ArrayList;
@@ -145,13 +146,7 @@ public final class AttributeShardsPage {
 				: (hovered ? PvDraw.COLOR_ACCENT : ITEM_SLOT_BORDER);
 			g.outline(bx, by, SLOT, SLOT, border);
 			ItemStack stack = attributeIcon(row);
-			Identifier custom = SkyBlockItemFactory.customIcon(row.iconId());
-			if (custom != null) {
-				int tex = SkyBlockItemFactory.customIconSize(row.iconId());
-				g.blit(RenderPipelines.GUI_TEXTURED, custom, bx + 1, by + 1, 0, 0, 16, 16, tex, tex, tex, tex);
-			} else {
-				g.item(stack, bx + 1, by + 1);
-			}
+			SkyBlockIconRenderer.draw(g, stack, row.iconId(), bx + 1, by + 1, 16);
 			ForagingUi.addClippedHover(this.zones, bx, by, SLOT, SLOT, lx, this.attrGridY, lw, this.attrGridH,
 				attributeTooltip(row));
 		}
@@ -213,15 +208,8 @@ public final class AttributeShardsPage {
 		for (ForagingSnapshot.AttributeShardRow row : notMaxed) {
 			int need = Math.max(0, row.shardsForMax() - row.shardsOwned());
 			ItemStack stack = attributeIcon(row);
-			Identifier custom = SkyBlockItemFactory.customIcon(row.iconId());
 			PvDraw.IconTextAlign rowAlign = PvDraw.IconTextAlign.of(yy, rowH, ICON, font.lineHeight);
-			if (custom != null) {
-				int tex = SkyBlockItemFactory.customIconSize(row.iconId());
-				int draw = Math.min(ICON, Math.max(1, tex));
-				g.blit(RenderPipelines.GUI_TEXTURED, custom, rx, rowAlign.iconY(), 0, 0, draw, draw, tex, tex, tex, tex);
-			} else {
-				g.item(stack, rx, rowAlign.iconY());
-			}
+			SkyBlockIconRenderer.draw(g, stack, row.iconId(), rx, rowAlign.iconY(), ICON);
 			String qty = "x" + FormatUtil.commas(need);
 			int qtyW = font.width(qty);
 			int nameColor = rarityColor(row.rarity());

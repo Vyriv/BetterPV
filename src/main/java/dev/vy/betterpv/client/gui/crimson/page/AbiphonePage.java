@@ -18,6 +18,7 @@ import dev.vy.betterpv.client.data.FormatUtil;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
 import dev.vy.betterpv.client.gui.crimson.CrimsonUi.HoverZone;
+import dev.vy.betterpv.client.gui.inventories.SkyBlockIconRenderer;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import java.util.ArrayList;
 import java.util.List;
@@ -220,18 +221,11 @@ public final class AbiphonePage {
 	/** Prefer the custom NEU skin texture, then a vanilla stack; never show blank paper. */
 	private static void drawContactIcon(GuiGraphicsExtractor g, String contactId, int x, int y) {
 		String neuId = AbiphoneNpcs.neuId(contactId);
-		if (!neuId.isBlank()) {
-			Identifier custom = SkyBlockItemFactory.customIcon(neuId);
-			if (custom != null) {
-				int tex = SkyBlockItemFactory.customIconSize(neuId);
-				// Draw native pixels into the 16×16 item box (no upscale blur).
-				int draw = Math.min(16, Math.max(1, tex));
-				int ox = (16 - draw) / 2;
-				g.blit(RenderPipelines.GUI_TEXTURED, custom, x + ox, y + ox, 0, 0, draw, draw, tex, tex, tex, tex);
-				return;
-			}
-		}
 		ItemStack icon = neuId.isBlank() ? ItemStack.EMPTY : SkyBlockItemFactory.iconStack(neuId);
+		if (!neuId.isBlank() && SkyBlockIconRenderer.hasKnownIcon(neuId)) {
+			SkyBlockIconRenderer.draw(g, icon, neuId, x, y, 16);
+			return;
+		}
 		if (icon.isEmpty() || icon.is(Items.PAPER) || isUntexturedHead(icon)) {
 			icon = new ItemStack(Items.VILLAGER_SPAWN_EGG);
 		}

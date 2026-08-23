@@ -125,6 +125,20 @@ public final class SkyBlockItemFactory {
 		return SkyBlockItemIconCache.textureSize(model);
 	}
 
+	/** Hypixel {@code item_model} string for a SkyBlock id, if known. */
+	public static String itemModel(String skyblockId) {
+		if (skyblockId == null || skyblockId.isBlank()) {
+			return null;
+		}
+		String key = skyblockId.toUpperCase(Locale.ROOT);
+		String model = ITEM_MODEL_BY_ID.get(key);
+		if (model == null) {
+			rememberItemModel(key, resolveItemModel(key));
+			model = ITEM_MODEL_BY_ID.get(key);
+		}
+		return model;
+	}
+
 	/** Blocking warm on a worker thread so the first inventory paint already has textures. */
 	public static void warmBlocking(InventorySnapshot snapshot) {
 		NeuRepoCache.ensureLoadedBlocking();

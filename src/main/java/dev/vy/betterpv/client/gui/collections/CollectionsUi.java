@@ -2,6 +2,7 @@ package dev.vy.betterpv.client.gui.collections;
 
 import dev.vy.betterpv.client.data.BossCollections;
 import dev.vy.betterpv.client.data.CollectionIds;
+import dev.vy.betterpv.client.gui.inventories.SkyBlockIconRenderer;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import java.util.ArrayList;
 import java.util.List;
@@ -49,7 +50,7 @@ public final class CollectionsUi {
 			if (key == null || key.isBlank()) {
 				continue;
 			}
-			if (SkyBlockItemFactory.customIcon(key) != null) {
+			if (SkyBlockIconRenderer.hasKnownIcon(key)) {
 				return key;
 			}
 			ItemStack stack = SkyBlockItemFactory.iconStack(key);
@@ -79,14 +80,7 @@ public final class CollectionsUi {
 
 	public static void drawIcon(GuiGraphicsExtractor g, String id, int x, int y, int size) {
 		int draw = Math.min(ITEM_ICON, Math.max(1, size));
-		Identifier texture = SkyBlockItemFactory.customIcon(id);
-		ItemStack icon = SkyBlockItemFactory.iconStack(id);
-		if (texture != null) {
-			int tex = SkyBlockItemFactory.customIconSize(id);
-			g.blit(RenderPipelines.GUI_TEXTURED, texture, x, y, 0, 0, draw, draw, tex, tex, tex, tex);
-		} else if (!icon.isEmpty()) {
-			drawVanillaIcon(g, icon, x, y, draw);
-		}
+		SkyBlockIconRenderer.draw(g, id, x, y, draw);
 	}
 
 	public static void drawIcon(GuiGraphicsExtractor g, String id, int x, int y) {

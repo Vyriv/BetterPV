@@ -9,6 +9,7 @@ import dev.vy.betterpv.client.api.BetterPVConfig;
 import dev.vy.betterpv.client.api.BetterPvSessionAuth;
 import dev.vy.betterpv.client.cosmetics.BetterPvCosmetics;
 import dev.vy.betterpv.client.gui.LoadingEggFinale;
+import dev.vy.betterpv.client.gui.inventories.SkyBlockIconRenderer;
 import dev.vy.betterpv.client.neu.NeuRepoCache;
 import dev.vy.betterpv.client.neu.SkyBlockPackCache;
 import dev.vy.betterpv.client.price.ItemPricer;
@@ -21,8 +22,12 @@ import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.event.Event;
+import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
+import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
 import net.minecraft.client.User;
 import net.minecraft.resources.Identifier;
+import net.minecraft.server.packs.PackType;
+import net.minecraft.server.packs.resources.ResourceManager;
 
 public final class BetterPVClient implements ClientModInitializer {
 	/** Runs after {@link Event#DEFAULT_PHASE} so we replace Skyblocker's {@code /pv}. */
@@ -72,6 +77,20 @@ public final class BetterPVClient implements ClientModInitializer {
 					)
 			);
 		});
+
+		ResourceManagerHelper.get(PackType.CLIENT_RESOURCES).registerReloadListener(
+			new SimpleSynchronousResourceReloadListener() {
+				@Override
+				public Identifier getFabricId() {
+					return Identifier.fromNamespaceAndPath(BetterPV.MOD_ID, "icon_probe_cache");
+				}
+
+				@Override
+				public void onResourceManagerReload(ResourceManager resourceManager) {
+					SkyBlockIconRenderer.invalidateProbeCache();
+				}
+			}
+		);
 
 		PlayerInteractPvOpener.register();
 		HypixelProfileSpyButton.register();

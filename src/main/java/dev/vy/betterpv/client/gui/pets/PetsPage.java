@@ -6,6 +6,7 @@ import dev.vy.betterpv.client.data.PetLoreResolver;
 import dev.vy.betterpv.client.data.PetSnapshot;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
+import dev.vy.betterpv.client.gui.inventories.SkyBlockIconRenderer;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import dev.vy.betterpv.client.networth.InventoryDecoder;
 import java.util.ArrayList;
@@ -281,17 +282,10 @@ public final class PetsPage {
 		g.outline(sx, sy, slot, slot, border);
 
 		ItemStack icon = SkyBlockItemFactory.iconStack(pet.neuId());
-		Identifier texture = SkyBlockItemFactory.customIcon(pet.neuId());
 		int draw = Math.max(ITEM_ICON, slot - 2);
 		int ix = sx + (slot - draw) / 2;
 		int iy = sy + (slot - draw) / 2;
-		if (texture != null) {
-			int tex = SkyBlockItemFactory.customIconSize(pet.neuId());
-			g.blit(RenderPipelines.GUI_TEXTURED, texture, ix, iy, 0, 0, draw, draw, tex, tex, tex, tex);
-		} else if (!icon.isEmpty()) {
-			// Item renders are fixed 16×16 - center inside the larger slot.
-			g.item(icon, sx + (slot - ITEM_ICON) / 2, sy + (slot - ITEM_ICON) / 2);
-		}
+		SkyBlockIconRenderer.draw(g, icon, pet.neuId(), ix, iy, draw);
 
 		String level = String.valueOf(pet.level());
 		int levelY = sy + slot - font.lineHeight + 1;
@@ -348,13 +342,7 @@ public final class PetsPage {
 		PetSnapshot.Entry pet = this.snapshot.pets().get(this.selected);
 
 		ItemStack icon = SkyBlockItemFactory.iconStack(pet.neuId());
-		Identifier texture = SkyBlockItemFactory.customIcon(pet.neuId());
-		if (texture != null) {
-			int tex = SkyBlockItemFactory.customIconSize(pet.neuId());
-			g.blit(RenderPipelines.GUI_TEXTURED, texture, cx, cy, 0, 0, ITEM_ICON, ITEM_ICON, tex, tex, tex, tex);
-		} else if (!icon.isEmpty()) {
-			g.item(icon, cx, cy);
-		}
+		SkyBlockIconRenderer.draw(g, icon, pet.neuId(), cx, cy, ITEM_ICON);
 		PvDraw.text(
 			g,
 			font,
@@ -409,13 +397,7 @@ public final class PetsPage {
 		cy += font.lineHeight + 2;
 		if (pet.hasHeldItem()) {
 			ItemStack held = SkyBlockItemFactory.iconStack(pet.heldItem());
-			Identifier heldTex = SkyBlockItemFactory.customIcon(pet.heldItem());
-			if (heldTex != null) {
-				int tex = SkyBlockItemFactory.customIconSize(pet.heldItem());
-				g.blit(RenderPipelines.GUI_TEXTURED, heldTex, cx, cy, 0, 0, ITEM_ICON, ITEM_ICON, tex, tex, tex, tex);
-			} else if (!held.isEmpty()) {
-				g.item(held, cx, cy);
-			}
+			SkyBlockIconRenderer.draw(g, held, pet.heldItem(), cx, cy, ITEM_ICON);
 			String heldName = SkyBlockItemFactory.plainDisplayName(pet.heldItem());
 			int heldColor = SkyBlockItemFactory.tierArgb(SkyBlockItemFactory.resolveTier(pet.heldItem()));
 			PvDraw.text(

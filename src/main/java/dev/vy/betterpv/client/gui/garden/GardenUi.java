@@ -5,6 +5,7 @@ import dev.vy.betterpv.client.data.GardenData;
 import dev.vy.betterpv.client.data.GardenSnapshot;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
+import dev.vy.betterpv.client.gui.inventories.SkyBlockIconRenderer;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import java.util.ArrayList;
 import java.util.List;
@@ -106,16 +107,9 @@ public final class GardenUi {
 		g.outline(x, y, w, h, CELL_BORDER);
 	}
 	public static void drawIcon(GuiGraphicsExtractor g, String id, int x, int y, int size, String packModel) {
-		Identifier texture = null;
-		if (packModel != null && !packModel.isBlank()) {
-			texture = SkyBlockItemFactory.customIconModel(id, packModel);
-		}
-		if (texture == null) {
-			texture = id == null || id.isBlank() ? null : SkyBlockItemFactory.customIcon(id);
-		}
-		if (texture != null) {
-			int tex = SkyBlockItemFactory.customIconSize(id);
-			g.blit(RenderPipelines.GUI_TEXTURED, texture, x, y, 0, 0, size, size, tex, tex, tex, tex);
+		ItemStack icon = id == null || id.isBlank() ? ItemStack.EMPTY : SkyBlockItemFactory.iconStack(id);
+		if (id != null && !id.isBlank() && (packModel != null && !packModel.isBlank() || SkyBlockIconRenderer.hasKnownIcon(id))) {
+			SkyBlockIconRenderer.draw(g, icon, id, packModel, x, y, size);
 			return;
 		}
 		ItemStack vanilla = vanillaFallback(id);
@@ -123,9 +117,8 @@ public final class GardenUi {
 			drawStack(g, vanilla, x, y, size);
 			return;
 		}
-		ItemStack icon = id == null || id.isBlank() ? ItemStack.EMPTY : SkyBlockItemFactory.iconStack(id);
 		if (isTexturedHead(icon) || (!icon.isEmpty() && !icon.is(Items.PAPER) && !icon.is(Items.PLAYER_HEAD))) {
-			drawStack(g, icon, x, y, size);
+			SkyBlockIconRenderer.draw(g, icon, id, x, y, size);
 			return;
 		}
 		String upper = id == null ? "" : id.toUpperCase(Locale.ROOT);

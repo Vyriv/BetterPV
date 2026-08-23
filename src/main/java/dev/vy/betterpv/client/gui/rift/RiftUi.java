@@ -3,6 +3,7 @@ package dev.vy.betterpv.client.gui.rift;
 import dev.vy.betterpv.client.data.InventorySnapshot;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
+import dev.vy.betterpv.client.gui.inventories.SkyBlockIconRenderer;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import dev.vy.betterpv.client.networth.InventoryDecoder;
 import java.util.ArrayList;
@@ -103,23 +104,8 @@ public final class RiftUi {
 		if (stack == null || stack.isEmpty()) {
 			return;
 		}
-		Identifier icon = SkyBlockItemFactory.customIcon(skyblockId);
-		if (icon != null) {
-			int tex = SkyBlockItemFactory.customIconSize(skyblockId);
-			int pad = Math.max(0, (size - 16) / 2);
-			g.blit(
-				RenderPipelines.GUI_TEXTURED,
-				icon,
-				x + pad, y + pad,
-				0, 0,
-				16, 16,
-				tex, tex,
-				tex, tex
-			);
-			return;
-		}
 		int pad = Math.max(0, (size - 16) / 2);
-		g.item(stack, x + pad, y + pad);
+		SkyBlockIconRenderer.draw(g, stack, skyblockId, x + pad, y + pad, Math.min(16, size));
 	}
 
 	public static int questRow(

@@ -406,8 +406,8 @@ public final class ForagingSnapshot {
 		HoneyInfo honey = parseHoney(Leveling.obj(foragingObj == null ? null : foragingObj.get("honey")));
 
 		return new ForagingSnapshot(
-			(int) Math.floor(foraging.level()), foraging.fill(), foraging.maxed(), foraging.skillHover("Foraging"),
-			(int) Math.floor(hunting.level()), hunting.fill(), hunting.maxed(), hunting.skillHover("Hunting"),
+			foraging.cappedLevel(), foraging.fill(), foraging.maxed(), foraging.skillHover("Foraging"),
+			hunting.cappedLevel(), hunting.fill(), hunting.maxed(), hunting.skillHover("Hunting"),
 			raceBest, collections, attributes,
 			gifts, starlyn, whisperPools,
 			fish, hinaTier, hinaProgress, hinaCompleted, hinaClaimed,

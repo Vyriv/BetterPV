@@ -3,6 +3,7 @@ package dev.vy.betterpv.client.networth;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import dev.vy.betterpv.client.data.InventorySnapshot;
 import dev.vy.betterpv.client.gui.SkyBlockSymbols;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
@@ -984,7 +985,9 @@ public final class InventoryDecoder {
 			stack.displayName(),
 			stack.dyeColor(),
 			stack.skullValue(),
-			stack.skullSignature()
+			stack.skullSignature(),
+			stack.extraAttributes(),
+			stack.soulbound()
 		);
 	}
 
@@ -1591,7 +1594,7 @@ public final class InventoryDecoder {
 	}
 
 	/** Flatten Hypixel JSON text components / quoted SNBT into a §-legacy string. */
-	private static String cleanJsonText(String raw) {
+	public static String cleanJsonText(String raw) {
 		if (raw == null || raw.isBlank()) {
 			return "";
 		}
@@ -1599,7 +1602,17 @@ public final class InventoryDecoder {
 		if (line.startsWith("\"") && line.endsWith("\"") && line.length() >= 2) {
 			line = unescapeSnbtString(line.substring(1, line.length() - 1));
 		}
-		if (line.startsWith("{") && line.contains("text")) {
+		if ((line.startsWith("{") || line.startsWith("[")) && line.contains("text")) {
+			try {
+				JsonElement element = JsonParser.parseString(line);
+				String flattened = flattenJsonText(element, new JsonStyle());
+				if (flattened != null && !flattened.isEmpty()) {
+					return SkyBlockSymbols.replace(flattened);
+				}
+			} catch (Exception ignored) {
+				// Fall through to the legacy quote scraper below.
+			}
+			// Fallback: scrape text nodes only (loses obfuscated / bold).
 			StringBuilder out = new StringBuilder();
 			int idx = 0;
 			while (true) {
@@ -1623,6 +1636,184 @@ public final class InventoryDecoder {
 			}
 		}
 		return SkyBlockSymbols.replace(line.replace("\\u00a7", "§").replace("\\u00A7", "§"));
+	}
+
+	/**
+	 * Converts Hypixel / Minecraft JSON text into §-legacy, preserving obfuscated (§k)
+	 * used for recombobulator rarity markers.
+	 */
+	private static String flattenJsonText(JsonElement element, JsonStyle parent) {
+		if (element == null || element.isJsonNull()) {
+			return "";
+		}
+		if (element.isJsonPrimitive()) {
+			return element.getAsString();
+		}
+		if (element.isJsonArray()) {
+			StringBuilder out = new StringBuilder();
+			for (JsonElement child : element.getAsJsonArray()) {
+				out.append(flattenJsonText(child, parent));
+			}
+			return out.toString();
+		}
+		if (!element.isJsonObject()) {
+			return "";
+		}
+		JsonObject obj = element.getAsJsonObject();
+		JsonStyle style = parent.child(obj);
+		StringBuilder out = new StringBuilder();
+		if (obj.has("text") && obj.get("text").isJsonPrimitive()) {
+			String text = obj.get("text").getAsString();
+			if (text != null && !text.isEmpty()) {
+				out.append(style.toLegacyPrefix());
+				out.append(text);
+			}
+		}
+		if (obj.has("extra") && obj.get("extra").isJsonArray()) {
+			for (JsonElement child : obj.getAsJsonArray("extra")) {
+				out.append(flattenJsonText(child, style));
+			}
+		}
+		return out.toString();
+	}
+
+	private static final class JsonStyle {
+		private final char color;
+		private final boolean bold;
+		private final boolean italic;
+		private final boolean underlined;
+		private final boolean strikethrough;
+		private final boolean obfuscated;
+
+		private JsonStyle() {
+			this(' ', false, false, false, false, false);
+		}
+
+		private JsonStyle(
+			char color,
+			boolean bold,
+			boolean italic,
+			boolean underlined,
+			boolean strikethrough,
+			boolean obfuscated
+		) {
+			this.color = color;
+			this.bold = bold;
+			this.italic = italic;
+			this.underlined = underlined;
+			this.strikethrough = strikethrough;
+			this.obfuscated = obfuscated;
+		}
+
+		private JsonStyle child(JsonObject obj) {
+			char nextColor = this.color;
+			if (obj.has("color") && obj.get("color").isJsonPrimitive()) {
+				nextColor = namedColorCode(obj.get("color").getAsString());
+			}
+			return new JsonStyle(
+				nextColor,
+				boolOr(obj, "bold", this.bold),
+				boolOr(obj, "italic", this.italic),
+				boolOr(obj, "underlined", this.underlined),
+				boolOr(obj, "strikethrough", this.strikethrough),
+				boolOr(obj, "obfuscated", this.obfuscated)
+			);
+		}
+
+		private String toLegacyPrefix() {
+			StringBuilder out = new StringBuilder();
+			if (this.color != ' ') {
+				out.append('§').append(this.color);
+			} else {
+				out.append("§r");
+			}
+			if (this.bold) {
+				out.append("§l");
+			}
+			if (this.italic) {
+				out.append("§o");
+			}
+			if (this.underlined) {
+				out.append("§n");
+			}
+			if (this.strikethrough) {
+				out.append("§m");
+			}
+			if (this.obfuscated) {
+				out.append("§k");
+			}
+			return out.toString();
+		}
+
+		private static boolean boolOr(JsonObject obj, String key, boolean fallback) {
+			if (obj.has(key) && obj.get(key).isJsonPrimitive()) {
+				try {
+					return obj.get(key).getAsBoolean();
+				} catch (Exception ignored) {
+					return fallback;
+				}
+			}
+			return fallback;
+		}
+
+		private static char namedColorCode(String name) {
+			if (name == null || name.isBlank()) {
+				return 'f';
+			}
+			String key = name.trim().toLowerCase(Locale.ROOT);
+			if (key.startsWith("#") && key.length() == 7) {
+				return nearestLegacyColor(key);
+			}
+			return switch (key) {
+				case "black" -> '0';
+				case "dark_blue" -> '1';
+				case "dark_green" -> '2';
+				case "dark_aqua" -> '3';
+				case "dark_red" -> '4';
+				case "dark_purple" -> '5';
+				case "gold" -> '6';
+				case "gray", "grey" -> '7';
+				case "dark_gray", "dark_grey" -> '8';
+				case "blue" -> '9';
+				case "green" -> 'a';
+				case "aqua" -> 'b';
+				case "red" -> 'c';
+				case "light_purple", "pink" -> 'd';
+				case "yellow" -> 'e';
+				case "white" -> 'f';
+				default -> 'f';
+			};
+		}
+
+		private static char nearestLegacyColor(String hex) {
+			try {
+				int rgb = Integer.parseInt(hex.substring(1), 16);
+				int r = (rgb >> 16) & 0xFF;
+				int g = (rgb >> 8) & 0xFF;
+				int b = rgb & 0xFF;
+				char best = 'f';
+				int bestDist = Integer.MAX_VALUE;
+				int[][] palette = {
+					{'0', 0, 0, 0}, {'1', 0, 0, 170}, {'2', 0, 170, 0}, {'3', 0, 170, 170},
+					{'4', 170, 0, 0}, {'5', 170, 0, 170}, {'6', 255, 170, 0}, {'7', 170, 170, 170},
+					{'8', 85, 85, 85}, {'9', 85, 85, 255}, {'a', 85, 255, 85}, {'b', 85, 255, 255},
+					{'c', 255, 85, 85}, {'d', 255, 85, 255}, {'e', 255, 255, 85}, {'f', 255, 255, 255}
+				};
+				for (int[] entry : palette) {
+					int dr = r - entry[1];
+					int dg = g - entry[2];
+					int db = b - entry[3];
+					int dist = dr * dr + dg * dg + db * db;
+					if (dist < bestDist) {
+						bestDist = dist;
+						best = (char) entry[0];
+					}
+				}
+				return best;
+			} catch (Exception ignored) {
+				return 'f';
+			}
+		}
 	}
 
 	private static JsonObject obj(JsonElement element) {

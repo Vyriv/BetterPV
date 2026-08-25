@@ -451,15 +451,17 @@ public final class RiftSnapshot {
 		List<QuestLine> lines = new ArrayList<>();
 		int bug = intVal(obj, "bughunter_step");
 		if (bug > 0) {
-			lines.add(new QuestLine("Argofay Bughunter", "Step " + bug));
+			// No published mapping for bughunter_step integers.
+			lines.add(new QuestLine("Argofay Bughunter", "In Progress"));
 		}
 		if (bool(obj, "sirius_completed_q_a") || bool(obj, "sirius_q_a_chain_done")) {
 			lines.add(new QuestLine("Inverted Sirius", bool(obj, "sirius_claimed_doubloon") ? "Claimed" : "Complete"));
 		} else if (bool(obj, "sirius_started_q_a")) {
-			lines.add(new QuestLine("Inverted Sirius", "Started"));
+			lines.add(new QuestLine("Inverted Sirius", "In Progress"));
 		}
 		int brothers = stringList(obj.get("talked_threebrothers")).size();
 		if (brothers > 0) {
+			// Size alone is not an explicit completion flag; keep the count.
 			lines.add(new QuestLine("Argofay Threebrothers", brothers + "/3 talked"));
 		}
 		return lines;
@@ -472,7 +474,8 @@ public final class RiftSnapshot {
 		List<QuestLine> lines = new ArrayList<>();
 		int shania = intVal(obj, "shania_stage");
 		if (shania > 0) {
-			lines.add(new QuestLine("Harvest for Shania", "Stage " + shania));
+			// No published mapping for shania_stage integers (wand / harvest / reward stages).
+			lines.add(new QuestLine("Harvest for Shania", "In Progress"));
 		}
 		int feeder = countEntries(obj.get("caducous_feeder_uses"));
 		if (feeder > 0) {
@@ -495,7 +498,7 @@ public final class RiftSnapshot {
 				if (terminals > 0) {
 					lines.add(new QuestLine("Unhinged Kloon", terminals + "/8 terminals"));
 				} else if (bool(kloon, "talked")) {
-					lines.add(new QuestLine("Unhinged Kloon", "Started"));
+					lines.add(new QuestLine("Unhinged Kloon", "In Progress"));
 				}
 			}
 		}
@@ -518,6 +521,7 @@ public final class RiftSnapshot {
 				+ intVal(kat, "bin_collected_silverfish")
 				+ intVal(kat, "bin_collected_spider");
 			if (bins > 0) {
+				// Bin count alone is not an explicit completion boolean.
 				lines.add(new QuestLine("Kat's Vermin Bins", bins + "/3 filled"));
 			}
 		}
@@ -542,7 +546,8 @@ public final class RiftSnapshot {
 		List<QuestLine> lines = new ArrayList<>();
 		int fairy = intVal(obj, "fairy_step");
 		if (fairy > 0) {
-			lines.add(new QuestLine("Castle Fairy", "Step " + fairy));
+			// No published mapping for fairy_step integers.
+			lines.add(new QuestLine("Castle Fairy", "In Progress"));
 		}
 		if (bool(obj, "unlocked_pathway_skip")) {
 			lines.add(new QuestLine("Pathway Skip", "Unlocked"));
@@ -555,9 +560,15 @@ public final class RiftSnapshot {
 			return List.of();
 		}
 		List<QuestLine> lines = new ArrayList<>();
-		int step = intVal(obj, "completed_step");
-		if (step > 0) {
-			lines.add(new QuestLine("Dr. Hibble", "Step " + step));
+		if (bool(obj, "delivered_science_paper")) {
+			lines.add(new QuestLine("Dr. Hibble", "Complete"));
+		} else if (bool(obj, "received_science_paper")) {
+			lines.add(new QuestLine("Dr. Hibble", "Paper received"));
+		} else if (bool(obj, "talked_to_edwin")) {
+			lines.add(new QuestLine("Dr. Hibble", "Talked to Edwin"));
+		} else if (intVal(obj, "completed_step") > 0) {
+			// completed_step integers are undocumented; avoid raw Step N.
+			lines.add(new QuestLine("Dr. Hibble", "In Progress"));
 		}
 		return lines;
 	}
@@ -571,21 +582,32 @@ public final class RiftSnapshot {
 		if (murder != null) {
 			int step = intVal(murder, "step_index");
 			if (step > 0) {
-				lines.add(new QuestLine("Reverse-Murder", "Step " + step));
+				// murder.step_index integers are undocumented.
+				lines.add(new QuestLine("Reverse-Murder", "In Progress"));
 			}
 		}
 		JsonObject cowboy = Leveling.obj(obj.get("cowboy"));
 		if (cowboy != null) {
 			int stage = intVal(cowboy, "stage");
-			if (stage > 0) {
-				lines.add(new QuestLine("Cowboy Nick", "Stage " + stage));
+			int hay = intVal(cowboy, "hay_eaten");
+			String rabbit = str(cowboy.get("rabbit_name"));
+			if (stage > 0 || hay > 0 || !rabbit.isBlank()) {
+				if (!rabbit.isBlank()) {
+					lines.add(new QuestLine("Cowboy Nick", "Rabbit named"));
+				} else if (hay > 0) {
+					lines.add(new QuestLine("Cowboy Nick", FormatUtil.commas(hay) + " hay eaten"));
+				} else {
+					// cowboy.stage integers are undocumented.
+					lines.add(new QuestLine("Cowboy Nick", "In Progress"));
+				}
 			}
 		}
 		JsonObject seraphine = Leveling.obj(obj.get("seraphine"));
 		if (seraphine != null) {
 			int step = intVal(seraphine, "step_index");
 			if (step > 0) {
-				lines.add(new QuestLine("Seraphine's Face", "Step " + step));
+				// seraphine.step_index integers are undocumented.
+				lines.add(new QuestLine("Seraphine's Face", "In Progress"));
 			}
 		}
 		return lines;
@@ -597,8 +619,14 @@ public final class RiftSnapshot {
 		}
 		List<QuestLine> lines = new ArrayList<>();
 		int step = intVal(obj, "wizard_quest_step");
-		if (step > 0) {
-			lines.add(new QuestLine("Wizard's Quest", "Step " + step));
+		int crumbs = intVal(obj, "crumbs_laid_out");
+		if (step > 0 || crumbs > 0) {
+			if (crumbs > 0) {
+				lines.add(new QuestLine("Wizard's Quest", crumbs + " crumbs laid"));
+			} else {
+				// wizard_quest_step integers are undocumented.
+				lines.add(new QuestLine("Wizard's Quest", "In Progress"));
+			}
 		}
 		return lines;
 	}

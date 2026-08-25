@@ -226,7 +226,7 @@ public final class GlacitePage {
 			boolean done = current >= tier.tier();
 			float fill = done ? 1f : tier.fill(counts, prev);
 			String value = done ? "Done" : requirementShort(tier, counts);
-			String hover = corpseHover(tier, counts, done);
+			List<PvTooltip.Line> hover = corpseHover(tier, counts, done);
 			yy = MiningUi.drawBar(g, font, "Tier " + tier.tier(), value, fill, done, BAR_CORPSE, hover,
 				rx, yy, rw, mx, my, zones) + Math.max(MiningUi.BAR_AFTER, rowH - MiningUi.barRowH(font) + MiningUi.BAR_AFTER);
 		}
@@ -298,26 +298,34 @@ public final class GlacitePage {
 		return parts.isEmpty() ? "-" : String.join(" ", parts);
 	}
 
-	private static String corpseHover(
+	private static List<PvTooltip.Line> corpseHover(
 		MiningSnapshot.CorpseMilestone tier, MiningSnapshot.CorpseCounts counts, boolean done
 	) {
 		if (done) {
-			return "Tier " + tier.tier() + " complete";
+			return List.of(PvTooltip.Line.of("Tier " + tier.tier() + " complete", PvDraw.COLOR_ACCENT));
 		}
-		StringBuilder sb = new StringBuilder("Need for tier ").append(tier.tier()).append(':');
-		if (tier.needLapis() > 0) {
-			sb.append(" Lapis ").append(counts.lapis()).append('/').append(tier.needLapis());
+		List<PvTooltip.Line> tip = new ArrayList<>();
+		tip.add(PvTooltip.Line.title("Need for tier " + tier.tier(), PvDraw.COLOR_TEXT));
+		tip.add(PvTooltip.Line.divider());
+		addCorpseNeedRow(tip, "Lapis", counts.lapis(), tier.needLapis(), CORPSE_LAPIS);
+		addCorpseNeedRow(tip, "Umber", counts.umber(), tier.needUmber(), CORPSE_UMBER);
+		addCorpseNeedRow(tip, "Tungsten", counts.tungsten(), tier.needTungsten(), CORPSE_TUNGSTEN);
+		addCorpseNeedRow(tip, "Vanguard", counts.vanguard(), tier.needVanguard(), CORPSE_VANGUARD);
+		return tip;
+	}
+
+	private static void addCorpseNeedRow(
+		List<PvTooltip.Line> tip, String label, long have, long need, int color
+	) {
+		if (need <= 0L) {
+			return;
 		}
-		if (tier.needUmber() > 0) {
-			sb.append(" Umber ").append(counts.umber()).append('/').append(tier.needUmber());
-		}
-		if (tier.needTungsten() > 0) {
-			sb.append(" Tungsten ").append(counts.tungsten()).append('/').append(tier.needTungsten());
-		}
-		if (tier.needVanguard() > 0) {
-			sb.append(" Vanguard ").append(counts.vanguard()).append('/').append(tier.needVanguard());
-		}
-		return sb.toString();
+		boolean met = have >= need;
+		tip.add(PvTooltip.Line.row(
+			label, color,
+			have + "/" + need,
+			met ? 0xFF55FF55 : PvDraw.COLOR_TEXT
+		));
 	}
 
 	private static ItemStack fossilIcon(String id) {

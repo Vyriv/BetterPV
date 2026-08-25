@@ -13,17 +13,15 @@ import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 
-/** Left ~70% pet icon grid + right ~30% selected stats. */
+/** Left ~56% compact pet inventory + right ~44% selected-pet details. */
 public final class PetsPage {
 	private static final int GAP = 8;
 	private static final int PAD = 8;
-	private static final int MIN_SLOT = 18;
-	private static final int MAX_SLOT = 32;
+	/** Fixed Minecraft-inventory-style cell; 16px icons fill this without upscaling. */
+	private static final int SLOT_SIZE = 22;
 	private static final int SLOT_GAP = 2;
 	private static final int ITEM_ICON = 16;
 	private static final int SELECTED_BORDER = PvDraw.COLOR_ACCENT;
@@ -36,7 +34,7 @@ public final class PetsPage {
 	private int gridH;
 	private int maxScroll;
 	private int cols = 1;
-	private int slotSize = MIN_SLOT;
+	private int slotSize = SLOT_SIZE;
 	private final List<SlotHit> hits = new ArrayList<>();
 	private int xpBarX;
 	private int xpBarY;
@@ -79,8 +77,9 @@ public final class PetsPage {
 		this.hoverPetTip = null;
 		this.careTip = null;
 		this.autopetTip = null;
-		int leftW = Math.max(160, (int) Math.round(w * 0.70));
-		int rightW = Math.max(110, w - leftW - GAP);
+		// Compact pets grid (~56%) + wider details inspector (~44%).
+		int leftW = Math.max(140, (int) Math.round(w * 0.56));
+		int rightW = Math.max(150, w - leftW - GAP);
 		leftW = w - rightW - GAP;
 		int rightX = x + leftW + GAP;
 
@@ -89,7 +88,9 @@ public final class PetsPage {
 
 		drawGrid(g, font, x, y, leftW, h, mouseX, mouseY);
 		drawStats(g, font, rightX, y, rightW, h);
+	}
 
+	public void renderTooltip(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH) {
 		if (this.xpHover != null
 			&& mouseX >= this.xpBarX && mouseX < this.xpBarX + this.xpBarW
 			&& mouseY >= this.xpBarY && mouseY < this.xpBarY + this.xpBarH) {
@@ -227,13 +228,14 @@ public final class PetsPage {
 			return;
 		}
 
-		this.slotSize = fitSlotSize(pets.size(), gridW, this.gridH);
+		this.slotSize = SLOT_SIZE;
 		this.cols = Math.max(1, (gridW + SLOT_GAP) / (this.slotSize + SLOT_GAP));
 		int rows = (pets.size() + this.cols - 1) / this.cols;
 		int contentH = rows * this.slotSize + Math.max(0, rows - 1) * SLOT_GAP;
 		this.maxScroll = Math.max(0, contentH - this.gridH);
 		this.scroll = Math.max(0, Math.min(this.scroll, this.maxScroll));
 
+		g.enableScissor(gridX, this.gridY, gridX + gridW, this.gridY + this.gridH);
 		for (int i = 0; i < pets.size(); i++) {
 			int col = i % this.cols;
 			int row = i / this.cols;
@@ -244,22 +246,7 @@ public final class PetsPage {
 			}
 			drawSlot(g, font, pets.get(i), i, sx, sy, mouseX, mouseY);
 		}
-	}
-
-	/** Largest slot in [{@link #MIN_SLOT}, {@link #MAX_SLOT}] that still fits all pets in the grid height. */
-	private static int fitSlotSize(int petCount, int gridW, int gridH) {
-		int best = MIN_SLOT;
-		int max = Math.min(MAX_SLOT, Math.max(MIN_SLOT, gridH));
-		for (int slot = max; slot >= MIN_SLOT; slot--) {
-			int cols = Math.max(1, (gridW + SLOT_GAP) / (slot + SLOT_GAP));
-			int rows = (petCount + cols - 1) / cols;
-			int contentH = rows * slot + Math.max(0, rows - 1) * SLOT_GAP;
-			if (contentH <= gridH) {
-				best = slot;
-				break;
-			}
-		}
-		return best;
+		g.disableScissor();
 	}
 
 	private void drawSlot(
@@ -274,7 +261,9 @@ public final class PetsPage {
 	) {
 		int slot = this.slotSize;
 		boolean selected = index == this.selected;
-		boolean hovered = mouseX >= sx && mouseX < sx + slot && mouseY >= sy && mouseY < sy + slot;
+		boolean inGrid = mouseY >= this.gridY && mouseY < this.gridY + this.gridH
+			&& mouseX >= sx && mouseX < sx + slot;
+		boolean hovered = inGrid && mouseY >= sy && mouseY < sy + slot;
 		int rarity = SkyBlockItemFactory.tierArgb(pet.tier());
 		int bg = raritySlotBackground(rarity, pet.active(), selected, hovered);
 		int border = selected ? SELECTED_BORDER : pet.active() ? ACTIVE_BORDER : hovered ? PvDraw.COLOR_ACCENT : 0xFF2A2A35;
@@ -282,18 +271,24 @@ public final class PetsPage {
 		g.outline(sx, sy, slot, slot, border);
 
 		ItemStack icon = SkyBlockItemFactory.iconStack(pet.neuId());
-		int draw = Math.max(ITEM_ICON, slot - 2);
+		// Native 16px only - fractional upscale softens skull / pet textures.
+		int draw = ITEM_ICON;
 		int ix = sx + (slot - draw) / 2;
-		int iy = sy + (slot - draw) / 2;
+		// Nudge icon up 1px so level "100" sits in the bottom band without crowding.
+		int iy = sy + Math.max(1, (slot - draw) / 2 - 1);
 		SkyBlockIconRenderer.draw(g, icon, pet.neuId(), ix, iy, draw);
 
 		String level = String.valueOf(pet.level());
-		int levelY = sy + slot - font.lineHeight + 1;
+		int levelY = sy + slot - font.lineHeight;
 		int levelRight = sx + slot - 1;
 		PvDraw.textRight(g, font, level, levelRight + 1, levelY + 1, 0xFF000000);
 		PvDraw.textRight(g, font, level, levelRight, levelY, 0xFFFFFFFF);
 
-		this.hits.add(new SlotHit(sx, sy, slot, slot, index));
+		int hitTop = Math.max(sy, this.gridY);
+		int hitBottom = Math.min(sy + slot, this.gridY + this.gridH);
+		if (hitBottom > hitTop) {
+			this.hits.add(new SlotHit(sx, hitTop, slot, hitBottom - hitTop, index));
+		}
 		if (hovered) {
 			InventorySnapshot.Slot petSlot = new InventorySnapshot.Slot(
 				pet.neuId(),

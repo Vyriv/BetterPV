@@ -67,6 +67,9 @@ public final class MiningPage {
 			case MINING_GLACITE -> this.glacite.render(g, font, this.snapshot, this.zones, x, y, w, h, mouseX, mouseY);
 			default -> this.overview.render(g, font, this.snapshot, this.zones, x, y, w, h, mouseX, mouseY);
 		}
+	}
+
+	public void renderTooltip(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH) {
 		MiningUi.drawHover(g, font, this.zones, this.snapshot, mouseX, mouseY, screenW, screenH);
 	}
 

@@ -75,6 +75,9 @@ public final class KuudraPage {
 		PvDraw.innerPanel(g, x + leftW + GAP, y, rightW, h);
 		drawKuudraTiers(g, font, snapshot, x, y, leftW, h);
 		drawKuudraCard(g, font, snapshot, x + leftW + GAP, y, rightW, h, mouseX, mouseY);
+	}
+
+	public void renderTooltip(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH) {
 		drawHover(g, font, this.zones, mouseX, mouseY, screenW, screenH);
 	}
 

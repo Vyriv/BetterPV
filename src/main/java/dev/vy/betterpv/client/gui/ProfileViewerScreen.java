@@ -448,6 +448,9 @@ public final class ProfileViewerScreen extends Screen {
 				);
 			}
 
+			// Draw before body tooltips so item / pet tips are not covered by the search box.
+			positionPlayerSearch(graphics, panelX, panelY, panelW, panelH);
+
 			renderBody(graphics, panelX + PAD, panelY + PAD, panelW - PAD * 2, panelH - PAD * 2, mouseX, mouseY, delta);
 
 			String profileName = this.homePage.profileName();
@@ -494,7 +497,6 @@ public final class ProfileViewerScreen extends Screen {
 			} else {
 				this.profileMenuHoverChoice = null;
 			}
-			positionPlayerSearch(graphics, panelX, panelY, panelW, panelH);
 			if (this.playerSearchErrorUntilMs > System.currentTimeMillis() && !this.playerSearchError.isBlank()) {
 				PvDraw.text(
 					graphics, this.font, this.playerSearchError,
@@ -1103,6 +1105,11 @@ public final class ProfileViewerScreen extends Screen {
 			return;
 		}
 
+		int bodyX = panelX + PAD;
+		int bodyY = panelY + PAD;
+		int bodyW = panelW - PAD * 2;
+		int bodyH = panelH - PAD * 2;
+
 		switch (this.tab) {
 			case HOME -> {
 				if (activeSub(PvSubTab.HOME_MISC) == PvSubTab.HOME_MISC) {
@@ -1112,6 +1119,19 @@ public final class ProfileViewerScreen extends Screen {
 				}
 			}
 			case DUNGEONS -> this.dungeonPage.renderTooltip(g, this.font, mouseX, mouseY, this.width, this.height);
+			case PETS -> this.petsPage.renderTooltip(g, this.font, mouseX, mouseY, this.width, this.height);
+			case AUCTIONS -> this.auctionPage.renderTooltip(g, this.font, mouseX, mouseY, this.width, this.height);
+			case COLLECTIONS -> this.collectionsPage.renderTooltip(g, this.font, mouseX, mouseY, this.width, this.height);
+			case GARDEN -> this.gardenPage.renderTooltip(g, this.font, mouseX, mouseY, this.width, this.height);
+			case MINING -> this.miningPage.renderTooltip(g, this.font, mouseX, mouseY, this.width, this.height);
+			case FORAGING -> this.foragingPage.renderTooltip(g, this.font, mouseX, mouseY, this.width, this.height);
+			case FISHING -> this.fishingPage.renderTooltip(g, this.font, mouseX, mouseY, this.width, this.height);
+			case CRIMSON -> this.crimsonPage.renderTooltip(g, this.font, mouseX, mouseY, this.width, this.height);
+			case RIFT -> this.riftPage.renderTooltip(g, this.font, mouseX, mouseY, this.width, this.height);
+			case MUSEUM -> this.museumPage.renderTooltip(g, this.font, mouseX, mouseY, this.width, this.height);
+			case EVENTS -> this.eventsPage.renderTooltip(
+				g, this.font, mouseX, mouseY, this.width, this.height, bodyX, bodyY, bodyW, bodyH
+			);
 			default -> { }
 		}
 

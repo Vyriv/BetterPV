@@ -76,67 +76,51 @@ public final class HotfPage {
 		ry += font.lineHeight + 3;
 		List<ForagingSnapshot.WhisperPool> pools = snapshot.whisperPools();
 		if (pools.isEmpty()) {
-			ry = ForagingUi.statLine(g, font, "Current", "-", rx, ry, rw, PvDraw.COLOR_MUTED) + 3;
+			ry = ForagingUi.statLine(g, font, "Total", "-", rx, ry, rw, PvDraw.COLOR_MUTED) + 3;
 		} else {
 			for (ForagingSnapshot.WhisperPool pool : pools) {
 				if (ry + STAT_ROW * 2 > bottom) {
 					break;
 				}
-				PvDraw.text(g, font, pool.label(), rx, ry, PvDraw.COLOR_TEXT);
+				int poolColor = whisperPoolColor(pool.id());
+				PvDraw.text(g, font, pool.label(), rx, ry, poolColor);
 				ry += font.lineHeight + 1;
-				int balY = ry;
-				ry = ForagingUi.statLine(g, font, "Balance", FormatUtil.commas(pool.balance()),
-					rx, ry, rw, PvDraw.COLOR_ACCENT) + 1;
-				ry = ForagingUi.statLine(g, font, "Spent", FormatUtil.commas(pool.spent()),
-					rx, ry, rw, PvDraw.COLOR_MUTED) + 2;
-				if (!pool.spentByPage().isEmpty()) {
-					List<PvTooltip.Line> tip = new ArrayList<>();
-					tip.add(PvTooltip.Line.title(pool.label() + " whispers", PvDraw.COLOR_TEXT));
-					tip.add(PvTooltip.Line.divider());
-					tip.add(PvTooltip.Line.row("Earned", PvDraw.COLOR_MUTED,
-						FormatUtil.commas(pool.earned()), PvDraw.COLOR_ACCENT));
-					tip.add(PvTooltip.Line.row("Balance", PvDraw.COLOR_MUTED,
-						FormatUtil.commas(pool.balance()), PvDraw.COLOR_ACCENT));
-					tip.add(PvTooltip.Line.row("Spent", PvDraw.COLOR_MUTED,
-						FormatUtil.commas(pool.spent()), PvDraw.COLOR_TEXT));
-					tip.add(PvTooltip.Line.blank());
-					for (var e : pool.spentByPage().entrySet()) {
-						tip.add(PvTooltip.Line.row(
-							"Page " + e.getKey(), PvDraw.COLOR_MUTED,
-							FormatUtil.commas(e.getValue()), PvDraw.COLOR_TEXT
-						));
-					}
-					this.zones.add(HoverZone.of(rx, balY, rw, STAT_ROW * 2, tip));
-				}
+				int totalY = ry;
+				ry = ForagingUi.statLine(g, font, "Total", FormatUtil.commas(pool.earned()),
+					rx, ry, rw, poolColor) + 2;
+				List<PvTooltip.Line> tip = new ArrayList<>();
+				tip.add(PvTooltip.Line.title(pool.label() + " whispers", poolColor));
+				tip.add(PvTooltip.Line.divider());
+				tip.add(PvTooltip.Line.row("Total", PvDraw.COLOR_MUTED,
+					FormatUtil.commas(pool.earned()), poolColor));
+				tip.add(PvTooltip.Line.row("Balance", PvDraw.COLOR_MUTED,
+					FormatUtil.commas(pool.balance()), PvDraw.COLOR_ACCENT));
+				tip.add(PvTooltip.Line.row("Spent", PvDraw.COLOR_MUTED,
+					FormatUtil.commas(pool.spent()), PvDraw.COLOR_TEXT));
+				this.zones.add(HoverZone.of(rx, totalY - font.lineHeight - 1, rw, STAT_ROW + font.lineHeight + 1, tip));
 			}
 		}
 
 		ry = ForagingUi.sectionSeparator(g, font, x, ry, w);
 		PvDraw.text(g, font, "Dailies", rx, ry, PvDraw.COLOR_MUTED);
 		ry += font.lineHeight + 3;
-		ry = ForagingUi.statLine(g, font, "Trees cut", FormatUtil.commas(snapshot.dailyTreesCut()),
+		ry = ForagingUi.statLine(g, font, "Trees cut", FormatUtil.commas(snapshot.currentDailyTreesCut()),
 			rx, ry, rw, PvDraw.COLOR_TEXT) + 1;
-		if (snapshot.dailyTreesDay() > 0) {
-			ry = ForagingUi.statLine(g, font, "Trees day", String.valueOf(snapshot.dailyTreesDay()),
-				rx, ry, rw, PvDraw.COLOR_MUTED) + 1;
-		}
-		ry = ForagingUi.statLine(g, font, "Gifts", FormatUtil.commas(snapshot.dailyGifts()),
+		ry = ForagingUi.statLine(g, font, "Daily Tree Gifts", FormatUtil.commas(snapshot.currentDailyGifts()),
 			rx, ry, rw, PvDraw.COLOR_TEXT) + 2;
 
-		if (!snapshot.dailyLogs().isEmpty() && ry + font.lineHeight < bottom) {
+		List<String> dailyLogs = snapshot.currentDailyLogs();
+		if (!dailyLogs.isEmpty() && ry + font.lineHeight < bottom) {
 			PvDraw.text(g, font, "Logs cut", rx, ry, PvDraw.COLOR_MUTED);
 			ry += font.lineHeight + 2;
-			for (String log : snapshot.dailyLogs()) {
+			for (String log : dailyLogs) {
 				if (ry + STAT_ROW > bottom) {
 					break;
 				}
 				PvDraw.text(g, font, ForagingUi.trim(font, ForagingUi.pretty(log), rw), rx, ry, PvDraw.COLOR_TEXT);
 				ry += STAT_ROW;
 			}
-			if (snapshot.dailyLogsDay() > 0 && ry + STAT_ROW <= bottom) {
-				ry = ForagingUi.statLine(g, font, "Logs day", String.valueOf(snapshot.dailyLogsDay()),
-					rx, ry, rw, PvDraw.COLOR_MUTED) + 2;
-			}
+			ry += 2;
 		}
 
 		if (ry + STAT_ROW * 2 <= bottom) {
@@ -145,11 +129,7 @@ public final class HotfPage {
 			ry += font.lineHeight + 2;
 			String effect = snapshot.dailyEffect().isBlank() ? "-" : ForagingUi.pretty(snapshot.dailyEffect());
 			ForagingUi.wrapText(g, font, effect, rx, ry, rw, PvDraw.COLOR_GOLD);
-			ry += font.lineHeight + 2;
-			if (snapshot.dailyEffectChanged() > 0) {
-				ForagingUi.statLine(g, font, "Changed", String.valueOf(snapshot.dailyEffectChanged()),
-					rx, ry, rw, PvDraw.COLOR_MUTED);
-			}
+			// current_daily_effect_last_changed is unmapped (value scale != daily_*_day). Hide raw until verified.
 		}
 	}
 
@@ -255,13 +235,8 @@ public final class HotfPage {
 		ry = ForagingUi.statLine(g, font, "HOTF XP", FormatUtil.shortXp(snapshot.hotfXp()),
 			rx, ry, rw, PvDraw.COLOR_ACCENT) + 4;
 		ry = ForagingUi.statLine(g, font, "Tokens spent", String.valueOf(snapshot.forestTokensSpent()),
-			rx, ry, rw, PvDraw.COLOR_TEXT) + 4;
-		if (snapshot.hotfLastResetMs() > 0L) {
-			ry = ForagingUi.statLine(g, font, "Last reset", ForagingUi.formatAgo(snapshot.hotfLastResetMs()),
-				rx, ry, rw, PvDraw.COLOR_MUTED) + 6;
-		} else {
-			ry += 6;
-		}
+			rx, ry, rw, PvDraw.COLOR_TEXT) + 6;
+		// skill_tree.last_reset.foraging unit/reliability unverified; hide until confirmed.
 
 		ry = ForagingUi.sectionSeparator(g, font, x, ry, w);
 		PvDraw.text(g, font, "Ability", rx, ry, PvDraw.COLOR_MUTED);
@@ -275,5 +250,16 @@ public final class HotfPage {
 		if (snapshot.refundAbilityFree()) {
 			ForagingUi.statLine(g, font, "Refund", "Free", rx, ry, rw, ENABLED);
 		}
+	}
+
+	private static int whisperPoolColor(String id) {
+		if (id == null) {
+			return PvDraw.COLOR_ACCENT;
+		}
+		return switch (id.toLowerCase(java.util.Locale.ROOT)) {
+			case "forest" -> 0xFF55C878;
+			case "desert" -> 0xFFE8A838;
+			default -> PvDraw.COLOR_ACCENT;
+		};
 	}
 }

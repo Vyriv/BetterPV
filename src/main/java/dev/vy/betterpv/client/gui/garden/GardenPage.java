@@ -74,7 +74,6 @@ public final class GardenPage {
 					: (this.snapshot.islandError().isBlank() ? "Garden unavailable" : this.snapshot.islandError());
 				PvDraw.textCentered(g, font, msg, x + w / 2, y + h / 2 - font.lineHeight / 2, PvDraw.COLOR_MUTED);
 			}
-			this.ui.drawHover(g, font, mouseX, mouseY, screenW, screenH);
 			return;
 		}
 
@@ -85,6 +84,9 @@ public final class GardenPage {
 			case GARDEN_JACOB -> this.jacob.render(this.snapshot, this.ui, g, font, x, y, w, h, mouseX, mouseY);
 			default -> this.overview.render(this.snapshot, this.ui, g, font, x, y, w, h, mouseX, mouseY, false);
 		}
+	}
+
+	public void renderTooltip(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH) {
 		this.ui.drawHover(g, font, mouseX, mouseY, screenW, screenH);
 	}
 

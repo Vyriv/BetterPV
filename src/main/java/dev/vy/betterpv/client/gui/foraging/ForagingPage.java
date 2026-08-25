@@ -74,7 +74,10 @@ public final class ForagingPage {
 				this.attributeShards.render(g, font, this.snapshot, x, y, w, h, mouseX, mouseY);
 			default -> this.overview.render(g, font, this.snapshot, x, y, w, h, mouseX, mouseY);
 		}
+	}
 
+	public void renderTooltip(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH) {
+		PvSubTab mode = this.lastSub == null ? PvSubTab.FORAGING_OVERVIEW : this.lastSub;
 		switch (mode) {
 			case FORAGING_HOTF -> this.hotf.drawHover(g, font, mouseX, mouseY, screenW, screenH);
 			case FORAGING_HUNTING -> this.hunting.drawHover(g, font, mouseX, mouseY, screenW, screenH);

@@ -109,6 +109,12 @@ public final class EventsPage {
 				this.ui, g, font, x, y, w, h, mouseX, mouseY
 			);
 		}
+	}
+
+	public void renderTooltip(
+		GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH,
+		int x, int y, int w, int h
+	) {
 		this.ui.drawHover(g, font, mouseX, mouseY, screenW, screenH, x, y, w, h);
 	}
 }

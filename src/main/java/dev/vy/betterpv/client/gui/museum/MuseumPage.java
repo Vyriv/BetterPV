@@ -269,6 +269,9 @@ public final class MuseumPage {
 			Slot slot = slotByKey(nextHover);
 			this.hoverTip = slot == null ? List.of() : tooltipFor(slot);
 		}
+	}
+
+	public void renderTooltip(GuiGraphicsExtractor g, Font font, int mx, int my, int screenW, int screenH) {
 		if (!this.hoverTip.isEmpty()) {
 			PvTooltip.drawComponents(g, font, this.hoverTip, mx, my, screenW, screenH);
 		}

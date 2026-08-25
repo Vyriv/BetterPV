@@ -342,15 +342,25 @@ public final class ForagingOverviewPage {
 		ry += font.lineHeight + 3;
 		List<ForagingSnapshot.WhisperPool> pools = snapshot.whisperPools();
 		if (pools.isEmpty()) {
-			ForagingUi.statLine(g, font, "Balance", "-", rx, ry, rw, PvDraw.COLOR_MUTED);
+			ForagingUi.statLine(g, font, "Total", "-", rx, ry, rw, PvDraw.COLOR_MUTED);
 		} else {
 			for (ForagingSnapshot.WhisperPool pool : pools) {
+				int poolColor = whisperPoolColor(pool.id());
 				ry = ForagingUi.statLine(g, font, pool.label(), FormatUtil.commas(pool.earned()),
-					rx, ry, rw, PvDraw.COLOR_ACCENT) + 1;
-				ry = ForagingUi.statLine(g, font, pool.label() + " spent", FormatUtil.commas(pool.spent()),
-					rx, ry, rw, PvDraw.COLOR_MUTED) + 1;
+					rx, ry, rw, poolColor) + 1;
 			}
 		}
+	}
+
+	private static int whisperPoolColor(String id) {
+		if (id == null) {
+			return PvDraw.COLOR_ACCENT;
+		}
+		return switch (id.toLowerCase(java.util.Locale.ROOT)) {
+			case "forest" -> 0xFF55C878;
+			case "desert" -> 0xFFE8A838;
+			default -> PvDraw.COLOR_ACCENT;
+		};
 	}
 
 	private void drawForestEssenceFace(

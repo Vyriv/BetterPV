@@ -13,6 +13,8 @@ import dev.vy.betterpv.client.data.PetLoreResolver;
 import dev.vy.betterpv.client.data.PetSnapshot;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.SkyBlockSymbols;
+import dev.vy.betterpv.client.networth.InventoryDecoder;
+import dev.vy.betterpv.client.networth.NbtAttrs;
 import dev.vy.betterpv.client.neu.NeuRepoCache;
 import dev.vy.betterpv.client.neu.SkyBlockPackCache;
 import dev.vy.betterpv.client.price.HypixelItemsCache;
@@ -471,6 +473,7 @@ public final class SkyBlockItemFactory {
 				}
 			}
 		}
+		applyRecombobulatorMarkers(loreLines, slot);
 		if (!loreLines.isEmpty()) {
 			stack.set(DataComponents.LORE, new ItemLore(loreLines));
 		}
@@ -594,7 +597,59 @@ public final class SkyBlockItemFactory {
 		if (lore != null) {
 			lines.addAll(lore.lines());
 		}
+		// Re-apply so tooltip rendering always gets live obfuscated markers.
+		applyRecombobulatorMarkers(lines, slot);
 		return lines;
+	}
+
+	/** Match rarity-line colour for recomb markers / header accents. */
+	private static int estimatedHeaderColor(List<Component> lines, InventorySnapshot.Slot slot) {
+		int rarityIndex = findRarityLineIndex(lines);
+		if (rarityIndex >= 0) {
+			Integer styled = firstNonWhiteColor(lines.get(rarityIndex));
+			if (styled != null) {
+				return styled;
+			}
+			String plain = lines.get(rarityIndex).getString();
+			Matcher matcher = RARITY_WORD.matcher(plain == null ? "" : plain);
+			if (matcher.find()) {
+				return tierArgb(matcher.group(1));
+			}
+		}
+		if (slot != null && slot.id() != null) {
+			return tierArgb(resolveTier(slot.id()));
+		}
+		return 0xFF55FF55;
+	}
+
+	private static Integer firstNonWhiteColor(Component component) {
+		if (component == null) {
+			return null;
+		}
+		Style style = component.getStyle();
+		if (style.getColor() != null) {
+			int rgb = style.getColor().getValue() & 0xFFFFFF;
+			if (rgb != 0xFFFFFF && rgb != 0xE8E8F0) {
+				return 0xFF000000 | rgb;
+			}
+		}
+		for (Component sibling : component.getSiblings()) {
+			Integer nested = firstNonWhiteColor(sibling);
+			if (nested != null) {
+				return nested;
+			}
+		}
+		return null;
+	}
+
+	private static int findRarityLineIndex(List<Component> lines) {
+		for (int i = lines.size() - 1; i >= 0; i--) {
+			String plain = lines.get(i).getString();
+			if (plain != null && RARITY_WORD.matcher(plain).find()) {
+				return i;
+			}
+		}
+		return -1;
 	}
 
 	private static ItemStack baseStack(String skyblockId) {
@@ -1460,6 +1515,78 @@ public final class SkyBlockItemFactory {
 		return out.toString();
 	}
 
+	/**
+	 * Hypixel API lore often keeps the recomb "a" glyphs but drops {@code obfuscated:true}.
+	 * Rebuild the rarity line from {@code rarity_upgrades} (or placeholder a's) with real obfuscation.
+	 */
+	private static void applyRecombobulatorMarkers(List<Component> loreLines, InventorySnapshot.Slot slot) {
+		if (loreLines == null || loreLines.isEmpty() || slot == null) {
+			return;
+		}
+		int rarityIndex = findRarityLineIndex(loreLines);
+		if (rarityIndex < 0) {
+			return;
+		}
+		boolean recombed = NbtAttrs.intValue(slot.extraAttributes(), "rarity_upgrades", 0) > 0
+			|| looksLikeRecombPlaceholders(loreLines.get(rarityIndex).getString());
+		if (!recombed) {
+			return;
+		}
+		loreLines.set(rarityIndex, recombobulatedRarityLine(loreLines.get(rarityIndex)));
+	}
+
+	private static boolean looksLikeRecombPlaceholders(String plain) {
+		if (plain == null) {
+			return false;
+		}
+		String trimmed = plain.trim();
+		return trimmed.length() >= 5
+			&& (trimmed.charAt(0) == 'a' || trimmed.charAt(0) == 'A')
+			&& Character.isWhitespace(trimmed.charAt(1))
+			&& (trimmed.charAt(trimmed.length() - 1) == 'a' || trimmed.charAt(trimmed.length() - 1) == 'A')
+			&& Character.isWhitespace(trimmed.charAt(trimmed.length() - 2))
+			&& RARITY_WORD.matcher(trimmed).find();
+	}
+
+	private static Component recombobulatedRarityLine(Component line) {
+		if (line == null) {
+			return Component.empty();
+		}
+		String plain = line.getString();
+		if (plain == null || plain.isBlank()) {
+			return line;
+		}
+		String core = stripRecombPlaceholders(plain.trim());
+		if (core.isBlank()) {
+			return line;
+		}
+		int colorRgb = estimatedHeaderColor(List.of(line), null);
+		Style body = Style.EMPTY
+			.withItalic(false)
+			.withBold(true)
+			.withColor(colorRgb)
+			.withObfuscated(false);
+		Style marker = body.withObfuscated(true);
+		return Component.empty()
+			.append(Component.literal("a").withStyle(marker))
+			.append(Component.literal(" " + core + " ").withStyle(body))
+			.append(Component.literal("a").withStyle(marker));
+	}
+
+	/** Removes static leading/trailing recomb "a" placeholders left by API lore. */
+	private static String stripRecombPlaceholders(String plain) {
+		String core = plain;
+		if (core.length() >= 2 && (core.charAt(0) == 'a' || core.charAt(0) == 'A')
+			&& Character.isWhitespace(core.charAt(1))) {
+			core = core.substring(2).stripLeading();
+		}
+		if (core.length() >= 2 && (core.charAt(core.length() - 1) == 'a' || core.charAt(core.length() - 1) == 'A')
+			&& Character.isWhitespace(core.charAt(core.length() - 2))) {
+			core = core.substring(0, core.length() - 1).stripTrailing();
+		}
+		return core;
+	}
+
 	public static Component legacyLine(String text) {
 		return EnchantTooltip.colorize(legacyText(text));
 	}
@@ -1480,6 +1607,10 @@ public final class SkyBlockItemFactory {
 					buf.setLength(0);
 				}
 				char code = Character.toLowerCase(text.charAt(++i));
+				if (code == 'k') {
+					style = style.withObfuscated(true);
+					continue;
+				}
 				ChatFormatting formatting = ChatFormatting.getByCode(code);
 				if (formatting != null) {
 					if (LegacyChatFormatting.isColor(formatting) || formatting == ChatFormatting.RESET) {
@@ -1498,38 +1629,6 @@ public final class SkyBlockItemFactory {
 	}
 
 	private static String cleanLoreLine(String raw) {
-		if (raw == null) {
-			return "";
-		}
-		String line = raw.trim();
-		if (line.startsWith("\"") && line.endsWith("\"") && line.length() >= 2) {
-			line = line.substring(1, line.length() - 1);
-		}
-		if (line.startsWith("{") && line.contains("text")) {
-			StringBuilder out = new StringBuilder();
-			int idx = 0;
-			while (true) {
-				int textIdx = line.indexOf("\"text\"", idx);
-				if (textIdx < 0) {
-					break;
-				}
-				int colon = line.indexOf(':', textIdx);
-				int firstQuote = line.indexOf('"', colon + 1);
-				int secondQuote = firstQuote >= 0 ? line.indexOf('"', firstQuote + 1) : -1;
-				while (secondQuote > firstQuote && line.charAt(secondQuote - 1) == '\\') {
-					secondQuote = line.indexOf('"', secondQuote + 1);
-				}
-				if (firstQuote >= 0 && secondQuote > firstQuote) {
-					out.append(line.substring(firstQuote + 1, secondQuote));
-				}
-				idx = secondQuote > 0 ? secondQuote + 1 : textIdx + 6;
-			}
-			if (!out.isEmpty()) {
-				line = out.toString();
-			}
-		}
-		return SkyBlockSymbols.replace(
-			line.replace("\\u00a7", "§").replace("\\u00A7", "§").replace("\\n", " ")
-		);
+		return InventoryDecoder.cleanJsonText(raw);
 	}
 }

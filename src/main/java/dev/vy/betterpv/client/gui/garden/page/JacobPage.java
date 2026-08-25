@@ -347,17 +347,38 @@ public final class JacobPage {
 	}
 
 	private static void drawOrb(GuiGraphicsExtractor g, int x, int y, int size, int argb) {
+		// Odd sizes center cleanly; even sizes read as knobbly squares.
 		int r = size / 2;
-		int r2 = r * r;
+		float mid = (size - 1) * 0.5F;
+		float r2 = r * r + 0.25F;
+		int baseR = (argb >>> 16) & 0xFF;
+		int baseG = (argb >>> 8) & 0xFF;
+		int baseB = argb & 0xFF;
+		int baseA = (argb >>> 24) & 0xFF;
 		for (int dy = 0; dy < size; dy++) {
 			for (int dx = 0; dx < size; dx++) {
-				int cx = dx - r;
-				int cy = dy - r;
-				if (cx * cx + cy * cy <= r2) {
-					PvDraw.fill(g, x + dx, y + dy, 1, 1, argb);
+				float cx = dx - mid;
+				float cy = dy - mid;
+				float dist2 = cx * cx + cy * cy;
+				if (dist2 > r2) {
+					continue;
 				}
+				// Soft sphere shade so medals read as circles, not flat squares.
+				float shade = 1.0F - (cy / Math.max(1F, r)) * 0.22F;
+				shade = Math.max(0.72F, Math.min(1.18F, shade));
+				if (cx * cx + (cy + r * 0.35F) * (cy + r * 0.35F) < r2 * 0.22F) {
+					shade = Math.min(1.28F, shade + 0.18F);
+				}
+				int pr = clampByte(Math.round(baseR * shade));
+				int pg = clampByte(Math.round(baseG * shade));
+				int pb = clampByte(Math.round(baseB * shade));
+				PvDraw.fill(g, x + dx, y + dy, 1, 1, (baseA << 24) | (pr << 16) | (pg << 8) | pb);
 			}
 		}
+	}
+
+	private static int clampByte(int value) {
+		return Math.max(0, Math.min(255, value));
 	}
 
 	private static float easeInOutCubic(float t) {

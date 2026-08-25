@@ -1183,6 +1183,47 @@ public final class ForagingSnapshot {
 	public long dailyGifts() { return dailyGifts; }
 	public List<String> dailyLogs() { return dailyLogs; }
 	public long dailyLogsDay() { return dailyLogsDay; }
+
+	/**
+	 * Hypixel {@code daily_*_day} values are UTC days since epoch
+	 * ({@code floor(unixMs / 86400000)}). Verified against profile data where
+	 * {@code daily_trees_cut_day} matched that formula on the capture date.
+	 */
+	public static long currentUtcDayId() {
+		return System.currentTimeMillis() / 86_400_000L;
+	}
+
+	public static boolean isCurrentDailyDay(long dayId) {
+		return dayId > 0L && dayId == currentUtcDayId();
+	}
+
+	/** Trees cut in the current daily period only; 0 when {@link #dailyTreesDay()} is stale. */
+	public long currentDailyTreesCut() {
+		if (dailyTreesDay > 0L && !isCurrentDailyDay(dailyTreesDay)) {
+			return 0L;
+		}
+		return dailyTreesCut;
+	}
+
+	/**
+	 * Tree gifts for the current daily period.
+	 * {@code daily_gifts} has no own day field; it shares the foraging daily with
+	 * {@code daily_trees_cut_day}. When that day is present and stale, gifts are 0.
+	 */
+	public long currentDailyGifts() {
+		if (dailyTreesDay > 0L && !isCurrentDailyDay(dailyTreesDay)) {
+			return 0L;
+		}
+		return dailyGifts;
+	}
+
+	/** Log types cut in the current daily period; empty when {@link #dailyLogsDay()} is stale. */
+	public List<String> currentDailyLogs() {
+		if (dailyLogsDay > 0L && !isCurrentDailyDay(dailyLogsDay)) {
+			return List.of();
+		}
+		return dailyLogs;
+	}
 	public List<HotfNode> hotfNodes() { return hotfNodes; }
 	public Map<String, Integer> centerPages() { return centerPages; }
 	public String selectedAbility() { return selectedAbility; }

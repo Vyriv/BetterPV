@@ -49,6 +49,10 @@ public final class CollectionsPage {
 		}
 	}
 
+	public void renderTooltip(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH) {
+		this.list.renderTooltip(g, font, mouseX, mouseY, screenW, screenH);
+	}
+
 	public boolean mouseClicked(double mx, double my, PvSubTab sub) {
 		if (sub == PvSubTab.COLLECTIONS_MINIONS) {
 			return this.minions.mouseClicked(mx, my);

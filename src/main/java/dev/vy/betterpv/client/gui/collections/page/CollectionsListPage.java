@@ -57,6 +57,9 @@ public final class CollectionsListPage {
 		this.itemHits.clear();
 		this.hoverTip = List.of();
 		renderCollections(snapshot, g, font, x, y, w, h, mouseX, mouseY);
+	}
+
+	public void renderTooltip(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH) {
 		if (!this.hoverTip.isEmpty()) {
 			PvTooltip.drawStyled(g, font, this.hoverTip, mouseX, mouseY, screenW, screenH);
 		}

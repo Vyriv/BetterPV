@@ -72,6 +72,9 @@ public final class AbiphonePage {
 
 		drawAbiphoneStats(g, font, snapshot, x + iconsW + GAP, y, statsW, h);
 		drawAbiphoneIcons(g, font, snapshot, x, y, iconsW, h, mouseX, mouseY);
+	}
+
+	public void renderTooltip(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH) {
 		drawHover(g, font, this.zones, mouseX, mouseY, screenW, screenH);
 	}
 

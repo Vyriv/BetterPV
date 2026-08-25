@@ -57,4 +57,14 @@ public final class CrimsonPage {
 			this.overview.render(g, font, this.snapshot, x, y, w, h, mouseX, mouseY, screenW, screenH);
 		}
 	}
+
+	public void renderTooltip(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH) {
+		if (this.activeSub == PvSubTab.CRIMSON_KUUDRA) {
+			this.kuudra.renderTooltip(g, font, mouseX, mouseY, screenW, screenH);
+		} else if (this.activeSub == PvSubTab.CRIMSON_ABIPHONE) {
+			this.abiphone.renderTooltip(g, font, mouseX, mouseY, screenW, screenH);
+		} else {
+			this.overview.renderTooltip(g, font, mouseX, mouseY, screenW, screenH);
+		}
+	}
 }

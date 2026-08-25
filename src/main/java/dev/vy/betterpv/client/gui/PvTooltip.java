@@ -32,29 +32,42 @@ public final class PvTooltip {
 		BLANK
 	}
 
-	public record Span(String text, int color, boolean bold, boolean italic) {
+	public record Span(String text, int color, boolean bold, boolean italic, boolean obfuscated) {
 		public Span {
 			text = text == null ? "" : text;
 		}
 
+		public Span(String text, int color, boolean bold, boolean italic) {
+			this(text, color, bold, italic, false);
+		}
+
 		public Span(String text, int color, boolean bold) {
-			this(text, color, bold, false);
+			this(text, color, bold, false, false);
 		}
 
 		public static Span of(String text, int color) {
-			return new Span(text, color, false, false);
+			return new Span(text, color, false, false, false);
 		}
 
 		public static Span bold(String text, int color) {
-			return new Span(text, color, true, false);
+			return new Span(text, color, true, false, false);
 		}
 
 		public static Span italic(String text, int color) {
-			return new Span(text, color, false, true);
+			return new Span(text, color, false, true, false);
+		}
+
+		public static Span obfuscated(String text, int color, boolean bold) {
+			return new Span(text, color, bold, false, true);
 		}
 
 		public Component toComponent() {
-			return PvDraw.styled(this.text, this.color, this.bold, this.italic);
+			Style style = Style.EMPTY
+				.withItalic(this.italic)
+				.withBold(this.bold ? Boolean.TRUE : null)
+				.withObfuscated(this.obfuscated ? Boolean.TRUE : null)
+				.withColor(TextColor.fromRgb(this.color & 0xFFFFFF));
+			return Component.literal(this.text).setStyle(style);
 		}
 	}
 
@@ -202,7 +215,8 @@ public final class PvTooltip {
 			}
 			boolean bold = style != null && Boolean.TRUE.equals(style.isBold());
 			boolean italic = style != null && Boolean.TRUE.equals(style.isItalic());
-			spans.add(new Span(text, color, bold, italic));
+			boolean obfuscated = style != null && Boolean.TRUE.equals(style.isObfuscated());
+			spans.add(new Span(text, color, bold, italic, obfuscated));
 			return Optional.empty();
 		}, Style.EMPTY);
 		return spans;
@@ -454,14 +468,14 @@ public final class PvTooltip {
 			if (span == null || span.text().isEmpty()) {
 				continue;
 			}
-			// Draw with the span colour directly so tips keep gold / accent / muted, etc.
-			if (span.bold()) {
-				PvDraw.textBold(g, font, span.text(), cx, y, span.color());
-				cx += PvDraw.widthBold(font, span.text());
-			} else if (span.italic()) {
+			// Obfuscated / italic need Component rendering so the font applies §k scramble.
+			if (span.obfuscated() || span.italic()) {
 				Component c = span.toComponent();
 				PvDraw.text(g, font, c, cx, y);
 				cx += font.width(c);
+			} else if (span.bold()) {
+				PvDraw.textBold(g, font, span.text(), cx, y, span.color());
+				cx += PvDraw.widthBold(font, span.text());
 			} else {
 				PvDraw.text(g, font, span.text(), cx, y, span.color());
 				cx += font.width(span.text());

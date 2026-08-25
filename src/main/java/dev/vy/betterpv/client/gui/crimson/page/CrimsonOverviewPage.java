@@ -72,6 +72,9 @@ public final class CrimsonOverviewPage {
 		PvDraw.innerPanel(g, x, y, leftW, h);
 		drawOverviewLeft(g, font, snapshot, x, y, leftW, h, mouseX, mouseY);
 		drawRightFlipPanel(g, font, snapshot, x + leftW + GAP, y, rightW, h, mouseX, mouseY);
+	}
+
+	public void renderTooltip(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH) {
 		CrimsonUi.drawHover(g, font, this.zones, mouseX, mouseY, screenW, screenH);
 	}
 

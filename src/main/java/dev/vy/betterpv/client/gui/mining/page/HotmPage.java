@@ -365,37 +365,49 @@ public final class HotmPage {
 		int rows = MiningHotmData.maxY() + 1;
 		int innerW = w - MiningUi.PAD * 2;
 		int innerH = h - MiningUi.PAD * 2;
-		int cellGap = 1;
-		int cellByW = cols <= 0 ? 16 : Math.max(1, (innerW - Math.max(0, cols - 1) * cellGap) / cols);
-		int cellByH = rows <= 0 ? 16 : Math.max(1, (innerH - Math.max(0, rows - 1) * cellGap) / rows);
-		int cell = Math.min(16, Math.min(cellByW, cellByH));
-		int gridW = cols * cell + (cols - 1) * cellGap;
-		int gridH = rows * cell + (rows - 1) * cellGap;
+		int baseIcon = 16;
+		int basePad = 2;
+		int baseCell = baseIcon + basePad * 2;
+		int baseGap = 2;
+		int baseGridW = cols * baseCell + Math.max(0, cols - 1) * baseGap;
+		int baseGridH = rows * baseCell + Math.max(0, rows - 1) * baseGap;
+		// Integer zoom only - fractional scale softens item textures.
+		int zoom = 1;
+		if (baseGridW > 0 && baseGridH > 0) {
+			zoom = Math.max(1, Math.min(innerW / baseGridW, innerH / baseGridH));
+			zoom = Math.min(3, zoom);
+		}
+		int cell = baseCell * zoom;
+		int cellGap = baseGap * zoom;
+		int iconDraw = baseIcon * zoom;
+		int gridW = cols * cell + Math.max(0, cols - 1) * cellGap;
+		int gridH = rows * cell + Math.max(0, rows - 1) * cellGap;
 		int gridX = x + MiningUi.PAD + Math.max(0, (innerW - gridW) / 2);
 		int gridY = y + MiningUi.PAD + Math.max(0, (innerH - gridH) / 2);
 
 		this.scrollTop = y + MiningUi.PAD;
 		this.scrollH = innerH;
 
-		int icon = Math.max(1, Math.min(16, cell));
-
+		g.enableScissor(x + 1, y + 1, x + w - 1, y + h - 1);
 		for (MiningHotmData.PerkDef perk : perks) {
 			int cx = gridX + perk.x() * (cell + cellGap);
 			int cy = gridY + perk.y() * (cell + cellGap);
 			int level = snapshot.nodeLevel(perk.id());
 
+			PvDraw.fill(g, cx, cy, cell, cell, MiningUi.ITEM_SLOT_BG);
+			g.outline(cx, cy, cell, cell, MiningUi.ITEM_SLOT_BORDER);
+
 			ItemStack stack = perkIcon(perk, level);
-			int ix = cx + (cell - icon) / 2;
-			int iy = cy + (cell - icon) / 2;
-			float scale = icon / 16f;
-			if (scale != 1f) {
+			int ix = cx + Math.max(0, (cell - iconDraw) / 2);
+			int iy = cy + Math.max(0, (cell - iconDraw) / 2);
+			if (zoom == 1) {
+				g.item(stack, ix, iy);
+			} else {
 				g.pose().pushMatrix();
 				g.pose().translate(ix, iy);
-				g.pose().scale(scale, scale);
+				g.pose().scale(zoom, zoom);
 				g.item(stack, 0, 0);
 				g.pose().popMatrix();
-			} else {
-				g.item(stack, ix, iy);
 			}
 
 			List<PvTooltip.Line> tip = new ArrayList<>();
@@ -409,6 +421,7 @@ public final class HotmPage {
 			}
 			zones.add(HoverZone.of(cx, cy, cell, cell, tip));
 		}
+		g.disableScissor();
 	}
 
 	/**

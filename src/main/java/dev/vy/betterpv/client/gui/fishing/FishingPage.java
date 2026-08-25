@@ -117,7 +117,9 @@ public final class FishingPage {
 				: "Last: " + prettyLast(this.snapshot.trophyFishLastCaught()),
 			sortedRows(this.snapshot.trophyFish())
 		);
+	}
 
+	public void renderTooltip(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH) {
 		drawHover(g, font, mouseX, mouseY, screenW, screenH);
 	}
 

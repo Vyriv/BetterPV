@@ -1,6 +1,7 @@
 package dev.vy.betterpv.client.data;
 
 import java.util.List;
+import net.minecraft.nbt.CompoundTag;
 
 /** Decoded SkyBlock inventories for the Inventories tab. */
 public final class InventorySnapshot {
@@ -11,8 +12,23 @@ public final class InventorySnapshot {
 		String displayName,
 		Integer dyeColor,
 		String skullValue,
-		String skullSignature
+		String skullSignature,
+		CompoundTag extraAttributes,
+		boolean soulbound
 	) {
+		/** UI-only slots (icons, placeholders) without NBT. */
+		public Slot(
+			String id,
+			int count,
+			List<String> lore,
+			String displayName,
+			Integer dyeColor,
+			String skullValue,
+			String skullSignature
+		) {
+			this(id, count, lore, displayName, dyeColor, skullValue, skullSignature, null, false);
+		}
+
 		public static Slot empty() {
 			return null;
 		}

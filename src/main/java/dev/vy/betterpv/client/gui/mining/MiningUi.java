@@ -31,6 +31,8 @@ public final class MiningUi {
 	public static final int PLACED = 0xFF55FF55;
 	public static final int FOUND = 0xFFE8C84A;
 	public static final int MISSING = 0xFF9A9AAC;
+	public static final int ITEM_SLOT_BG = 0xFF101018;
+	public static final int ITEM_SLOT_BORDER = 0xFF2A2A35;
 
 	private MiningUi() {
 	}
@@ -54,12 +56,22 @@ public final class MiningUi {
 		GuiGraphicsExtractor g, Font font, String label, String value, float fill, boolean maxed,
 		int color, String hover, int x, int y, int w, int mx, int my, List<HoverZone> zones
 	) {
+		List<PvTooltip.Line> lines = hover == null || hover.isBlank()
+			? List.of()
+			: List.of(PvTooltip.Line.of(hover, PvDraw.COLOR_TEXT));
+		return drawBar(g, font, label, value, fill, maxed, color, lines, x, y, w, mx, my, zones);
+	}
+
+	public static int drawBar(
+		GuiGraphicsExtractor g, Font font, String label, String value, float fill, boolean maxed,
+		int color, List<PvTooltip.Line> hover, int x, int y, int w, int mx, int my, List<HoverZone> zones
+	) {
 		String shown = fitValue(font, label, value == null ? "" : value, w);
 		PvDraw.labeledBar(g, font, trim(font, label, Math.max(24, w - font.width(shown) - 8)),
 			shown, fill, x, y, w, color, maxed);
 		int bottom = y + font.lineHeight + BAR_LABEL_GAP + PvDraw.BAR_HEIGHT;
-		if (hover != null && !hover.isBlank()) {
-			zones.add(HoverZone.of(x, y, w, bottom - y, List.of(PvTooltip.Line.of(hover, PvDraw.COLOR_TEXT))));
+		if (hover != null && !hover.isEmpty()) {
+			zones.add(HoverZone.of(x, y, w, bottom - y, hover));
 		}
 		return bottom;
 	}

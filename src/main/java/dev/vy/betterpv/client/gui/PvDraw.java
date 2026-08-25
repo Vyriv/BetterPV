@@ -183,16 +183,16 @@ public final class PvDraw {
 			return;
 		}
 		float clamped = Math.max(0.0f, Math.min(1.0f, progress));
-		fill(g, x, y, w, h, COLOR_BAR_BG);
+		drawXpBarSolidRounded(g, x, y, w, h, COLOR_BAR_BG, true);
 		int filled = Math.max(0, Math.round(w * clamped));
 		if (filled <= 0) {
 			return;
 		}
-		boolean roundRight = filled >= w;
+		// Always round both ends of the fill, including incomplete bars.
 		if (MoulberryMode.isActive()) {
 			drawXpBarAnimatedGradient(g, x, y, filled, h, true);
 		} else if (maxedShiny) {
-			drawXpBarMaxed(g, x, y, filled, h, roundRight);
+			drawXpBarMaxed(g, x, y, filled, h, true);
 		} else {
 			drawXpBarSolidRounded(g, x, y, filled, h, fillColor, true);
 		}
@@ -245,7 +245,11 @@ public final class PvDraw {
 		}
 		fill(g, x, y + 1, 1, Math.max(1, h - 2), COLOR_MAXED_BAR_LEFT);
 		if (roundRight) {
-			fill(g, x + w - 1, y + 1, 1, Math.max(1, h - 2), COLOR_MAXED_BAR_RIGHT);
+			// Tip colour follows the gradient at this fill width (not always cream).
+			float t = MAXED_BAR_TEX_W <= 1
+				? 1F
+				: (float) Math.min(Math.max(w - 1, 0), MAXED_BAR_TEX_W - 1) / (float) (MAXED_BAR_TEX_W - 1);
+			fill(g, x + w - 1, y + 1, 1, Math.max(1, h - 2), lerpArgb(COLOR_MAXED_BAR_LEFT, COLOR_MAXED_BAR_RIGHT, t));
 		}
 	}
 

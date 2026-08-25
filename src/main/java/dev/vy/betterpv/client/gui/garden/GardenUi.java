@@ -58,7 +58,7 @@ public final class GardenUi {
 	public static final float CREDIT_SCALE = 0.75F;
 	public static final int FLIP_MS = 480;
 	public static final int PANEL_HOVER = 0x0AFFFFFF;
-	public static final int ORB = 6;
+	public static final int ORB = 7;
 	public static final int ORB_GAP = 3;
 
 	public final List<HoverZone> zones = new ArrayList<>();

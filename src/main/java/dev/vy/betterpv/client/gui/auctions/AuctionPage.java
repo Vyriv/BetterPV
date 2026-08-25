@@ -403,8 +403,11 @@ public final class AuctionPage {
 			);
 		}
 
-		drawTooltip(g, font, mouseX, mouseY, screenW, screenH);
 		maybeAutofill(bucket, cols, listings.size());
+	}
+
+	public void renderTooltip(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH) {
+		drawTooltip(g, font, mouseX, mouseY, screenW, screenH);
 	}
 
 	/** Keep paging Cofl until the list fills the panel (or no more pages). */

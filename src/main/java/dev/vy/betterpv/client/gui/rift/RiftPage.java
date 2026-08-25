@@ -60,6 +60,9 @@ public final class RiftPage {
 		} else {
 			this.overview.render(this.snapshot, this.ui, g, font, x, y, w, h, mouseX, mouseY);
 		}
+	}
+
+	public void renderTooltip(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH) {
 		this.ui.drawHover(g, font, mouseX, mouseY, screenW, screenH);
 	}
 

@@ -7,6 +7,7 @@ import dev.vy.betterpv.client.gui.PvTooltip;
 import dev.vy.betterpv.client.gui.SkyBlockStats;
 import dev.vy.betterpv.client.gui.nav.InventoryPane;
 import dev.vy.betterpv.client.networth.InventoryDecoder;
+import dev.vy.betterpv.client.networth.ItemWorth;
 import dev.vy.betterpv.client.neu.NeuRepoCache;
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -84,6 +85,7 @@ public final class InventoryPage {
 	private int accessoryFlipH;
 	private int accessoryPowersScroll;
 	private int accessoryPowersMaxScroll;
+	private final ItemValueOverlay valueOverlay = new ItemValueOverlay();
 
 	public void apply(InventorySnapshot snapshot) {
 		this.snapshot = snapshot == null ? InventorySnapshot.empty() : snapshot;
@@ -91,6 +93,7 @@ public final class InventoryPage {
 		this.openSackIndex = null;
 		this.gemScroll = 0;
 		this.stackCache.clear();
+		this.valueOverlay.close();
 		resetAccessoryFlip();
 		if (!this.pane.visibleOn(this.snapshot)) {
 			this.pane = InventoryPane.INVENTORY;
@@ -103,6 +106,7 @@ public final class InventoryPage {
 		if (pane != null) {
 			if (this.pane != pane) {
 				resetAccessoryFlip();
+				this.valueOverlay.close();
 			}
 			this.pane = pane;
 			this.openSackIndex = null;
@@ -364,6 +368,9 @@ public final class InventoryPage {
 
 	/** Drawn after the right button panel so tips are never covered by it. */
 	public void renderTooltip(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH) {
+		if (this.valueOverlay.isOpen()) {
+			return;
+		}
 		if (this.gemHoverTip != null && !this.gemHoverTip.isEmpty()) {
 			PvTooltip.drawComponents(g, font, this.gemHoverTip, mouseX, mouseY, screenW, screenH);
 			return;
@@ -374,7 +381,14 @@ public final class InventoryPage {
 		}
 	}
 
+	public void renderOverlay(GuiGraphicsExtractor g, Font font, int screenW, int screenH, int mouseX, int mouseY) {
+		this.valueOverlay.render(g, font, screenW, screenH, mouseX, mouseY);
+	}
+
 	public boolean mouseClicked(double mx, double my) {
+		if (this.valueOverlay.isOpen()) {
+			return this.valueOverlay.mouseClicked(mx, my);
+		}
 		for (RunnableHit hit : this.pageHits) {
 			if (mx >= hit.x && mx < hit.x + hit.w && my >= hit.y && my < hit.y + hit.h) {
 				hit.action.run();
@@ -393,10 +407,41 @@ public final class InventoryPage {
 			this.accessoryFlipStartMs = System.currentTimeMillis();
 			return true;
 		}
+		for (SlotHit hit : this.hits) {
+			if (mx >= hit.x && mx < hit.x + hit.w && my >= hit.y && my < hit.y + hit.h) {
+				openItemValue(hit.slot(), hit.stack());
+				return true;
+			}
+		}
 		return false;
 	}
 
+	private void openItemValue(InventorySnapshot.Slot slot, ItemStack stack) {
+		if (slot == null || slot.isEmpty()) {
+			return;
+		}
+		InventoryDecoder.Stack worth = new InventoryDecoder.Stack(
+			slot.id(),
+			slot.count(),
+			slot.extraAttributes() == null ? new net.minecraft.nbt.CompoundTag() : slot.extraAttributes(),
+			slot.lore() == null ? List.of() : slot.lore(),
+			slot.soulbound(),
+			slot.displayName(),
+			slot.dyeColor(),
+			slot.skullValue(),
+			slot.skullSignature()
+		);
+		ItemWorth.Breakdown breakdown = ItemWorth.breakdown(worth);
+		String title = slot.displayName() != null && !slot.displayName().isBlank()
+			? slot.displayName().replaceAll("§.", "").trim()
+			: SkyBlockItemFactory.plainDisplayName(slot.id());
+		this.valueOverlay.open(title, stack, breakdown);
+	}
+
 	public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
+		if (this.valueOverlay.isOpen()) {
+			return this.valueOverlay.mouseScrolled(scrollY);
+		}
 		if (this.pane == InventoryPane.ACCESSORY_BAG && showingAccessoryPowersFace()) {
 			if (this.accessoryPowersMaxScroll <= 0) {
 				return false;

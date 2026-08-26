@@ -512,6 +512,8 @@ public final class ProfileViewerScreen extends Screen {
 				this.dungeonPage.renderOverlay(graphics, this.font, this.width, this.height, mouseX, mouseY);
 			} else if (this.tab == PvTab.HOME && activeSub(PvSubTab.HOME_OVERVIEW) == PvSubTab.HOME_OVERVIEW) {
 				this.homePage.renderSlayerOverlay(graphics, this.font, this.width, this.height, mouseX, mouseY);
+			} else if (this.tab.isInventorySplit()) {
+				this.inventoryPage.renderOverlay(graphics, this.font, this.width, this.height, mouseX, mouseY);
 			}
 		}
 

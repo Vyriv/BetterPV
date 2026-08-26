@@ -8,12 +8,14 @@ import com.mojang.authlib.GameProfile;
 import com.mojang.authlib.properties.Property;
 import com.mojang.authlib.properties.PropertyMap;
 import dev.vy.betterpv.client.api.HypixelApiClient;
+import dev.vy.betterpv.client.data.FormatUtil;
 import dev.vy.betterpv.client.data.InventorySnapshot;
 import dev.vy.betterpv.client.data.PetLoreResolver;
 import dev.vy.betterpv.client.data.PetSnapshot;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.SkyBlockSymbols;
 import dev.vy.betterpv.client.networth.InventoryDecoder;
+import dev.vy.betterpv.client.networth.ItemWorth;
 import dev.vy.betterpv.client.networth.NbtAttrs;
 import dev.vy.betterpv.client.neu.NeuRepoCache;
 import dev.vy.betterpv.client.neu.SkyBlockPackCache;
@@ -599,10 +601,45 @@ public final class SkyBlockItemFactory {
 		}
 		// Re-apply so tooltip rendering always gets live obfuscated markers.
 		applyRecombobulatorMarkers(lines, slot);
+		appendEstimatedValueHint(lines, slot);
 		return lines;
 	}
 
-	/** Match rarity-line colour for recomb markers / header accents. */
+	/** Inserts estimated value + click hint under the rarity line when the item has a price. */
+	private static void appendEstimatedValueHint(List<Component> lines, InventorySnapshot.Slot slot) {
+		if (slot == null || slot.isEmpty() || lines == null) {
+			return;
+		}
+		InventoryDecoder.Stack worth = new InventoryDecoder.Stack(
+			slot.id(),
+			slot.count(),
+			slot.extraAttributes() == null ? new CompoundTag() : slot.extraAttributes(),
+			slot.lore() == null ? List.of() : slot.lore(),
+			slot.soulbound(),
+			slot.displayName(),
+			slot.dyeColor(),
+			slot.skullValue(),
+			slot.skullSignature()
+		);
+		double value = ItemWorth.value(worth);
+		if (value <= 0) {
+			return;
+		}
+		String coins = FormatUtil.shortCoins(Math.round(value));
+		int headerColor = estimatedHeaderColor(lines, slot);
+		MutableComponent estimated = Component.literal("Estimated value: ")
+			.withStyle(Style.EMPTY.withColor(headerColor).withItalic(false))
+			.append(Component.literal(coins).withStyle(Style.EMPTY.withColor(headerColor).withItalic(false)));
+		MutableComponent hint = Component.literal("Click to view value breakdown")
+			.withStyle(Style.EMPTY.withColor(ChatFormatting.GRAY).withItalic(true));
+
+		int rarityIndex = findRarityLineIndex(lines);
+		int insertAt = rarityIndex >= 0 ? rarityIndex + 1 : lines.size();
+		lines.add(insertAt, estimated);
+		lines.add(insertAt + 1, hint);
+	}
+
+	/** Match estimated-value colour to the rarity / item-name colour above it. */
 	private static int estimatedHeaderColor(List<Component> lines, InventorySnapshot.Slot slot) {
 		int rarityIndex = findRarityLineIndex(lines);
 		if (rarityIndex >= 0) {

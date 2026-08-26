@@ -20,7 +20,7 @@
 
 	"betterpv.tab.home": "Home",
 	"betterpv.tab.dungeons": "Dungeons",
-	"betterpv.tab.inventories": "Inventories",
+	"betterpv.tab.inventories": "Storage",
 	"betterpv.tab.pets": "Pets",
 	"betterpv.tab.auctions": "Auctions",
 	"betterpv.tab.collections": "Collections",
@@ -130,6 +130,7 @@
 	"betterpv.dungeons.master_floor": "Mastermode Floor %s",
 	"betterpv.dungeons.total": "Total:",
 
+	"betterpv.museum.all": "All Museum",
 	"betterpv.museum.combat": "Combat",
 	"betterpv.museum.mining": "Mining",
 	"betterpv.museum.foraging": "Foraging",

@@ -109,7 +109,7 @@ public final class ProfileViewerScreen extends Screen {
 	private float openPivotY;
 
 	private PvTab tab = PvTab.HOME;
-	private MuseumSort museumSort = MuseumSort.COMBAT;
+	private MuseumSort museumSort = MuseumSort.ALL;
 	private boolean fetchStarted;
 	private boolean dataReady;
 	/** Bumps on each fetch/switch so stale async results cannot overwrite newer state. */
@@ -168,9 +168,14 @@ public final class ProfileViewerScreen extends Screen {
 	private boolean playerRankFetchStarted;
 
 	public ProfileViewerScreen(String playerName) {
+		this(playerName, PvTab.HOME);
+	}
+
+	public ProfileViewerScreen(String playerName, PvTab initialTab) {
 		super(Component.translatable("betterpv.screen.title"));
 		this.requestedName = playerName == null || playerName.isBlank() ? "?" : playerName.trim();
 		this.homePage = new HomePage(ProfileSnapshot.loading(this.requestedName));
+		this.tab = initialTab == null ? PvTab.HOME : initialTab;
 		for (PvTab t : PvTab.values()) {
 			PvSubTab[] subs = t.subTabs();
 			if (subs.length > 0) {
@@ -225,6 +230,7 @@ public final class ProfileViewerScreen extends Screen {
 		}
 		this.fetchStarted = true;
 		int generation = ++this.loadGeneration;
+		ProfileFetcher.prioritizeTab(this.tab);
 		ProfileFetcher.addNetworthListener(this.networthListener);
 		ProfileFetcher.fetch(this.requestedName, updated -> {
 			Minecraft client = Minecraft.getInstance();

@@ -1,5 +1,6 @@
 package dev.vy.betterpv.client.gui.nav;
 
+import java.util.Locale;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -22,20 +23,69 @@ public enum PvTab {
 	BESTIARY(Items.IRON_SWORD, "betterpv.tab.bestiary"),
 	EVENTS(Items.FIREWORK_ROCKET, "betterpv.tab.events");
 
-	private final ItemStack icon;
+	private final Item iconItem;
 	private final String langKey;
 
 	PvTab(Item item, String langKey) {
-		this.icon = new ItemStack(item);
+		this.iconItem = item;
 		this.langKey = langKey;
 	}
 
 	public ItemStack icon() {
-		return this.icon;
+		return new ItemStack(this.iconItem);
 	}
 
 	public Component label() {
 		return Component.translatable(this.langKey);
+	}
+
+	/**
+	 * Resolves {@code /pv <page>} aliases. Returns {@code null} when the token is not a page
+	 * (caller should treat it as a player name).
+	 */
+	public static PvTab fromCommandArg(String raw) {
+		if (raw == null || raw.isBlank()) {
+			return null;
+		}
+		return switch (raw.trim().toLowerCase(Locale.ROOT)) {
+			case "home" -> HOME;
+			case "dungeons", "dungeon" -> DUNGEONS;
+			case "storage", "inventories", "inventory" -> INVENTORIES;
+			case "pets", "pet" -> PETS;
+			case "auctions", "auction" -> AUCTIONS;
+			case "collections", "collection" -> COLLECTIONS;
+			case "garden" -> GARDEN;
+			case "mining" -> MINING;
+			case "foraging" -> FORAGING;
+			case "fishing" -> FISHING;
+			case "crimson" -> CRIMSON;
+			case "rift" -> RIFT;
+			case "museum" -> MUSEUM;
+			case "bestiary" -> BESTIARY;
+			case "events", "event" -> EVENTS;
+			default -> null;
+		};
+	}
+
+	/** Canonical {@code /pv <page>} tokens shown in command suggestions. */
+	public static String[] commandAliases() {
+		return new String[] {
+			"home",
+			"dungeons",
+			"storage",
+			"pets",
+			"auctions",
+			"collections",
+			"garden",
+			"mining",
+			"foraging",
+			"fishing",
+			"crimson",
+			"rift",
+			"museum",
+			"bestiary",
+			"events"
+		};
 	}
 
 	public PvSubTab[] subTabs() {

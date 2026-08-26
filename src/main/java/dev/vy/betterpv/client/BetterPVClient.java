@@ -10,6 +10,7 @@ import dev.vy.betterpv.client.api.BetterPvSessionAuth;
 import dev.vy.betterpv.client.cosmetics.BetterPvCosmetics;
 import dev.vy.betterpv.client.gui.LoadingEggFinale;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockIconRenderer;
+import dev.vy.betterpv.client.gui.nav.PvTab;
 import dev.vy.betterpv.client.neu.NeuRepoCache;
 import dev.vy.betterpv.client.neu.SkyBlockPackCache;
 import dev.vy.betterpv.client.price.ItemPricer;
@@ -45,36 +46,10 @@ public final class BetterPVClient implements ClientModInitializer {
 		ClientCommandRegistrationCallback.EVENT.addPhaseOrdering(Event.DEFAULT_PHASE, PV_COMMAND_PHASE);
 		ClientCommandRegistrationCallback.EVENT.register(PV_COMMAND_PHASE, (dispatcher, registryAccess) -> {
 			removeLiteral(dispatcher, "pv");
-			dispatcher.register(
-				ClientCommands.literal("pv")
-					.executes(ctx -> {
-						ProfileViewerOpener.openSelfOr(null);
-						return 1;
-					})
-					.then(
-						ClientCommands.argument("player", StringArgumentType.word())
-							.executes(ctx -> {
-								ProfileViewerOpener.openSelfOr(StringArgumentType.getString(ctx, "player"));
-								return 1;
-							})
-					)
-			);
+			dispatcher.register(buildPvCommand(ClientCommands.literal("pv")));
 			dispatcher.register(
 				ClientCommands.literal("betterpv")
-					.then(
-						ClientCommands.literal("pv")
-							.executes(ctx -> {
-								ProfileViewerOpener.openSelfOr(null);
-								return 1;
-							})
-							.then(
-								ClientCommands.argument("player", StringArgumentType.word())
-									.executes(ctx -> {
-										ProfileViewerOpener.openSelfOr(StringArgumentType.getString(ctx, "player"));
-										return 1;
-									})
-							)
-					)
+					.then(buildPvCommand(ClientCommands.literal("pv")))
 			);
 		});
 
@@ -121,6 +96,45 @@ public final class BetterPVClient implements ClientModInitializer {
 			return;
 		}
 		BetterPvSessionAuth.prefetchAsync();
+	}
+
+	private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> buildPvCommand(
+		com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> root
+	) {
+		return root
+			.executes(ctx -> {
+				ProfileViewerOpener.openSelfOr(null);
+				return 1;
+			})
+			.then(
+				ClientCommands.argument("player", StringArgumentType.word())
+					.executes(ctx -> {
+						ProfileViewerOpener.handleTypedArg(StringArgumentType.getString(ctx, "player"));
+						return 1;
+					})
+					.then(
+						ClientCommands.argument("page", StringArgumentType.word())
+							.suggests((ctx, builder) -> suggestPages(builder))
+							.executes(ctx -> {
+								String player = StringArgumentType.getString(ctx, "player");
+								String page = StringArgumentType.getString(ctx, "page");
+								ProfileViewerOpener.handleTypedArg(player + " " + page);
+								return 1;
+							})
+					)
+			);
+	}
+
+	private static java.util.concurrent.CompletableFuture<com.mojang.brigadier.suggestion.Suggestions> suggestPages(
+		com.mojang.brigadier.suggestion.SuggestionsBuilder builder
+	) {
+		String remaining = builder.getRemainingLowerCase();
+		for (String alias : PvTab.commandAliases()) {
+			if (remaining.isEmpty() || alias.startsWith(remaining)) {
+				builder.suggest(alias);
+			}
+		}
+		return builder.buildFuture();
 	}
 
 	@SuppressWarnings("unchecked")

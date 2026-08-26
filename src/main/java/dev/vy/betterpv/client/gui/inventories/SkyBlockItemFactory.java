@@ -576,6 +576,14 @@ public final class SkyBlockItemFactory {
 	}
 
 	public static List<Component> tooltipLines(InventorySnapshot.Slot slot, ItemStack rendered) {
+		return tooltipLines(slot, rendered, true);
+	}
+
+	public static List<Component> tooltipLines(
+		InventorySnapshot.Slot slot,
+		ItemStack rendered,
+		boolean includeEstimatedValue
+	) {
 		List<Component> lines = new ArrayList<>();
 		Component name = rendered.get(DataComponents.CUSTOM_NAME);
 		if (name == null && slot != null && slot.displayName() != null) {
@@ -601,7 +609,9 @@ public final class SkyBlockItemFactory {
 		}
 		// Re-apply so tooltip rendering always gets live obfuscated markers.
 		applyRecombobulatorMarkers(lines, slot);
-		appendEstimatedValueHint(lines, slot);
+		if (includeEstimatedValue) {
+			appendEstimatedValueHint(lines, slot);
+		}
 		return lines;
 	}
 
@@ -626,12 +636,12 @@ public final class SkyBlockItemFactory {
 			return;
 		}
 		String coins = FormatUtil.shortCoins(Math.round(value));
-		int headerColor = estimatedHeaderColor(lines, slot);
+		// Fixed colours so this line does not steal the rarity / name colour.
 		MutableComponent estimated = Component.literal("Estimated value: ")
-			.withStyle(Style.EMPTY.withColor(headerColor).withItalic(false))
-			.append(Component.literal(coins).withStyle(Style.EMPTY.withColor(headerColor).withItalic(false)));
+			.withStyle(Style.EMPTY.withColor(ChatFormatting.GRAY).withItalic(false))
+			.append(Component.literal(coins).withStyle(Style.EMPTY.withColor(ChatFormatting.GOLD).withItalic(false)));
 		MutableComponent hint = Component.literal("Click to view value breakdown")
-			.withStyle(Style.EMPTY.withColor(ChatFormatting.GRAY).withItalic(true));
+			.withStyle(Style.EMPTY.withColor(ChatFormatting.DARK_GRAY).withItalic(true));
 
 		int rarityIndex = findRarityLineIndex(lines);
 		int insertAt = rarityIndex >= 0 ? rarityIndex + 1 : lines.size();
@@ -639,7 +649,7 @@ public final class SkyBlockItemFactory {
 		lines.add(insertAt + 1, hint);
 	}
 
-	/** Match estimated-value colour to the rarity / item-name colour above it. */
+	/** Rarity / item-name colour for recombobulated rarity lines. */
 	private static int estimatedHeaderColor(List<Component> lines, InventorySnapshot.Slot slot) {
 		int rarityIndex = findRarityLineIndex(lines);
 		if (rarityIndex >= 0) {

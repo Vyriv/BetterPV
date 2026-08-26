@@ -36,6 +36,13 @@ public final class ChatClickProcessor {
 	private static final Pattern PARTY_FINDER_JOIN = Pattern.compile(
 		"(?i)^Party Finder\\s*>\\s*(?:\\[[^\\]]+]\\s*)?([A-Za-z0-9_]{3,16})\\s+joined the (?:dungeon )?group!"
 	);
+	/**
+	 * Username immediately before {@code : }, optionally followed by a guild rank
+	 * tag such as {@code [Elite]} / {@code [Kitten]} (not the MVP rank before the name).
+	 */
+	private static final Pattern SENDER_BEFORE_COLON = Pattern.compile(
+		"([A-Za-z0-9_]{3,16})(?:\\s*\\[[^\\]]+])?\\s*$"
+	);
 
 	private ChatClickProcessor() {
 	}
@@ -118,23 +125,21 @@ public final class ChatClickProcessor {
 		if (delimiter <= 0) {
 			return null;
 		}
-		if (isRosterOrSystemLabel(text.substring(0, delimiter))) {
+		String beforeColon = text.substring(0, delimiter);
+		if (isRosterOrSystemLabel(beforeColon)) {
 			return null;
 		}
 
-		int end = delimiter;
-		int start = end;
-		while (start > 0 && isNameChar(text.charAt(start - 1))) {
-			start--;
-		}
-
-		if (start == end) {
+		Matcher matcher = SENDER_BEFORE_COLON.matcher(beforeColon);
+		if (!matcher.find()) {
 			return null;
 		}
-		String name = text.substring(start, end);
+		String name = matcher.group(1);
 		if (!PLAYER_NAME_PATTERN.matcher(name).matches()) {
 			return null;
 		}
+		int start = matcher.start(1);
+		int end = matcher.end(1);
 		return new NameRange(start, end, name);
 	}
 
@@ -162,10 +167,6 @@ public final class ChatClickProcessor {
 			|| upper.startsWith("ONLINE ")
 			|| upper.startsWith("MEMBERS ")
 			|| upper.startsWith("TRADE");
-	}
-
-	private static boolean isNameChar(char c) {
-		return c == '_' || (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
 	}
 
 	private static void appendSegment(

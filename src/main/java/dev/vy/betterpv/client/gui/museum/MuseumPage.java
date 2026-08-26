@@ -77,7 +77,7 @@ public final class MuseumPage {
 	private LoadState state = LoadState.IDLE;
 	private String error = "";
 	private JsonObject museumMember = new JsonObject();
-	private MuseumSort sort = MuseumSort.COMBAT;
+	private MuseumSort sort = MuseumSort.ALL;
 
 	private List<Slot> slots = List.of();
 	private final Map<Integer, ItemStack> iconByIndex = new HashMap<>();
@@ -121,7 +121,7 @@ public final class MuseumPage {
 	private List<Component> hoverTip = List.of();
 
 	public void setSort(MuseumSort sort) {
-		MuseumSort next = sort == null ? MuseumSort.COMBAT : sort;
+		MuseumSort next = sort == null ? MuseumSort.ALL : sort;
 		if (next != this.sort) {
 			this.sort = next;
 			this.gridScroll = 0;
@@ -722,7 +722,7 @@ public final class MuseumPage {
 	private List<Component> tooltipFor(Slot slot) {
 		InventorySnapshot.Slot ui = toUiSlot(slot);
 		ItemStack rendered = SkyBlockItemFactory.toStack(ui);
-		List<Component> tip = new ArrayList<>(SkyBlockItemFactory.tooltipLines(ui, rendered));
+		List<Component> tip = new ArrayList<>(SkyBlockItemFactory.tooltipLines(ui, rendered, false));
 		if (slot.coveredByHigherTier()) {
 			tip.add(Component.empty());
 			tip.add(SkyBlockItemFactory.legacyLine(
@@ -775,8 +775,22 @@ public final class MuseumPage {
 	private List<Slot> buildSlots() {
 		Map<String, MuseumCatalog.ResolvedDonation> donated =
 			MuseumCatalog.resolveDonations(InventoryDecoder.parseMuseumById(this.museumMember));
+		if (this.sort.isAll()) {
+			List<Slot> out = new ArrayList<>();
+			for (MuseumSort category : MuseumSort.categories()) {
+				out.addAll(buildSlotsForCategory(category, donated));
+			}
+			return out;
+		}
+		return buildSlotsForCategory(this.sort, donated);
+	}
+
+	private List<Slot> buildSlotsForCategory(
+		MuseumSort category,
+		Map<String, MuseumCatalog.ResolvedDonation> donated
+	) {
 		List<Slot> out = new ArrayList<>();
-		if (this.sort == MuseumSort.SPECIAL) {
+		if (category == MuseumSort.SPECIAL) {
 			for (var entry : donated.entrySet()) {
 				String key = entry.getKey();
 				MuseumCatalog.ResolvedDonation res = entry.getValue();
@@ -796,7 +810,7 @@ public final class MuseumPage {
 			}
 			return out;
 		}
-		for (String id : MuseumCatalog.donationIds(this.sort)) {
+		for (String id : MuseumCatalog.donationIds(category)) {
 			MuseumCatalog.ResolvedDonation res = donated.get(id);
 			if (res == null) {
 				out.add(new Slot(id, null, true, null, 0L));

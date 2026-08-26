@@ -96,7 +96,7 @@ public final class MuseumCatalog {
 
 	public static void rebuild() {
 		Map<MuseumSort, LinkedHashSet<String>> buckets = new EnumMap<>(MuseumSort.class);
-		for (MuseumSort sort : MuseumSort.values()) {
+		for (MuseumSort sort : MuseumSort.categories()) {
 			buckets.put(sort, new LinkedHashSet<>());
 		}
 		Map<String, Mutable> building = new LinkedHashMap<>();
@@ -182,7 +182,7 @@ public final class MuseumCatalog {
 		}
 
 		Map<MuseumSort, List<String>> out = new EnumMap<>(MuseumSort.class);
-		for (MuseumSort sort : MuseumSort.values()) {
+		for (MuseumSort sort : MuseumSort.categories()) {
 			List<String> list = new ArrayList<>(buckets.getOrDefault(sort, new LinkedHashSet<>()));
 			list.sort((a, b) -> compareProgression(byId.get(a), byId.get(b), a, b));
 			out.put(sort, List.copyOf(list));
@@ -321,6 +321,13 @@ public final class MuseumCatalog {
 		ensureBuilt();
 		if (sort == null) {
 			return List.of();
+		}
+		if (sort.isAll()) {
+			List<String> combined = new ArrayList<>();
+			for (MuseumSort category : MuseumSort.categories()) {
+				combined.addAll(BY_SORT.getOrDefault(category, List.of()));
+			}
+			return List.copyOf(combined);
 		}
 		return BY_SORT.getOrDefault(sort, List.of());
 	}

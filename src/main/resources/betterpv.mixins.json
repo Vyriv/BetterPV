@@ -10,6 +10,7 @@
 		"ItemModelResolverIconProbeMixin",
 		"PlayerInfoCosmeticsMixin",
 		"PlayerTabOverlayCosmeticsMixin",
+		"ScreenClickCommandMixin",
 		"SkyHanniAdvancedPlayerListCosmeticsMixin",
 		"SkyHanniScoreboardElementPartyCosmeticsMixin",
 		"SkyHanniScoreboardEventDungeonsCosmeticsMixin"

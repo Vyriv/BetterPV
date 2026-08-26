@@ -41,7 +41,7 @@ public enum PvSubTab {
 
 	public static final PvSubTab[] NONE = new PvSubTab[0];
 
-	private final ItemStack icon;
+	private final Item iconItem;
 	private final String langKey;
 	private final Identifier textureIcon;
 	private final int textureSize;
@@ -51,7 +51,7 @@ public enum PvSubTab {
 	}
 
 	PvSubTab(Item item, String langKey, String texturePath, int textureSize) {
-		this.icon = new ItemStack(item);
+		this.iconItem = item;
 		this.langKey = langKey;
 		this.textureIcon = texturePath == null
 			? null
@@ -60,7 +60,7 @@ public enum PvSubTab {
 	}
 
 	public ItemStack icon() {
-		return this.icon;
+		return new ItemStack(this.iconItem);
 	}
 
 	public Identifier textureIcon() {

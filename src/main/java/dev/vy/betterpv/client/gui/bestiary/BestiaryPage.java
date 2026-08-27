@@ -198,6 +198,13 @@ public final class BestiaryPage {
 		this.maxScroll = Math.max(0, contentH - this.gridH);
 		this.scroll = Math.min(this.scroll, this.maxScroll);
 
+		int barY = this.gridY + this.gridH + DIST_BAR_GAP;
+		int[] barWidths = barSegmentWidths(families.size(), Math.max(0, lw - 2));
+		BestiarySnapshot.FamilyProgress linked = findLinkedFamily(
+			families, cols, lx, ly, barY, lw, barWidths, mouseX, mouseY
+		);
+		String linkedId = linked == null || linked.family() == null ? "" : linked.family().id();
+
 		int rowPitch = SLOT + SLOT_GAP;
 		int firstRow = Math.max(0, this.scroll / rowPitch);
 		int lastRow = Math.min(rows - 1, (this.scroll + this.gridH) / rowPitch + 1);
@@ -214,26 +221,83 @@ public final class BestiaryPage {
 			if (by + SLOT < this.gridY || by > this.gridY + this.gridH) {
 				continue;
 			}
-			boolean hovered = mouseX >= bx && mouseX < bx + SLOT && mouseY >= by && mouseY < by + SLOT
-				&& mouseY >= this.gridY && mouseY < this.gridY + this.gridH;
+			boolean linkedHover = !linkedId.isBlank()
+				&& fam.family() != null
+				&& linkedId.equals(fam.family().id());
 			boolean searchHit = matchesSearch(fam);
 			PvDraw.fill(g, bx, by, SLOT, SLOT, 0xFF101018);
-			int border = searchHit ? 0xFF55FF55 : hovered ? PvDraw.COLOR_ACCENT : 0xFF2A2A35;
+			int border = searchHit ? 0xFF55FF55 : linkedHover ? PvDraw.COLOR_ACCENT : 0xFF2A2A35;
 			g.outline(bx, by, SLOT, SLOT, border);
 			ItemStack icon = familyIcon(fam);
 			int pad = Math.max(0, (SLOT - 16) / 2);
 			if (!icon.isEmpty()) {
 				g.item(icon, bx + pad, by + pad);
 			}
-			if (hovered) {
-				this.hoverKey = fam.family().id();
-				this.hoverTip = tooltipFor(fam);
-			}
 		}
 		g.disableScissor();
 
-		int barY = this.gridY + this.gridH + DIST_BAR_GAP;
-		drawTierDistributionBar(g, families, lx, barY, lw, mouseX, mouseY);
+		drawTierDistributionBar(g, families, lx, barY, lw, barWidths, linkedId);
+		if (linked != null) {
+			this.hoverKey = linked.family().id();
+			this.hoverTip = tooltipFor(linked);
+		}
+	}
+
+	/**
+	 * Family under the cursor on either the icon grid or the matching distribution segment.
+	 */
+	private BestiarySnapshot.FamilyProgress findLinkedFamily(
+		List<BestiarySnapshot.FamilyProgress> families,
+		int cols,
+		int gridLeft,
+		int gridTop,
+		int barY,
+		int barW,
+		int[] barWidths,
+		int mouseX,
+		int mouseY
+	) {
+		int rowPitch = SLOT + SLOT_GAP;
+		boolean overGrid = mouseX >= this.gridX && mouseX < this.gridX + this.gridW
+			&& mouseY >= this.gridY && mouseY < this.gridY + this.gridH;
+		if (overGrid) {
+			for (int i = 0; i < families.size(); i++) {
+				int col = i % cols;
+				int row = i / cols;
+				int bx = gridLeft + col * rowPitch;
+				int by = gridTop + row * rowPitch - this.scroll;
+				if (by + SLOT < this.gridY || by > this.gridY + this.gridH) {
+					continue;
+				}
+				if (mouseX >= bx && mouseX < bx + SLOT && mouseY >= by && mouseY < by + SLOT) {
+					return families.get(i);
+				}
+			}
+		}
+
+		boolean overBar = mouseY >= barY && mouseY < barY + DIST_BAR_H
+			&& mouseX >= gridLeft && mouseX < gridLeft + barW;
+		if (!overBar || barWidths == null) {
+			return null;
+		}
+		int innerX = gridLeft + 1;
+		int innerW = Math.max(0, barW - 2);
+		int cursor = innerX;
+		for (int i = 0; i < families.size() && i < barWidths.length; i++) {
+			int segW = Math.max(1, barWidths[i]);
+			if (cursor >= innerX + innerW) {
+				break;
+			}
+			segW = Math.min(segW, innerX + innerW - cursor);
+			if (mouseX >= cursor && mouseX < cursor + segW) {
+				return families.get(i);
+			}
+			cursor += segW;
+			if (i < families.size() - 1 && cursor < innerX + innerW) {
+				cursor += DIST_SEP;
+			}
+		}
+		return null;
 	}
 
 	/**
@@ -246,8 +310,8 @@ public final class BestiaryPage {
 		int x,
 		int y,
 		int w,
-		int mouseX,
-		int mouseY
+		int[] widths,
+		String linkedId
 	) {
 		if (families.isEmpty() || w <= 0) {
 			return;
@@ -259,23 +323,12 @@ public final class BestiaryPage {
 		int innerY = y + 1;
 		int innerW = Math.max(0, w - 2);
 		int innerH = Math.max(0, DIST_BAR_H - 2);
-		if (innerW <= 0 || innerH <= 0) {
+		if (innerW <= 0 || innerH <= 0 || widths == null) {
 			return;
 		}
 
-		int n = families.size();
-		int sepTotal = Math.max(0, (n - 1) * DIST_SEP);
-		int fillW = Math.max(n, innerW - sepTotal);
-		// Equal segment widths - colour still encodes each family's completion.
-		int[] weights = new int[n];
-		for (int i = 0; i < n; i++) {
-			weights[i] = 1;
-		}
-		int[] widths = distributeWidths(weights, n, fillW);
-
 		int cursor = innerX;
-		boolean overBar = mouseY >= y && mouseY < y + DIST_BAR_H && mouseX >= x && mouseX < x + w;
-		for (int i = 0; i < n; i++) {
+		for (int i = 0; i < families.size() && i < widths.length; i++) {
 			int segW = Math.max(1, widths[i]);
 			if (cursor >= innerX + innerW) {
 				break;
@@ -283,18 +336,31 @@ public final class BestiaryPage {
 			segW = Math.min(segW, innerX + innerW - cursor);
 			BestiarySnapshot.FamilyProgress fam = families.get(i);
 			PvDraw.fill(g, cursor, innerY, segW, innerH, completionColor(fam));
-			boolean hovered = overBar && mouseX >= cursor && mouseX < cursor + segW;
-			if (hovered) {
+			boolean linkedHover = linkedId != null && !linkedId.isBlank()
+				&& fam.family() != null
+				&& linkedId.equals(fam.family().id());
+			if (linkedHover) {
 				g.outline(cursor, innerY, segW, innerH, PvDraw.COLOR_ACCENT);
-				this.hoverKey = "dist:" + fam.family().id();
-				this.hoverTip = distributionTooltip(fam);
 			}
 			cursor += segW;
-			if (i < n - 1 && cursor < innerX + innerW) {
+			if (i < families.size() - 1 && cursor < innerX + innerW) {
 				PvDraw.fill(g, cursor, innerY, DIST_SEP, innerH, DIST_BORDER);
 				cursor += DIST_SEP;
 			}
 		}
+	}
+
+	private static int[] barSegmentWidths(int n, int innerW) {
+		if (n <= 0 || innerW <= 0) {
+			return new int[0];
+		}
+		int sepTotal = Math.max(0, (n - 1) * DIST_SEP);
+		int fillW = Math.max(n, innerW - sepTotal);
+		int[] weights = new int[n];
+		for (int i = 0; i < n; i++) {
+			weights[i] = 1;
+		}
+		return distributeWidths(weights, n, fillW);
 	}
 
 	private static int[] distributeWidths(int[] weights, int weightSum, int totalPx) {
@@ -357,19 +423,36 @@ public final class BestiaryPage {
 		return DIST_HIGH;
 	}
 
-	private static List<Component> distributionTooltip(BestiarySnapshot.FamilyProgress fam) {
+	private List<Component> tooltipFor(BestiarySnapshot.FamilyProgress fam) {
 		List<Component> tip = new ArrayList<>();
 		tip.add(SkyBlockItemFactory.legacyLine("§a" + fam.family().name()));
 		tip.add(SkyBlockItemFactory.legacyLine(
-			"§7Tiers: §e" + fam.tier() + "§7/§e" + fam.tiersMax() + (fam.maxed() ? " §a(MAX)" : "")));
-		return tip;
-	}
-
-	/** Draw after island buttons / frame tabs so tips paint on top. */
-	public void renderTooltip(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH) {
-		if (!this.hoverTip.isEmpty()) {
-			PvTooltip.drawComponents(g, font, this.hoverTip, mouseX, mouseY, screenW, screenH);
+			"§7Tier: §e" + fam.tier() + "§7/§e" + fam.tiersMax() + (fam.maxed() ? " §a(MAX)" : "")));
+		if (fam.maxed() || fam.nextNeed() <= 0L) {
+			tip.add(SkyBlockItemFactory.legacyLine("§7Kills: §aMAX"));
+		} else {
+			tip.add(SkyBlockItemFactory.legacyLine(
+				"§7Kills: §f" + FormatUtil.commas(fam.intoTier())
+					+ "§7/§f" + FormatUtil.commas(fam.nextNeed())));
 		}
+		tip.add(SkyBlockItemFactory.legacyLine("§7Total kills: §f" + FormatUtil.commas(fam.kills())));
+		if (fam.deaths() > 0) {
+			tip.add(SkyBlockItemFactory.legacyLine("§7Deaths to family: §c" + FormatUtil.commas(fam.deaths())));
+		}
+		if (!fam.family().mobIds().isEmpty()) {
+			tip.add(Component.empty());
+			tip.add(SkyBlockItemFactory.legacyLine("§7Mobs:"));
+			int shown = 0;
+			for (String mob : fam.family().mobIds()) {
+				if (shown >= 8) {
+					tip.add(SkyBlockItemFactory.legacyLine("§8…" + (fam.family().mobIds().size() - shown) + " more"));
+					break;
+				}
+				tip.add(SkyBlockItemFactory.legacyLine("§8• §7" + prettyMobId(mob)));
+				shown++;
+			}
+		}
+		return tip;
 	}
 
 	public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
@@ -464,35 +547,11 @@ public final class BestiaryPage {
 		return icon;
 	}
 
-	private List<Component> tooltipFor(BestiarySnapshot.FamilyProgress fam) {
-		List<Component> tip = new ArrayList<>();
-		tip.add(SkyBlockItemFactory.legacyLine("§a" + fam.family().name()));
-		tip.add(SkyBlockItemFactory.legacyLine(
-			"§7Tier: §e" + fam.tier() + "§7/§e" + fam.tiersMax() + (fam.maxed() ? " §a(MAX)" : "")));
-		tip.add(SkyBlockItemFactory.legacyLine("§7Kills: §f" + FormatUtil.commas(fam.kills())
-			+ (fam.family().cap() > 0 ? " §8/ " + FormatUtil.commas(fam.family().cap()) : "")));
-		if (fam.deaths() > 0) {
-			tip.add(SkyBlockItemFactory.legacyLine("§7Deaths to family: §c" + FormatUtil.commas(fam.deaths())));
+	/** Draw after island buttons / frame tabs so tips paint on top. */
+	public void renderTooltip(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH) {
+		if (!this.hoverTip.isEmpty()) {
+			PvTooltip.drawComponents(g, font, this.hoverTip, mouseX, mouseY, screenW, screenH);
 		}
-		if (!fam.maxed() && fam.nextNeed() > 0) {
-			tip.add(SkyBlockItemFactory.legacyLine(
-				"§7Next tier: §e" + FormatUtil.commas(fam.intoTier()) + "§7/§e" + FormatUtil.commas(fam.nextNeed())));
-		}
-		tip.add(SkyBlockItemFactory.legacyLine("§8Bracket " + fam.family().bracket()));
-		if (!fam.family().mobIds().isEmpty()) {
-			tip.add(Component.empty());
-			tip.add(SkyBlockItemFactory.legacyLine("§7Mobs:"));
-			int shown = 0;
-			for (String mob : fam.family().mobIds()) {
-				if (shown >= 8) {
-					tip.add(SkyBlockItemFactory.legacyLine("§8…" + (fam.family().mobIds().size() - shown) + " more"));
-					break;
-				}
-				tip.add(SkyBlockItemFactory.legacyLine("§8• §7" + prettyMobId(mob)));
-				shown++;
-			}
-		}
-		return tip;
 	}
 
 	/** {@code bogged_10} / {@code magma_cube_rider_90} → readable title case, level suffix dropped. */

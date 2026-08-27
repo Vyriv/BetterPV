@@ -230,11 +230,27 @@ public final class SlayerCalcOverlay {
 			return true;
 		}
 		this.levelText += ch;
+		clampLevelText();
 		return true;
 	}
 
+	/** Hard-cap the typed target at 9 (slayer max). */
+	private void clampLevelText() {
+		if (this.levelText == null || this.levelText.isBlank()) {
+			return;
+		}
+		try {
+			int value = Integer.parseInt(this.levelText.trim());
+			if (value > 9) {
+				this.levelText = "9";
+			}
+		} catch (NumberFormatException ignored) {
+			// keep raw text; parseLevel falls back
+		}
+	}
+
 	private SlayerXpCalculator.Result currentResult() {
-		int max = SlayerXpCalculator.maxLevel(this.slayer.id());
+		int max = Math.min(9, SlayerXpCalculator.maxLevel(this.slayer.id()));
 		int target = parseLevel(this.levelText, Math.min(max, this.slayer.tier() + 1), max);
 		return SlayerXpCalculator.calculate(
 			this.slayer.id(),

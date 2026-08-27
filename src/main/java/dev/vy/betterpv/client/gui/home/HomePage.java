@@ -1760,7 +1760,7 @@ public final class HomePage {
 			));
 		}
 		lines.add(PvTooltip.Line.blank());
-		lines.add(PvTooltip.Line.action("Click to open calculator"));
+		lines.add(PvTooltip.Line.action("Click to view calculator"));
 		return lines;
 	}
 

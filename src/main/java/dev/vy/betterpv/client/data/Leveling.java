@@ -176,12 +176,7 @@ public final class Leveling {
 					PvDraw.COLOR_GOLD
 				));
 			}
-			if (maxed) {
-				lines.add(PvTooltip.Line.of(
-					"Overflow Level: " + FormatUtil.oneDecimal(overflowLevel),
-					PvDraw.COLOR_MUTED
-				));
-			} else {
+			if (!maxed) {
 				long into = Math.round(xpIntoLevel);
 				long need = Math.round(maxXpForLevel);
 				lines.add(PvTooltip.Line.of(

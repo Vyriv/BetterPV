@@ -116,7 +116,8 @@ public final class PvTooltip {
 		}
 
 		public static Line action(String text) {
-			return new Line(Kind.ACTION, List.of(Span.italic(text, PvDraw.COLOR_ACCENT)), List.of(), List.of());
+			// Match inventory "Click to view value breakdown" (dark gray italic).
+			return new Line(Kind.ACTION, List.of(Span.italic(text, 0xFF555555)), List.of(), List.of());
 		}
 
 		public static Line row(String label, int labelColor, String value, int valueColor) {

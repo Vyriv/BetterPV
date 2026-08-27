@@ -7,7 +7,7 @@
 	"authors": [
 		"Vy"
 	],
-	"license": "All Rights Reserved",
+	"license": "MPL-2.0",
 	"icon": "assets/betterpv/icon.png",
 	"environment": "client",
 	"entrypoints": {

@@ -28,6 +28,8 @@ import org.joml.Vector3f;
 public final class PlayerModelRenderer {
 	private static final long SPIN_PERIOD_MS = 4_000L;
 	private static final float OFFSET_Y = 0.0625F;
+	/** Client-only mannequins are never added to the level; still need a non-zero ID for item rendering. */
+	private static int nextGuiEntityId = -1;
 
 	private GuiPlayer mannequin;
 	private UUID boundUuid;
@@ -261,6 +263,7 @@ public final class PlayerModelRenderer {
 
 		private GuiPlayer(ClientLevel level, UUID uuid, String name) {
 			super(level, Minecraft.getInstance().playerSkinRenderCache());
+			setId(nextGuiEntityId--);
 			String safeName = name == null || name.isBlank() ? "Player" : name;
 			GameProfile profile = new GameProfile(uuid, safeName);
 			try {

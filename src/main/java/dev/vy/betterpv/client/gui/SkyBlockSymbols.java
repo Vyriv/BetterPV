@@ -9,6 +9,11 @@ public final class SkyBlockSymbols {
 	private SkyBlockSymbols() {
 	}
 
+	/** Vanilla fallback for a Hypixel SkyBlock PUA stat/item glyph. */
+	public static String glyph(int codePoint) {
+		return map(codePoint);
+	}
+
 	/** Replace Hypixel custom-font codepoints in a §-legacy or plain string. */
 	public static String replace(String text) {
 		if (text == null || text.isEmpty()) {
@@ -105,6 +110,7 @@ public final class SkyBlockSymbols {
 			case 0xE005 -> "Ⓟ"; // Breaking Power
 			case 0xE015 -> "⸕"; // Mining Speed
 			case 0xE016 -> "Ｙ"; // Mining Spread
+			case 0xE02E -> "⚒"; // Timber
 			case 0xE00F -> "❖"; // Gemstone Spread
 			case 0xE01C -> "✧"; // Pristine
 			case 0xE053 -> "☘"; // Mining Fortune

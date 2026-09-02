@@ -51,7 +51,9 @@ public final class PlayerStatsCalculator {
 		new StatDef("mining_fortune", "MiF", Pattern.compile("^Mining Fortune" + STAT_END)),
 		new StatDef("farming_fortune", "FaF", Pattern.compile("^Farming Fortune" + STAT_END)),
 		new StatDef("foraging_fortune", "FoF", Pattern.compile("^Foraging Fortune" + STAT_END)),
+		new StatDef("timber", "Timb", Pattern.compile("^Timber" + STAT_END)),
 		new StatDef("mining_speed", "MS", Pattern.compile("^Mining Speed" + STAT_END)),
+		new StatDef("mining_spread", "Spr", Pattern.compile("^Mining Spread" + STAT_END)),
 		new StatDef("pristine", "Pris", Pattern.compile("^Pristine" + STAT_END)),
 		new StatDef("sea_creature_chance", "SCC", Pattern.compile("^Sea Creature Chance" + STAT_END)),
 		new StatDef("fishing_speed", "FS", Pattern.compile("^Fishing Speed" + STAT_END))

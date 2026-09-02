@@ -31,7 +31,9 @@ public final class SkyBlockStats {
 		Map.entry("mining_fortune", new StatStyle("☘", "Mining Fortune", 0xFFFFAA00)),
 		Map.entry("farming_fortune", new StatStyle("☘", "Farming Fortune", 0xFFFFAA00)),
 		Map.entry("foraging_fortune", new StatStyle("☘", "Foraging Fortune", 0xFFFFAA00)),
+		Map.entry("timber", new StatStyle(SkyBlockSymbols.glyph(0xE02E), "Timber", 0xFFFFAA00)),
 		Map.entry("mining_speed", new StatStyle("⸕", "Mining Speed", 0xFFFFAA00)),
+		Map.entry("mining_spread", new StatStyle(SkyBlockSymbols.glyph(0xE016), "Mining Spread", 0xFFFFAA00, true)),
 		Map.entry("pristine", new StatStyle("✧", "Pristine", 0xFFAA00AA)),
 		Map.entry("sea_creature_chance", new StatStyle("α", "Sea Creature Chance", 0xFF00AAAA)),
 		Map.entry("fishing_speed", new StatStyle("☂", "Fishing Speed", 0xFF55FFFF))
@@ -133,7 +135,11 @@ public final class SkyBlockStats {
 		return out;
 	}
 
-	public record StatStyle(String symbol, String fullName, int color) {
+	public record StatStyle(String symbol, String fullName, int color, boolean boldSymbol) {
+		public StatStyle(String symbol, String fullName, int color) {
+			this(symbol, fullName, color, false);
+		}
+
 		public StatStyle {
 			symbol = symbol == null ? "•" : symbol;
 			fullName = fullName == null || fullName.isBlank() ? "Unknown" : fullName;

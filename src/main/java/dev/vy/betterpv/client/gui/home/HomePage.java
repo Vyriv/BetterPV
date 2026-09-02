@@ -1495,7 +1495,11 @@ public final class HomePage {
 		int colW = (w - PAD * 2 - colGap) / cols;
 		int symbolSlot = 0;
 		for (PlayerStatsSnapshot.Entry entry : entries) {
-			symbolSlot = Math.max(symbolSlot, font.width(SkyBlockStats.stat(entry.id()).symbol()));
+			SkyBlockStats.StatStyle style = SkyBlockStats.stat(entry.id());
+			int symSlotW = style.boldSymbol()
+				? PvDraw.widthBold(font, style.symbol())
+				: font.width(style.symbol());
+			symbolSlot = Math.max(symbolSlot, symSlotW);
 		}
 		symbolSlot = Math.max(symbolSlot, font.width("⚔"));
 		int labelGap = 3;
@@ -1517,7 +1521,12 @@ public final class HomePage {
 			SkyBlockStats.StatStyle style = SkyBlockStats.stat(entry.id());
 			String symbol = style.symbol();
 			int symW = font.width(symbol);
-			PvDraw.text(g, font, symbol, bx + (symbolSlot - symW) / 2, by, style.color());
+			if (style.boldSymbol()) {
+				symW = PvDraw.widthBold(font, symbol);
+				PvDraw.textBold(g, font, symbol, bx + (symbolSlot - symW) / 2, by, style.color());
+			} else {
+				PvDraw.text(g, font, symbol, bx + (symbolSlot - symW) / 2, by, style.color());
+			}
 			PvDraw.text(g, font, entry.label(), bx + symbolSlot + labelGap, by, style.color());
 			String value = entry.present() ? formatStat(entry.value().getAsDouble()) : "-";
 			PvDraw.textRight(g, font, value, bx + colW, by, PvDraw.COLOR_WHITE);

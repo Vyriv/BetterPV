@@ -24,6 +24,7 @@ import dev.vy.betterpv.client.weight.WeightBreakdown;
 import dev.vy.betterpv.client.weight.WeightSystem;
 import dev.vy.betterpv.client.util.LegacyChatFormatting;
 import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -71,7 +72,8 @@ public final class HomePage {
 	private NetworthBreakdown networthUnsoulbound = NetworthBreakdown.empty("");
 	private NetworthBreakdown networthUnsoulboundNonCosmetic = NetworthBreakdown.empty("");
 	private WeightSystem weightSystem = WeightSystem.SENITHER;
-	private NetworthMode networthMode = NetworthMode.NORMAL;
+	private boolean networthIncludeCosmetics = true;
+	private boolean networthUnsoulboundOnly = false;
 	private String loadError;
 	private final SlayerCalcOverlay slayerOverlay = new SlayerCalcOverlay();
 	private final List<SlayerNameHit> slayerNameHits = new ArrayList<>();
@@ -474,11 +476,11 @@ public final class HomePage {
 			return false;
 		}
 		if (button == 0) {
-			this.networthMode = this.networthMode.next();
+			this.networthIncludeCosmetics = !this.networthIncludeCosmetics;
 			return true;
 		}
 		if (button == 1) {
-			this.networthMode = this.networthMode.prev();
+			this.networthUnsoulboundOnly = !this.networthUnsoulboundOnly;
 			return true;
 		}
 		return false;
@@ -493,8 +495,17 @@ public final class HomePage {
 		return this.leftStatsFace;
 	}
 
+	private NetworthMode networthMode() {
+		if (this.networthUnsoulboundOnly) {
+			return this.networthIncludeCosmetics
+				? NetworthMode.UNSOULBOUND
+				: NetworthMode.UNSOULBOUND_NON_COSMETIC;
+		}
+		return this.networthIncludeCosmetics ? NetworthMode.NORMAL : NetworthMode.NON_COSMETIC;
+	}
+
 	private NetworthBreakdown activeNetworth() {
-		return switch (this.networthMode) {
+		return switch (networthMode()) {
 			case NORMAL -> this.networthNormal;
 			case NON_COSMETIC -> this.networthNonCosmetic;
 			case UNSOULBOUND -> this.networthUnsoulbound;
@@ -647,7 +658,10 @@ public final class HomePage {
 			}
 		} else if (onProfileFace && mouseX >= this.networthHitX && mouseX < this.networthHitX + this.networthHitW
 			&& mouseY >= this.networthHitY && mouseY < this.networthHitY + this.networthHitH) {
-			styledTip = activeNetworth().tooltipStyledLines(this.networthMode);
+			styledTip = activeNetworth().tooltipStyledLines(
+				networthMode(),
+				Minecraft.getInstance().options.keyShift.isDown()
+			);
 		} else if (onProfileFace && mouseX >= this.bankHitX && mouseX < this.bankHitX + this.bankHitW
 			&& mouseY >= this.bankHitY && mouseY < this.bankHitY + this.bankHitH) {
 			styledTip = bankTooltip();

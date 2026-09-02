@@ -66,6 +66,10 @@ public final class NetworthBreakdown {
 	}
 
 	public List<PvTooltip.Line> tooltipStyledLines(NetworthMode mode) {
+		return tooltipStyledLines(mode, false);
+	}
+
+	public List<PvTooltip.Line> tooltipStyledLines(NetworthMode mode, boolean showSackItems) {
 		List<PvTooltip.Line> lines = new ArrayList<>();
 		lines.add(new PvTooltip.Line(List.of(
 			PvTooltip.Span.of("Networth: ", PvDraw.COLOR_WHITE),
@@ -87,6 +91,11 @@ public final class NetworthBreakdown {
 			)));
 			List<ItemLine> items = line.items();
 			if (items.isEmpty()) {
+				continue;
+			}
+			boolean sacks = "sacks".equalsIgnoreCase(line.name());
+			if (sacks && !showSackItems) {
+				lines.add(PvTooltip.Line.of("  Hold L-shift for sack items", PvDraw.COLOR_MUTED));
 				continue;
 			}
 			int shown = Math.min(MAX_ITEM_ROWS, items.size());
@@ -114,8 +123,16 @@ public final class NetworthBreakdown {
 		lines.add(PvTooltip.Line.of("I do not condone IRL Trading", PvDraw.COLOR_MUTED));
 		if (mode != null) {
 			lines.add(PvTooltip.Line.of("", PvDraw.COLOR_MUTED));
-			lines.add(PvTooltip.Line.of("Left click → " + mode.next().display(), PvDraw.COLOR_MUTED));
-			lines.add(PvTooltip.Line.of("Right click → " + mode.prev().display(), PvDraw.COLOR_MUTED));
+			boolean cosmetic = mode.includeCosmetics();
+			boolean unsoulbound = mode.soulboundFilter() == NetworthMode.SoulboundFilter.ONLY_UNSOULBOUND;
+			lines.add(PvTooltip.Line.of(
+				"Left click: " + (cosmetic ? "non-cosmetic" : "cosmetic"),
+				PvDraw.COLOR_MUTED
+			));
+			lines.add(PvTooltip.Line.of(
+				"Right click: " + (unsoulbound ? "all items" : "unsoulbound only"),
+				PvDraw.COLOR_MUTED
+			));
 		}
 		return lines;
 	}

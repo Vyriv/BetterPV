@@ -268,7 +268,7 @@ public final class MiscStatsPage {
 			x, cy, w, s.cookieBuffActive() ? ENABLED : PvDraw.COLOR_MUTED, null);
 
 		String cookieClaim = !this.freeCookieKnown
-			? "…"
+			? "-"
 			: (this.freeCookieMs > 0L ? formatAgo(this.freeCookieMs) : "-");
 		cy = stat(g, font, "Free Cookie", cookieClaim, x, cy, w, PvDraw.COLOR_TEXT,
 			List.of(
@@ -276,8 +276,7 @@ public final class MiscStatsPage {
 				PvTooltip.Line.divider(),
 				PvTooltip.Line.meta(this.freeCookieKnown
 					? (this.freeCookieMs > 0L ? "First claim " + formatAgo(this.freeCookieMs) : "Never claimed")
-					: "Loaded with player rank"),
-				PvTooltip.Line.action("From Hypixel player → skyblock_free_cookie")
+					: "Loaded with player rank")
 			));
 
 		if (s.refinedJyrreUses() > 0) {
@@ -310,7 +309,7 @@ public final class MiscStatsPage {
 			cy = stat(g, font, "Highest Dmg", FormatUtil.shortXp((long) s.highestDamage()), x, cy, w, PvDraw.COLOR_GOLD, null);
 			cy = stat(g, font, "Highest Crit", FormatUtil.shortXp((long) s.highestCriticalDamage()), x, cy, w, PvDraw.COLOR_GOLD, null);
 			cy = stat(g, font, "Gifts",
-				FormatUtil.shortXp(s.giftsGiven()) + " → / ← " + FormatUtil.shortXp(s.giftsReceived()),
+				"→ " + FormatUtil.shortXp(s.giftsGiven()) + " / " + FormatUtil.shortXp(s.giftsReceived()) + " ←",
 				x, cy, w, PvDraw.COLOR_TEXT,
 				List.of(
 					PvTooltip.Line.title("Gifts", PvDraw.COLOR_TEXT),

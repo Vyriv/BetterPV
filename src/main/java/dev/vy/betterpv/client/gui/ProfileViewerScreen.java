@@ -1705,6 +1705,7 @@ public final class ProfileViewerScreen extends Screen {
 					return;
 				}
 				if (error != null || opt == null || opt.isEmpty()) {
+					this.homeMiscPage.applyFreeCookie(0L);
 					return;
 				}
 				this.homePage.applyPlayerRank(opt.get());

@@ -745,7 +745,13 @@ public final class InventoryPage {
 		PvDraw.text(g, font, "Tuning", metaX, my, PvDraw.COLOR_MUTED);
 		my += font.lineHeight + 1;
 		Component tune = SkyBlockStats.tuningStats(loadout.tuning());
-		PvDraw.text(g, font, trimComponent(font, tune, metaW), metaX, my);
+		if (font.width(tune) <= metaW) {
+			PvDraw.text(g, font, tune, metaX, my);
+		} else {
+			g.enableScissor(metaX, my, metaX + metaW, my + font.lineHeight + 1);
+			PvDraw.text(g, font, tune, metaX, my);
+			g.disableScissor();
+		}
 		my += font.lineHeight + 4;
 
 		PvDraw.text(g, font, "Pet", metaX, my, PvDraw.COLOR_MUTED);
@@ -1115,11 +1121,21 @@ public final class InventoryPage {
 		if (slot != null && !slot.isEmpty()) {
 			ItemStack stack = cachedStack(slot);
 			SkyBlockIconRenderer.draw(g, stack, slot.id(), sx + 1, sy + 1, 16);
-			if (slot.count() > 1) {
+			boolean hideCount = this.pane == InventoryPane.SACKS && this.openSackIndex >= 0;
+			if (!hideCount && slot.count() > 1) {
 				String count = slot.count() <= 64
 					? String.valueOf(slot.count())
 					: FormatUtil.shortXp(slot.count());
-				PvDraw.textRight(g, font, count, sx + SLOT - 1, sy + SLOT - font.lineHeight, PvDraw.COLOR_TEXT);
+				float scale = font.width(count) > SLOT - 4 ? 0.5f : 1f;
+				int textH = Math.max(1, Math.round(font.lineHeight * scale));
+				int textW = Math.max(1, Math.round(font.width(count) * scale));
+				int tx = sx + SLOT - 1 - textW;
+				int ty = sy + SLOT - 1 - textH;
+				if (scale >= 0.99f) {
+					PvDraw.text(g, font, count, tx, ty, PvDraw.COLOR_TEXT);
+				} else {
+					PvDraw.textScaled(g, font, count, tx, ty, PvDraw.COLOR_TEXT, scale);
+				}
 			}
 			this.hits.add(new SlotHit(sx, sy, SLOT, SLOT, slot, stack));
 			if (hovered) {

@@ -29,7 +29,7 @@ public final class DungeonPage {
 	private static final int PAD = 6;
 	private static final int BAR_AFTER = 4;
 	private static final int GAP = 6;
-	private static final int CALC_H = 70;
+	private static final int CALC_H = 78;
 	private static final int FIELD_H = 14;
 	private static final int BTN_W = 36;
 	private static final int HELP_GAP = 3;
@@ -43,13 +43,15 @@ public final class DungeonPage {
 	private static final String HELP_MARK = "(?)";
 	private static final int FLIP_MS = 480;
 	private static final int PANEL_HOVER = 0x0AFFFFFF;
-	/** Wither essence - dark gray (Hypixel §8). */
-	private static final int WITHER_COLOR = 0xFF555555;
+	/** Wither essence: light gray so the header reads at the same weight as Ice/Spider/Dragon. */
+	private static final int WITHER_COLOR = 0xFFAAAAAA;
 	/** Undead essence - pink. */
 	private static final int UNDEAD_COLOR = 0xFFFF8EC8;
 	private static final int ICE_COLOR = 0xFF55FFFF;
 	private static final int SPIDER_COLOR = 0xFF55FF55;
 	private static final int DRAGON_COLOR = 0xFFFF5555;
+	private static final int NORMAL_FLOOR_COLOR = 0xFF7CB87C;
+	private static final int MASTER_FLOOR_COLOR = 0xFFB85A5A;
 
 	private DungeonSnapshot data = DungeonSnapshot.empty();
 	private final List<HoverZone> zones = new ArrayList<>();
@@ -212,18 +214,21 @@ public final class DungeonPage {
 			this.cataLevelText += codepoint;
 			return true;
 		}
-		if (!isClassChar(codepoint)) {
-			return false;
-		}
-		if (this.replaceOnType) {
-			this.classLevelText = "";
-			this.replaceOnType = false;
-		}
-		if (this.classLevelText.length() >= CLASS_MAX_LEN) {
+		if (this.focus == FieldFocus.CLASS) {
+			if (!isClassChar(codepoint)) {
+				return false;
+			}
+			if (this.replaceOnType) {
+				this.classLevelText = "";
+				this.replaceOnType = false;
+			}
+			if (this.classLevelText.length() >= CLASS_MAX_LEN) {
+				return true;
+			}
+			this.classLevelText += codepoint;
 			return true;
 		}
-		this.classLevelText += codepoint;
-		return true;
+		return false;
 	}
 
 	public boolean keyPressed(int key) {
@@ -377,7 +382,8 @@ public final class DungeonPage {
 		int leftX = x;
 		int rightX = x + leftW + GAP;
 
-		int calcH = Math.min(CALC_H, Math.max(64, h * 24 / 100));
+		int neededCalc = PAD * 2 + font.lineHeight + 6 + FIELD_H * 2 + 6;
+		int calcH = Math.max(neededCalc, Math.min(CALC_H, h * 24 / 100));
 		int headerH = font.lineHeight + 4;
 		int lineH = font.lineHeight;
 		int runsY = y + calcH + GAP;
@@ -442,7 +448,10 @@ public final class DungeonPage {
 
 		String mods = buildModsHint();
 		if (!mods.isBlank()) {
-			PvDraw.textRight(g, font, mods, x + w - PAD, cy, PvDraw.COLOR_BORDER);
+			int maxMods = (x + w - PAD) - (cx + font.width(header) + 8);
+			if (maxMods > 16) {
+				PvDraw.textRight(g, font, trimToWidth(font, mods, maxMods), x + w - PAD, cy, PvDraw.COLOR_BORDER);
+			}
 		}
 
 		cy += font.lineHeight + 6;
@@ -733,10 +742,11 @@ public final class DungeonPage {
 		int secretsY = cataY + labeledH + 6;
 		PvDraw.text(g, font, "Secrets", cx, secretsY, PvDraw.COLOR_MUTED);
 		String secretsValue = FormatUtil.commas(this.data.secrets())
-			+ " ("
+			+ " (avg "
 			+ FormatUtil.oneDecimal(this.data.secretsPerRun())
-			+ "/pr)";
-		PvDraw.textRight(g, font, secretsValue, cx + barW, secretsY, PvDraw.COLOR_TEXT);
+			+ "/run)";
+		int secretsMax = Math.max(12, barW - font.width("Secrets") - 8);
+		PvDraw.textRight(g, font, trimToWidth(font, secretsValue, secretsMax), cx + barW, secretsY, PvDraw.COLOR_TEXT);
 
 		int extraY = secretsY + font.lineHeight + 4;
 		if (this.data.dailyRuns() > 0) {
@@ -745,7 +755,7 @@ public final class DungeonPage {
 			extraY += font.lineHeight + 2;
 		}
 		if (this.data.journalsUnlocked() > 0) {
-			PvDraw.text(g, font, "Journals", cx, extraY, PvDraw.COLOR_MUTED);
+			PvDraw.text(g, font, "Unique Journals", cx, extraY, PvDraw.COLOR_MUTED);
 			PvDraw.textRight(g, font, FormatUtil.commas(this.data.journalsUnlocked()),
 				cx + barW, extraY, PvDraw.COLOR_GOLD);
 			extraY += font.lineHeight + 2;
@@ -804,7 +814,7 @@ public final class DungeonPage {
 			PvDraw.textRight(g, font, String.valueOf(clazz.level()), cx + barW, cy, PvDraw.COLOR_MUTED);
 			int barY = cy + font.lineHeight + 2;
 			PvDraw.progressBar(g, cx, barY, barW, PvDraw.BAR_HEIGHT, clazz.progress(), PvDraw.COLOR_BAR_FILL, clazz.maxed());
-			this.zones.add(new HoverZone(cx, cy, barW, labeledH, plainTip(clazz.xpHover())));
+			this.zones.add(new HoverZone(cx, cy, barW, labeledH, classTip(clazz)));
 		}
 	}
 
@@ -814,17 +824,10 @@ public final class DungeonPage {
 		int gap = 20;
 		int colW = Math.max(40, (w - gap) / 2);
 		int sepX = x + colW + gap / 2;
-		// Same fit-scale for both columns so layout matches; size for the taller (Undead) list.
-		float fitScale = essenceFitScale(font, Math.max(
-			this.data.witherShop() == null ? 0 : this.data.witherShop().perks().size(),
-			this.data.undeadShop() == null ? 0 : this.data.undeadShop().perks().size()
-		), h, /*rowGap*/ 3);
-		drawEssenceColumnFit(
-			g, font, this.data.witherShop(), x, y, colW, h, WITHER_COLOR, true, 3, fitScale, registerHovers
-		);
+		drawEssenceColumnFit(g, font, this.data.witherShop(), x, y, colW, h, WITHER_COLOR, 3, registerHovers);
 		PvDraw.fill(g, sepX, y, 1, h, PvDraw.COLOR_BORDER);
 		drawEssenceColumnFit(
-			g, font, this.data.undeadShop(), x + colW + gap, y, colW, h, UNDEAD_COLOR, true, 3, fitScale, registerHovers
+			g, font, this.data.undeadShop(), x + colW + gap, y, colW, h, UNDEAD_COLOR, 3, registerHovers
 		);
 	}
 
@@ -836,32 +839,16 @@ public final class DungeonPage {
 		int c0 = x;
 		int c1 = x + colW + gap;
 		int c2 = c1 + colW + gap;
-		int perkCount = Math.max(
-			Math.max(
-				this.data.iceShop() == null ? 0 : this.data.iceShop().perks().size(),
-				this.data.spiderShop() == null ? 0 : this.data.spiderShop().perks().size()
-			),
-			this.data.dragonShop() == null ? 0 : this.data.dragonShop().perks().size()
-		);
-		float fitScale = essenceFitScale(font, perkCount, h, 0);
-		drawEssenceColumnFit(g, font, this.data.iceShop(), c0, y, colW, h, ICE_COLOR, false, 0, fitScale, registerHovers);
+		drawEssenceColumnFit(g, font, this.data.iceShop(), c0, y, colW, h, ICE_COLOR, 0, registerHovers);
 		PvDraw.fill(g, c0 + colW + gap / 2, y, 1, h, PvDraw.COLOR_BORDER);
-		drawEssenceColumnFit(g, font, this.data.spiderShop(), c1, y, colW, h, SPIDER_COLOR, false, 0, fitScale, registerHovers);
+		drawEssenceColumnFit(g, font, this.data.spiderShop(), c1, y, colW, h, SPIDER_COLOR, 0, registerHovers);
 		PvDraw.fill(g, c1 + colW + gap / 2, y, 1, h, PvDraw.COLOR_BORDER);
-		drawEssenceColumnFit(g, font, this.data.dragonShop(), c2, y, colW, h, DRAGON_COLOR, false, 0, fitScale, registerHovers);
-	}
-
-	private static float essenceFitScale(Font font, int perkCount, int h, int rowGap) {
-		int headerH = Math.max(16, font.lineHeight + 2);
-		int contentH = Math.max(16, font.lineHeight + 2);
-		int rowH = contentH + Math.max(0, rowGap);
-		int naturalH = headerH + 2 + Math.max(0, perkCount) * rowH;
-		return naturalH <= h ? 1F : (float) h / (float) naturalH;
+		drawEssenceColumnFit(g, font, this.data.dragonShop(), c2, y, colW, h, DRAGON_COLOR, 0, registerHovers);
 	}
 
 	/**
-	 * Single-column essence shop. Lays out at readable row height, then uniformly scales
-	 * down if needed so every perk fits with no overlap and nothing clipped away.
+	 * Full-size perk text. Packs rows into the panel instead of shrinking the font.
+	 * Long names clip in-column; hover still shows the full perk.
 	 */
 	private void drawEssenceColumnFit(
 		GuiGraphicsExtractor g,
@@ -872,9 +859,7 @@ public final class DungeonPage {
 		int w,
 		int h,
 		int headerColor,
-		boolean compactHeader,
 		int rowGap,
-		float scale,
 		boolean registerHovers
 	) {
 		if (w <= 0 || h <= 0 || shop == null) {
@@ -882,64 +867,81 @@ public final class DungeonPage {
 		}
 		List<DungeonSnapshot.EssencePerk> perks = shop.perks();
 		int headerH = Math.max(16, font.lineHeight + 2);
-		int contentH = Math.max(16, font.lineHeight + 2);
-		int rowH = contentH + Math.max(0, rowGap);
-		if (scale <= 0F || Float.isNaN(scale)) {
-			scale = 1F;
-		}
+		int n = perks.size();
+		int bodyH = Math.max(1, h - headerH - 2);
+		int packed = n <= 0 ? font.lineHeight + 2 : bodyH / n;
+		int rowH = Math.min(16 + Math.max(0, rowGap), Math.max(font.lineHeight, packed));
 
-		g.pose().pushMatrix();
-		g.pose().translate(x, y);
-		g.pose().scale(scale, scale);
-		int drawW = Math.max(1, Math.round(w / scale));
+		g.enableScissor(x, y, x + w, y + h);
 
 		String name = shop.name() == null ? "" : shop.name();
-		String bal = FormatUtil.commas(shop.balance());
+		String bal = essenceBalance(shop.balance());
 		int headerLabelX = 16 + 3;
-		int avail = Math.max(1, drawW - headerLabelX);
+		int avail = Math.max(1, w - headerLabelX);
 		int nameW = PvDraw.widthBold(font, name);
 		int balW = PvDraw.widthBold(font, bal);
 		int gapNameBal = 4;
-		// Prefer a slightly smaller header; shrink further if needed so the full name always shows.
-		// Never ellipsize "Wither" / "Undead" — scale the whole label+balance pair instead.
-		float headerScale = compactHeader ? 0.78F : 1F;
+		float headerScale = 1F;
 		float needed = (nameW + gapNameBal + balW) * headerScale;
 		if (needed > avail) {
-			headerScale = Math.max(0.55F, avail / (float) (nameW + gapNameBal + balW));
+			headerScale = Math.max(0.7F, avail / (float) (nameW + gapNameBal + balW));
 		}
 		int textH = Math.max(1, Math.round(font.lineHeight * headerScale));
 		PvDraw.IconTextAlign headerAlign = PvDraw.IconTextAlign.of(0, headerH, 16, textH);
-		g.item(essenceIcon(shop.iconId()), 0, headerAlign.iconY());
+		g.item(essenceIcon(shop.iconId()), x, y + headerAlign.iconY());
 		int drawBalW = Math.max(1, Math.round(balW * headerScale));
 		if (headerScale >= 0.999F) {
-			PvDraw.textBold(g, font, name, headerLabelX, headerAlign.textY(), headerColor);
-			PvDraw.textBold(g, font, bal, drawW - balW, headerAlign.textY(), headerColor);
+			PvDraw.textBold(g, font, name, x + headerLabelX, y + headerAlign.textY(), headerColor);
+			PvDraw.textBold(g, font, bal, x + w - balW, y + headerAlign.textY(), headerColor);
 		} else {
-			PvDraw.textBoldScaled(g, font, name, headerLabelX, headerAlign.textY(), headerColor, headerScale);
-			PvDraw.textBoldScaled(g, font, bal, drawW - drawBalW, headerAlign.textY(), headerColor, headerScale);
+			PvDraw.textBoldScaled(g, font, name, x + headerLabelX, y + headerAlign.textY(), headerColor, headerScale);
+			PvDraw.textBoldScaled(g, font, bal, x + w - drawBalW, y + headerAlign.textY(), headerColor, headerScale);
 		}
 
-		int ly = headerH + 2;
+		int ly = y + headerH + 2;
+		int labelX = 16 + 2;
 		for (DungeonSnapshot.EssencePerk perk : perks) {
-			PvDraw.IconTextAlign rowAlign = PvDraw.IconTextAlign.of(ly, contentH, 16, font.lineHeight);
-			g.item(essencePerkIcon(perk.id()), 0, rowAlign.iconY());
+			int iconSize = Math.min(16, rowH);
+			int iconY = ly + Math.max(0, (rowH - iconSize) / 2);
+			if (iconSize >= 16) {
+				g.item(essencePerkIcon(perk.id()), x, iconY);
+			} else {
+				g.pose().pushMatrix();
+				g.pose().translate(x, iconY);
+				float s = iconSize / 16F;
+				g.pose().scale(s, s);
+				g.item(essencePerkIcon(perk.id()), 0, 0);
+				g.pose().popMatrix();
+			}
 			String right = perk.level() + "/" + perk.maxLevel();
 			int rightW = font.width(right);
-			int labelX = 16 + 2;
-			String left = trimToWidth(font, perk.name(), Math.max(4, drawW - labelX - rightW - 2));
+			String left = perk.name();
+			int nameAvail = Math.max(4, w - labelX - rightW - 2);
+			if (font.width(left) > nameAvail) {
+				left = trimToWidth(font, left, nameAvail);
+			}
+			int textY = ly + Math.max(0, (rowH - font.lineHeight) / 2);
 			int valueColor = perk.maxed() ? COLOR_COMPLETIONS : PvDraw.COLOR_TEXT;
-			PvDraw.text(g, font, left, labelX, rowAlign.textY(), PvDraw.COLOR_MUTED);
-			PvDraw.textRight(g, font, right, drawW, rowAlign.textY(), valueColor);
+			PvDraw.text(g, font, left, x + labelX, textY, PvDraw.COLOR_MUTED);
+			PvDraw.textRight(g, font, right, x + w, textY, valueColor);
 			if (registerHovers) {
-				int hitX = x;
-				int hitY = y + Math.round(ly * scale);
-				int hitW = Math.max(1, Math.round(drawW * scale));
-				int hitH = Math.max(1, Math.round(contentH * scale));
-				this.zones.add(new HoverZone(hitX, hitY, hitW, hitH, EssencePerkTips.tip(perk)));
+				this.zones.add(new HoverZone(x, ly, w, rowH, EssencePerkTips.tip(perk)));
 			}
 			ly += rowH;
 		}
-		g.pose().popMatrix();
+
+		g.disableScissor();
+	}
+
+	private static String essenceBalance(long balance) {
+		if (balance < 1000L) {
+			return FormatUtil.commas(balance);
+		}
+		String k = FormatUtil.oneDecimal(balance / 1000D);
+		if (k.endsWith(".0")) {
+			k = k.substring(0, k.length() - 2);
+		}
+		return k + "k";
 	}
 
 	private void drawRunsPanel(
@@ -1004,13 +1006,10 @@ public final class DungeonPage {
 		int leftCol = cx;
 		int rightCol = cx + colW + colGap;
 
-		final int normalColor = 0xFF7CB87C;
-		final int masterColor = 0xFFB85A5A;
-
 		String normalHeader = Component.translatable("betterpv.dungeons.normal").getString();
 		String masterHeader = Component.translatable("betterpv.dungeons.master").getString();
-		PvDraw.text(g, font, normalHeader, leftCol, y + PAD, normalColor);
-		PvDraw.text(g, font, masterHeader, rightCol, y + PAD, masterColor);
+		PvDraw.text(g, font, normalHeader, leftCol, y + PAD, PvDraw.COLOR_MUTED);
+		PvDraw.text(g, font, masterHeader, rightCol, y + PAD, PvDraw.COLOR_MUTED);
 
 		int cy = floors.firstFloorY();
 		long normalTotal = 0L;
@@ -1022,14 +1021,15 @@ public final class DungeonPage {
 			masterTotal += master.completions();
 
 			String floorLabel = Component.translatable("betterpv.dungeons.floor", floor).getString();
+			String masterLabel = Component.translatable("betterpv.dungeons.master_floor", floor).getString();
 
-			drawFloorCell(g, font, leftCol, cy, colW, floors.lineH(), floors.gap(), floorLabel, normal);
-			drawFloorCell(g, font, rightCol, cy, colW, floors.lineH(), floors.gap(), floorLabel, master);
+			drawFloorCell(g, font, leftCol, cy, colW, floors.lineH(), floors.gap(), floorLabel, normal, NORMAL_FLOOR_COLOR);
+			drawFloorCell(g, font, rightCol, cy, colW, floors.lineH(), floors.gap(), masterLabel, master, MASTER_FLOOR_COLOR);
 			cy += floors.lineH() + floors.gap();
 		}
 
-		drawTotalLine(g, font, leftCol, floors.totalY(), colW, normalTotal, normalColor);
-		drawTotalLine(g, font, rightCol, floors.totalY(), colW, masterTotal, masterColor);
+		drawTotalLine(g, font, leftCol, floors.totalY(), colW, normalTotal);
+		drawTotalLine(g, font, rightCol, floors.totalY(), colW, masterTotal);
 	}
 
 	private static ItemStack essenceIcon(String skyblockId) {
@@ -1088,11 +1088,10 @@ public final class DungeonPage {
 		int x,
 		int y,
 		int w,
-		long total,
-		int labelColor
+		long total
 	) {
 		String label = Component.translatable("betterpv.dungeons.total").getString();
-		PvDraw.text(g, font, label, x, y, labelColor);
+		PvDraw.text(g, font, label, x, y, PvDraw.COLOR_MUTED);
 		PvDraw.textRight(g, font, FormatUtil.commas(total), x + w, y, PvDraw.COLOR_TEXT);
 	}
 
@@ -1105,10 +1104,14 @@ public final class DungeonPage {
 		int lineH,
 		int gap,
 		String label,
-		DungeonSnapshot.FloorEntry floor
+		DungeonSnapshot.FloorEntry floor,
+		int nameColor
 	) {
-		PvDraw.text(g, font, label, x, y, PvDraw.COLOR_MUTED);
-		PvDraw.textRight(g, font, FormatUtil.commas(floor.completions()), x + w, y, PvDraw.COLOR_TEXT);
+		String right = FormatUtil.commas(floor.completions());
+		int rightW = font.width(right);
+		String shown = trimToWidth(font, label, Math.max(8, w - rightW - 4));
+		PvDraw.text(g, font, shown, x, y, nameColor);
+		PvDraw.textRight(g, font, right, x + w, y, PvDraw.COLOR_TEXT);
 		this.zones.add(new HoverZone(
 			x, y - 1, w, lineH + Math.max(2, gap / 2),
 			floorStatsTip(label, floor)
@@ -1142,6 +1145,18 @@ public final class DungeonPage {
 
 	private static List<PvTooltip.Line> plainTip(String text) {
 		return List.of(PvTooltip.Line.plain(text));
+	}
+
+	private List<PvTooltip.Line> classTip(DungeonSnapshot.ClassEntry clazz) {
+		List<PvTooltip.Line> lines = new ArrayList<>();
+		int color = classColor(clazz.id());
+		lines.add(PvTooltip.Line.of(clazz.name() + " Lvl " + clazz.level(), color));
+		for (String part : clazz.xpHover().split("\n")) {
+			if (!part.isBlank()) {
+				lines.add(PvTooltip.Line.plain(part));
+			}
+		}
+		return lines;
 	}
 
 	private static final int COLOR_STAT = 0xFFE8E8F0;

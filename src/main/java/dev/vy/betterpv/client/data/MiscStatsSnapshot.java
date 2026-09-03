@@ -270,9 +270,9 @@ public final class MiscStatsSnapshot {
 	}
 
 	private static List<CountEntry> countMap(JsonObject obj, boolean skipTotal) {
-		List<CountEntry> out = new ArrayList<>();
+		Map<String, CountEntry> merged = new LinkedHashMap<>();
 		if (obj == null) {
-			return out;
+			return List.of();
 		}
 		for (Map.Entry<String, JsonElement> e : obj.entrySet()) {
 			String key = e.getKey();
@@ -286,8 +286,15 @@ public final class MiscStatsSnapshot {
 			if (n <= 0L) {
 				continue;
 			}
-			out.add(new CountEntry(key, InventoryDecoder.prettyWords(key), n));
+			String label = InventoryDecoder.prettyWords(key);
+			CountEntry existing = merged.get(label);
+			if (existing == null) {
+				merged.put(label, new CountEntry(key, label, n));
+			} else {
+				merged.put(label, new CountEntry(existing.id() + "+" + key, label, existing.count() + n));
+			}
 		}
+		List<CountEntry> out = new ArrayList<>(merged.values());
 		out.sort(Comparator
 			.comparingLong(CountEntry::count).reversed()
 			.thenComparing(e -> e.label().toLowerCase(Locale.ROOT)));

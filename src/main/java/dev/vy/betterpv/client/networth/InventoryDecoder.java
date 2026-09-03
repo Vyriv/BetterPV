@@ -715,14 +715,45 @@ public final class InventoryDecoder {
 		return padLoadouts(byIndex);
 	}
 
-	/** Keep empty / locked loadout slots so the pager shows the full page total. */
+	/** Only named loadouts with gear, pet, power, or tuning. */
 	private static List<InventorySnapshot.Loadout> padLoadouts(Map<Integer, InventorySnapshot.Loadout> byIndex) {
-		List<InventorySnapshot.Loadout> out = new ArrayList<>(LOADOUT_SLOT_COUNT);
+		List<InventorySnapshot.Loadout> out = new ArrayList<>();
+		if (byIndex == null || byIndex.isEmpty()) {
+			return out;
+		}
 		for (int i = 0; i < LOADOUT_SLOT_COUNT; i++) {
-			InventorySnapshot.Loadout loadout = byIndex == null ? null : byIndex.get(i);
-			out.add(loadout != null ? loadout : emptyLoadout(i));
+			InventorySnapshot.Loadout loadout = byIndex.get(i);
+			if (loadout != null && loadoutHasContent(loadout)) {
+				out.add(loadout);
+			}
 		}
 		return out;
+	}
+
+	private static boolean loadoutHasContent(InventorySnapshot.Loadout loadout) {
+		if (loadout == null) {
+			return false;
+		}
+		if (!loadout.powerStone().isBlank() || !loadout.petLabel().isBlank()) {
+			return true;
+		}
+		if (loadout.pet() != null && !loadout.pet().isEmpty()) {
+			return true;
+		}
+		if (loadout.tuning() != null && !loadout.tuning().isEmpty()) {
+			return true;
+		}
+		for (InventorySnapshot.Slot slot : loadout.armor()) {
+			if (slot != null && !slot.isEmpty()) {
+				return true;
+			}
+		}
+		for (InventorySnapshot.Slot slot : loadout.equipment()) {
+			if (slot != null && !slot.isEmpty()) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static InventorySnapshot.Loadout emptyLoadout(int index) {

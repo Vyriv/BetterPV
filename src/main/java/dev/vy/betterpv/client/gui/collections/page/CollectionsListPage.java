@@ -173,8 +173,9 @@ public final class CollectionsListPage {
 				PvDraw.fill(g, sx, sy, slot, slot, selected ? 0xFF2A3A55 : hover ? 0xFF222230 : 0xFF101018);
 				g.outline(sx, sy, slot, slot, selected ? PvDraw.COLOR_ACCENT : hover ? 0xFF4A4A5A : 0xFF2A2A35);
 				CollectionsUi.drawIcon(g, CollectionsUi.resolveIconId(item.id()), sx + (slot - icon) / 2, sy + (slot - icon) / 2, icon);
+				boolean maxed = tier >= item.maxTiers() && item.maxTiers() > 0;
 				String label = String.valueOf(tier);
-				int labelColor = tier > 0 ? PvDraw.COLOR_TEXT : PvDraw.COLOR_MUTED;
+				int labelColor = maxed ? PvDraw.COLOR_GOLD : tier > 0 ? PvDraw.COLOR_TEXT : PvDraw.COLOR_MUTED;
 				int labelY = sy + slot + layout.labelGap;
 				if (labelScale >= 0.99f) {
 					PvDraw.textCentered(g, font, label, sx + slot / 2, labelY, labelColor);

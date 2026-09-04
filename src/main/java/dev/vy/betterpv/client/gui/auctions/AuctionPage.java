@@ -171,6 +171,8 @@ public final class AuctionPage {
 		int cx = x + PAD;
 		int headerY = y + PAD;
 		int innerW = w - PAD * 2;
+		int scrollGutter = 6;
+		int contentW = Math.max(20, innerW - scrollGutter);
 
 		PvDraw.text(g, font, Component.translatable("betterpv.auctions.stats").getString(), cx, headerY, PvDraw.COLOR_MUTED);
 		this.statsTop = headerY + font.lineHeight + 4;
@@ -181,24 +183,24 @@ public final class AuctionPage {
 		this.statsMaxScroll = Math.max(0, contentH - this.statsH);
 		this.statsScroll = Math.min(this.statsScroll, this.statsMaxScroll);
 
-		g.enableScissor(cx, this.statsTop, cx + innerW, this.statsTop + this.statsH);
+		g.enableScissor(cx, this.statsTop, cx + contentW, this.statsTop + this.statsH);
 		int cy = this.statsTop - this.statsScroll;
 
-		cy = statRow(g, font, "betterpv.auctions.gold_earned", FormatUtil.shortCoins(stats.goldEarned()), cx, cy, innerW, 0xFFFFD36A);
-		cy = statRow(g, font, "betterpv.auctions.gold_spent", FormatUtil.shortCoins(stats.goldSpent()), cx, cy, innerW, 0xFFFFD36A);
+		cy = statRow(g, font, "betterpv.auctions.gold_earned", FormatUtil.shortCoins(stats.goldEarned()), cx, cy, contentW, 0xFFFFD36A);
+		cy = statRow(g, font, "betterpv.auctions.gold_spent", FormatUtil.shortCoins(stats.goldSpent()), cx, cy, contentW, 0xFFFFD36A);
 		if (stats.fees() > 0L) {
-			cy = statRow(g, font, "betterpv.auctions.fees", FormatUtil.shortCoins(stats.fees()), cx, cy, innerW, PvDraw.COLOR_MUTED);
+			cy = statRow(g, font, "betterpv.auctions.fees", FormatUtil.shortCoins(stats.fees()), cx, cy, contentW, PvDraw.COLOR_MUTED);
 		}
 		cy += 4;
-		cy = statRow(g, font, "betterpv.auctions.created", FormatUtil.commas(stats.created()), cx, cy, innerW, PvDraw.COLOR_TEXT);
-		cy = statRow(g, font, "betterpv.auctions.won", FormatUtil.commas(stats.won()), cx, cy, innerW, PvDraw.COLOR_TEXT);
-		cy = statRow(g, font, "betterpv.auctions.bids", FormatUtil.commas(stats.bids()), cx, cy, innerW, PvDraw.COLOR_TEXT);
-		cy = statRow(g, font, "betterpv.auctions.highest_bid", FormatUtil.shortCoins(stats.highestBid()), cx, cy, innerW, 0xFFFFD36A);
+		cy = statRow(g, font, "betterpv.auctions.created", FormatUtil.commas(stats.created()), cx, cy, contentW, PvDraw.COLOR_TEXT);
+		cy = statRow(g, font, "betterpv.auctions.won", FormatUtil.commas(stats.won()), cx, cy, contentW, PvDraw.COLOR_TEXT);
+		cy = statRow(g, font, "betterpv.auctions.bids", FormatUtil.commas(stats.bids()), cx, cy, contentW, PvDraw.COLOR_TEXT);
+		cy = statRow(g, font, "betterpv.auctions.highest_bid", FormatUtil.shortCoins(stats.highestBid()), cx, cy, contentW, 0xFFFFD36A);
 
 		cy += 6;
-		cy = rarityBlock(g, font, "betterpv.auctions.sold_by_rarity", stats.totalSold(), cx, cy, innerW);
+		cy = rarityBlock(g, font, "betterpv.auctions.sold_by_rarity", stats.totalSold(), cx, cy, contentW);
 		cy += 4;
-		rarityBlock(g, font, "betterpv.auctions.bought_by_rarity", stats.totalBought(), cx, cy, innerW);
+		rarityBlock(g, font, "betterpv.auctions.bought_by_rarity", stats.totalBought(), cx, cy, contentW);
 		g.disableScissor();
 		if (this.statsMaxScroll > 0) {
 			drawStatsScrollCue(g, cx + innerW, this.statsTop, this.statsH);
@@ -435,6 +437,9 @@ public final class AuctionPage {
 		List<Component> tip = new java.util.ArrayList<>(
 			SkyBlockItemFactory.tooltipLines(this.hoveredSlot, this.hoveredStack)
 		);
+		if (this.hoveredListing != null) {
+			applyListingNameColor(tip, this.hoveredListing);
+		}
 		if (this.hoveredListing != null && this.hoveredListing.detailLines() != null
 			&& !this.hoveredListing.detailLines().isEmpty()) {
 			if (!tip.isEmpty()) {
@@ -504,6 +509,26 @@ public final class AuctionPage {
 		PvDraw.textRight(g, font, price, x + w - 2, textY, 0xFFFFD36A);
 	}
 
+	private static void applyListingNameColor(List<Component> tip, AuctionSnapshot.Listing listing) {
+		if (tip.isEmpty() || listing == null) {
+			return;
+		}
+		String raw = listing.itemName();
+		if (raw == null || raw.isBlank()) {
+			return;
+		}
+		if (raw.indexOf('§') >= 0) {
+			tip.set(0, SkyBlockItemFactory.legacyLine(raw));
+			return;
+		}
+		int color = nameColor(listing);
+		String plain = net.minecraft.ChatFormatting.stripFormatting(raw);
+		if (plain == null || plain.isBlank()) {
+			return;
+		}
+		tip.set(0, PvDraw.styled(plain, color, false));
+	}
+
 	private static int nameColor(AuctionSnapshot.Listing listing) {
 		String tier = listing.tier();
 		if (tier == null || tier.isBlank()) {
@@ -515,7 +540,14 @@ public final class AuctionPage {
 				tier = SkyBlockItemFactory.resolveTier(id);
 			}
 		}
-		return SkyBlockItemFactory.tierArgb(tier);
+		int color = SkyBlockItemFactory.tierArgb(tier);
+		if (color == PvDraw.COLOR_TEXT && listing.itemName() != null && !listing.itemName().isBlank()) {
+			int fromName = SkyBlockItemFactory.tierArgbFromFormattedName(listing.itemName());
+			if (fromName != PvDraw.COLOR_TEXT) {
+				color = fromName;
+			}
+		}
+		return color;
 	}
 
 	private static String timeLabel(AuctionSnapshot.Listing listing, AuctionSnapshot.Bucket bucket) {

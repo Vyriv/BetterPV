@@ -20,9 +20,12 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.User;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.Style;
 
 /**
@@ -31,11 +34,6 @@ import net.minecraft.network.chat.Style;
  * <p>Minecraft access tokens are used only for the official Mojang/authlib
  * {@link MinecraftSessionService#joinServer} call. They are never sent to
  * api.vyriv.dev / Vyriv / Cloudflare / logging.
- *
- * <p>Offline Fabric {@code runClient} sessions (e.g. {@code Player###} /
- * access token {@code FabricMC}) cannot complete Mojang join proof. Those
- * sessions cannot use {@code /pv}; launch with a real Microsoft Minecraft
- * account instead.
  */
 public final class BetterPvSessionAuth {
 	private static final URI AUTH_URI = URI.create("https://api.vyriv.dev/hypixel/auth");
@@ -59,23 +57,13 @@ public final class BetterPvSessionAuth {
 
 	public enum Failure {
 		NONE(""),
-		MISSING_SESSION("BetterPV: missing Minecraft login session."),
-		OFFLINE_SESSION(
-			"BetterPV: Fabric offline runClient cannot /pv. "
-				+ "Mojang session proof requires a real Microsoft Minecraft login."
-		),
-		JOIN_SERVER_FAILED(
-			"BetterPV: Minecraft session proof failed (joinServer). Re-login with Microsoft and try again."
-		),
-		SERVER_AUTH_UNAVAILABLE(
-			"BetterPV: API session auth unavailable (server missing BETTERPV_SESSION_SIGNING_SECRET). "
-				+ "Ask the host to set it in Coolify."
-		),
-		AUTH_REJECTED("BetterPV: Hypixel proxy rejected session auth. Try again after re-login."),
-		AUTH_HTTP("BetterPV: could not reach api.vyriv.dev session auth."),
-		MISSING_JWT(
-			"BetterPV: no session JWT. Use a real Microsoft Minecraft login (Fabric offline runClient cannot /pv)."
-		);
+		MISSING_SESSION("BetterPV could not authenticate /pv"),
+		OFFLINE_SESSION("BetterPV could not authenticate /pv"),
+		JOIN_SERVER_FAILED("BetterPV could not authenticate /pv"),
+		SERVER_AUTH_UNAVAILABLE("BetterPV could not authenticate /pv"),
+		AUTH_REJECTED("BetterPV could not authenticate /pv"),
+		AUTH_HTTP("BetterPV could not authenticate /pv"),
+		MISSING_JWT("BetterPV could not authenticate /pv");
 
 		private final String userMessage;
 
@@ -127,8 +115,8 @@ public final class BetterPvSessionAuth {
 
 	/** Posts a throttled in-game chat line for the current auth failure. */
 	public static void notifyPlayerIfNeeded() {
-		Optional<String> message = userFacingFailure();
-		if (message.isEmpty()) {
+		Failure failure = lastFailure();
+		if (failure == Failure.NONE) {
 			return;
 		}
 		Minecraft mc = Minecraft.getInstance();
@@ -136,20 +124,50 @@ public final class BetterPvSessionAuth {
 			return;
 		}
 		long now = System.currentTimeMillis();
-		String text = message.get();
-		if (text.equals(lastChatNotice) && now - lastChatNoticeAtMillis < 15_000L) {
+		String noticeKey = failure.name();
+		if (noticeKey.equals(lastChatNotice) && now - lastChatNoticeAtMillis < 15_000L) {
 			return;
 		}
-		lastChatNotice = text;
+		lastChatNotice = noticeKey;
 		lastChatNoticeAtMillis = now;
+		String report = copyableReport(mc, failure);
 		mc.execute(() -> {
 			if (mc.gui == null) {
 				return;
 			}
-			mc.gui.getChat().addClientSystemMessage(
-				Component.literal(text).setStyle(Style.EMPTY.withColor(0xFF6B6B))
-			);
+			mc.gui.getChat().addClientSystemMessage(authFailChat(report));
 		});
+	}
+
+	private static Component authFailChat(String report) {
+		Component copyHint = Component.literal("Click to copy a report to DM Vyriv")
+			.setStyle(Style.EMPTY
+				.withColor(0xFFD36A)
+				.withUnderlined(true)
+				.withClickEvent(new ClickEvent.CopyToClipboard(report))
+				.withHoverEvent(new HoverEvent.ShowText(
+					Component.literal("Click to copy, then paste it to Vyriv on Discord")
+				)));
+		return Component.literal("BetterPV: /pv could not authenticate. ")
+			.setStyle(Style.EMPTY.withColor(0xFFAAAAAA))
+			.append(copyHint);
+	}
+
+	private static String copyableReport(Minecraft mc, Failure failure) {
+		User user = mc.getUser();
+		String name = user != null && user.getName() != null ? user.getName() : "?";
+		String uuid = user != null && user.getProfileId() != null ? user.getProfileId().toString() : "?";
+		return "BetterPV /pv auth failed"
+			+ "\nname: " + name
+			+ "\nuuid: " + uuid
+			+ "\nreason: " + failure.name()
+			+ "\nmod: " + modVersion();
+	}
+
+	private static String modVersion() {
+		return FabricLoader.getInstance().getModContainer(BetterPV.MOD_ID)
+			.map(container -> container.getMetadata().getVersion().getFriendlyString())
+			.orElse("unknown");
 	}
 
 	/**
@@ -229,9 +247,9 @@ public final class BetterPvSessionAuth {
 			return Optional.empty();
 		}
 
-		if (looksLikeOfflineDevSession(username, accessToken)) {
+		if (looksLikeOfflineDevSession(accessToken)) {
 			BetterPV.LOGGER.warn(
-				"BetterPV session JWT skipped: offline/dev session user={} (Mojang joinServer cannot succeed)",
+				"BetterPV session JWT skipped: Fabric offline token user={}",
 				username
 			);
 			lastFailure = Failure.OFFLINE_SESSION;
@@ -244,8 +262,11 @@ public final class BetterPvSessionAuth {
 			MinecraftSessionService sessionService = mc.services().sessionService();
 			sessionService.joinServer(profileId, accessToken, serverId);
 		} catch (InvalidCredentialsException exception) {
-			BetterPV.LOGGER.warn("Minecraft joinServer rejected credentials for BetterPV auth (offline or expired login)");
-			lastFailure = Failure.OFFLINE_SESSION;
+			BetterPV.LOGGER.warn(
+				"Minecraft joinServer rejected credentials for BetterPV auth user={}",
+				username
+			);
+			lastFailure = Failure.JOIN_SERVER_FAILED;
 			return Optional.empty();
 		} catch (AuthenticationException exception) {
 			BetterPV.LOGGER.warn("Minecraft joinServer failed for BetterPV auth: {}", exception.toString());
@@ -313,21 +334,12 @@ public final class BetterPvSessionAuth {
 		}
 	}
 
-	static boolean looksLikeOfflineDevSession(String username, String accessToken) {
+	/** Loom {@code runClient} default token. Real Microsoft sessions must still attempt joinServer. */
+	static boolean looksLikeOfflineDevSession(String accessToken) {
 		if (accessToken == null || accessToken.isBlank()) {
 			return true;
 		}
-		if ("FabricMC".equalsIgnoreCase(accessToken.trim())) {
-			return true;
-		}
-		// Offline runClient uses short non-JWT tokens; Microsoft tokens are long JWTs/opaque strings.
-		if (accessToken.length() < 32) {
-			return true;
-		}
-		if (username != null && username.matches("(?i)Player\\d+")) {
-			return true;
-		}
-		return false;
+		return "FabricMC".equalsIgnoreCase(accessToken.trim());
 	}
 
 	private static boolean causeEquals(String body, String cause) {

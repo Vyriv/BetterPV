@@ -9,12 +9,14 @@ import dev.vy.betterpv.client.gui.PvTooltip;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockIconRenderer;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import dev.vy.betterpv.client.networth.InventoryDecoder;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Locale;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
+import java.util.ArrayList;
+import java.util.List;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 /** Left ~56% compact pet inventory + right ~44% selected-pet details. */
 public final class PetsPage {
@@ -47,8 +49,31 @@ public final class PetsPage {
 	private int maxXpBarH;
 	private String maxXpHover;
 	private List<Component> hoverPetTip;
-	private List<PvTooltip.Line> careTip;
 	private List<PvTooltip.Line> autopetTip;
+
+	private enum SortMode {
+		LEVEL("Lvl"),
+		NAME("Name"),
+		NETWORTH("NW"),
+		RARITY("Rarity");
+
+		private final String label;
+
+		SortMode(String label) {
+			this.label = label;
+		}
+
+		SortMode next() {
+			SortMode[] values = values();
+			return values[(ordinal() + 1) % values.length];
+		}
+	}
+
+	private SortMode sortMode = SortMode.LEVEL;
+	private int sortHitX;
+	private int sortHitY;
+	private int sortHitW;
+	private int sortHitH;
 
 	public void apply(PetSnapshot snapshot) {
 		this.snapshot = snapshot == null ? PetSnapshot.empty() : snapshot;
@@ -75,7 +100,6 @@ public final class PetsPage {
 		this.maxXpHover = null;
 		this.maxXpBarW = 0;
 		this.hoverPetTip = null;
-		this.careTip = null;
 		this.autopetTip = null;
 		// Compact pets grid (~56%) + wider details inspector (~44%).
 		int leftW = Math.max(140, (int) Math.round(w * 0.56));
@@ -99,8 +123,6 @@ public final class PetsPage {
 			&& mouseX >= this.maxXpBarX && mouseX < this.maxXpBarX + this.maxXpBarW
 			&& mouseY >= this.maxXpBarY && mouseY < this.maxXpBarY + this.maxXpBarH) {
 			PvTooltip.draw(g, font, List.of(this.maxXpHover), mouseX, mouseY, screenW, screenH);
-		} else if (this.careTip != null) {
-			PvTooltip.drawStyled(g, font, this.careTip, mouseX, mouseY, screenW, screenH);
 		} else if (this.autopetTip != null) {
 			PvTooltip.drawStyled(g, font, this.autopetTip, mouseX, mouseY, screenW, screenH);
 		} else if (this.hoverPetTip != null) {
@@ -109,6 +131,11 @@ public final class PetsPage {
 	}
 
 	public boolean mouseClicked(double mx, double my) {
+		if (mx >= this.sortHitX && mx < this.sortHitX + this.sortHitW
+			&& my >= this.sortHitY && my < this.sortHitY + this.sortHitH) {
+			this.sortMode = this.sortMode.next();
+			return true;
+		}
 		for (SlotHit hit : this.hits) {
 			if (mx >= hit.x && mx < hit.x + hit.w && my >= hit.y && my < hit.y + hit.h) {
 				this.selected = hit.index;
@@ -134,6 +161,15 @@ public final class PetsPage {
 
 	private void drawGrid(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, int mouseX, int mouseY) {
 		PvDraw.text(g, font, "Pets", x + PAD, y + 6, PvDraw.COLOR_TEXT);
+		String sortLabel = "Sort: " + this.sortMode.label;
+		int sortX = x + w - PAD - font.width(sortLabel);
+		boolean sortHover = mouseX >= sortX && mouseX < x + w - PAD
+			&& mouseY >= y + 6 && mouseY < y + 6 + font.lineHeight;
+		PvDraw.text(g, font, sortLabel, sortX, y + 6, sortHover ? PvDraw.COLOR_ACCENT : PvDraw.COLOR_MUTED);
+		this.sortHitX = sortX;
+		this.sortHitY = y + 6;
+		this.sortHitW = font.width(sortLabel);
+		this.sortHitH = font.lineHeight;
 		int summaryY = y + 6 + font.lineHeight + 2;
 		boolean showSummary = this.snapshot.highestPetScore() > 0
 			|| !this.snapshot.sacrificedTypes().isEmpty()
@@ -141,41 +177,16 @@ public final class PetsPage {
 			|| this.snapshot.autopetRulesLimit() > 0;
 		if (showSummary) {
 			String scorePart = "Score " + FormatUtil.commas(this.snapshot.highestPetScore());
-			String carePart = "Care " + this.snapshot.sacrificedTypes().size();
 			String autopetPart = "Autopet " + this.snapshot.autopetRuleCount()
 				+ "/" + Math.max(this.snapshot.autopetRulesLimit(), this.snapshot.autopetRuleCount());
-			String sep = " · ";
 			int x0 = x + PAD;
 			int y0 = summaryY;
 			PvDraw.text(g, font, scorePart, x0, y0, PvDraw.COLOR_MUTED);
-			int careX = x0 + font.width(scorePart + sep);
-			PvDraw.text(g, font, sep + carePart, x0 + font.width(scorePart), y0, PvDraw.COLOR_MUTED);
-			int autopetX = careX + font.width(carePart + sep);
-			PvDraw.text(g, font, sep + autopetPart, careX + font.width(carePart), y0, PvDraw.COLOR_MUTED);
+			int autopetX = x0 + font.width(scorePart + " · ");
+			PvDraw.text(g, font, " · " + autopetPart, autopetX - font.width(" · "), y0, PvDraw.COLOR_MUTED);
 
 			if (mouseY >= y0 && mouseY < y0 + font.lineHeight) {
-				if (mouseX >= careX && mouseX < autopetX) {
-					List<PvTooltip.Line> tip = new ArrayList<>();
-					tip.add(PvTooltip.Line.title("Pet Care", PvDraw.COLOR_TEXT));
-					tip.add(PvTooltip.Line.divider());
-					tip.add(PvTooltip.Line.meta("Pet types sacrificed at Kat for Care XP"));
-					tip.add(PvTooltip.Line.row("Types", PvDraw.COLOR_MUTED,
-						String.valueOf(this.snapshot.sacrificedTypes().size()), PvDraw.COLOR_ACCENT));
-					if (!this.snapshot.sacrificedTypes().isEmpty()) {
-						tip.add(PvTooltip.Line.blank());
-						int shown = 0;
-						for (String type : this.snapshot.sacrificedTypes()) {
-							if (shown >= 16) {
-								tip.add(PvTooltip.Line.meta(
-									"+" + (this.snapshot.sacrificedTypes().size() - shown) + " more"));
-								break;
-							}
-							tip.add(PvTooltip.Line.row("Type", PvDraw.COLOR_MUTED, type, PvDraw.COLOR_TEXT));
-							shown++;
-						}
-					}
-					this.careTip = tip;
-				} else if (mouseX >= autopetX && mouseX < x + w - PAD) {
+				if (mouseX >= autopetX && mouseX < x + w - PAD) {
 					List<PvTooltip.Line> tip = new ArrayList<>();
 					tip.add(PvTooltip.Line.title("Autopet", PvDraw.COLOR_TEXT));
 					tip.add(PvTooltip.Line.divider());
@@ -221,7 +232,7 @@ public final class PetsPage {
 		int gridW = w - PAD * 2;
 		this.gridH = Math.max(0, y + h - PAD - this.gridY);
 
-		List<PetSnapshot.Entry> pets = this.snapshot.pets();
+		List<PetSnapshot.Entry> pets = sortedPets();
 		if (pets.isEmpty()) {
 			PvDraw.textCentered(g, font, "No pets", x + w / 2, y + h / 2, PvDraw.COLOR_MUTED);
 			this.maxScroll = 0;
@@ -249,6 +260,21 @@ public final class PetsPage {
 		g.disableScissor();
 	}
 
+	private List<PetSnapshot.Entry> sortedPets() {
+		List<PetSnapshot.Entry> pets = new ArrayList<>(this.snapshot.pets());
+		pets.sort(switch (this.sortMode) {
+			case NAME -> java.util.Comparator.comparing(
+				(PetSnapshot.Entry p) -> p.displayName().toLowerCase(java.util.Locale.ROOT));
+			case NETWORTH -> java.util.Comparator.comparingDouble(PetSnapshot.Entry::networth).reversed()
+				.thenComparing((PetSnapshot.Entry p) -> p.displayName().toLowerCase(java.util.Locale.ROOT));
+			case RARITY -> java.util.Comparator.comparingInt(PetSnapshot.Entry::tierIndex).reversed()
+				.thenComparingInt(PetSnapshot.Entry::level).reversed();
+			default -> java.util.Comparator.comparingInt(PetSnapshot.Entry::level).reversed()
+				.thenComparing((PetSnapshot.Entry p) -> p.displayName().toLowerCase(java.util.Locale.ROOT));
+		});
+		return pets;
+	}
+
 	private void drawSlot(
 		GuiGraphicsExtractor g,
 		Font font,
@@ -270,7 +296,7 @@ public final class PetsPage {
 		PvDraw.fill(g, sx, sy, slot, slot, bg);
 		g.outline(sx, sy, slot, slot, border);
 
-		ItemStack icon = SkyBlockItemFactory.iconStack(pet.neuId());
+		ItemStack icon = petIcon(pet);
 		// Native 16px only - fractional upscale softens skull / pet textures.
 		int draw = ITEM_ICON;
 		int ix = sx + (slot - draw) / 2;
@@ -334,9 +360,9 @@ public final class PetsPage {
 			PvDraw.textCentered(g, font, "Select a pet", x + w / 2, y + h / 2, PvDraw.COLOR_MUTED);
 			return;
 		}
-		PetSnapshot.Entry pet = this.snapshot.pets().get(this.selected);
+		PetSnapshot.Entry pet = sortedPets().get(this.selected);
 
-		ItemStack icon = SkyBlockItemFactory.iconStack(pet.neuId());
+		ItemStack icon = petIcon(pet);
 		SkyBlockIconRenderer.draw(g, icon, pet.neuId(), cx, cy, ITEM_ICON);
 		PvDraw.text(
 			g,
@@ -432,6 +458,16 @@ public final class PetsPage {
 			contentW,
 			PvDraw.COLOR_GOLD
 		);
+	}
+
+	private static ItemStack petIcon(PetSnapshot.Entry pet) {
+		if (pet.hasSkin()) {
+			ItemStack skin = SkyBlockItemFactory.iconStack("PET_SKIN_" + pet.skin().toUpperCase(Locale.ROOT));
+			if (!skin.isEmpty() && !skin.is(Items.PAPER)) {
+				return skin;
+			}
+		}
+		return SkyBlockItemFactory.iconStack(pet.neuId());
 	}
 
 	private static int row(GuiGraphicsExtractor g, Font font, String label, String value, int x, int y, int w, int valueColor) {

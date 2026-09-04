@@ -158,7 +158,7 @@ public final class MinionsPage {
 				g, font,
 				String.valueOf(minion.maxCrafted()),
 				sx + slot - 1, sy + slot - font.lineHeight + 1,
-				maxed ? MINION_UNLOCKED : MINION_LOCKED
+				maxed ? PvDraw.COLOR_GOLD : MINION_LOCKED
 			);
 			this.minionHits.add(new SlotHit(sx, sy, slot, slot, i));
 		}
@@ -205,7 +205,7 @@ public final class MinionsPage {
 			g, font,
 			"T" + minion.maxCrafted() + " / " + minion.tierCap(),
 			cx, cy,
-			maxed ? MINION_UNLOCKED : MINION_LOCKED
+			maxed ? PvDraw.COLOR_GOLD : MINION_LOCKED
 		);
 		cy += font.lineHeight + 2;
 		PvDraw.text(

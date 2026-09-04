@@ -106,8 +106,17 @@ public final class PetWorth {
 			mods += ItemPricer.price(heldItem) * NetworthData.worth("petItem", 1);
 		}
 		boolean soulbound = isSoulbound(pet);
-		if (useSkin && soulbound) {
-			mods += ItemPricer.price("PET_SKIN_" + skin) * NetworthData.worth("soulboundPetSkins", 0.8);
+		if (useSkin) {
+			double skinItem = ItemPricer.price("PET_SKIN_" + skin);
+			boolean hasSkinnedMarket = ItemPricer.price("LVL_100_" + petId) > 0
+				|| ItemPricer.price("LVL_200_" + petId) > 0;
+			if (skinItem > 0) {
+				if (soulbound) {
+					mods += skinItem * NetworthData.worth("soulboundPetSkins", 0.8);
+				} else if (!hasSkinnedMarket) {
+					mods += skinItem;
+				}
+			}
 		}
 		if (candyUsed > 0 && !NetworthData.blockedCandyPets().contains(type)) {
 			double maxPetCandyXp = candyUsed * 1_000_000.0;

@@ -316,6 +316,14 @@ public final class SkyBlockItemFactory {
 		if (skyblockId == null || skyblockId.isBlank()) {
 			return ItemStack.EMPTY;
 		}
+		String key = skyblockId.toUpperCase(Locale.ROOT);
+		if ("RUBY_VEILSHROOM".equals(key)) {
+			ItemStack veil = baseStack("VEILSHROOM");
+			if (!veil.isEmpty() && !veil.is(Items.PAPER)) {
+				return veil.copy();
+			}
+			return new ItemStack(Items.RED_MUSHROOM);
+		}
 		NeuRepoCache.prefetch(neuCandidates(skyblockId));
 		return baseStack(skyblockId).copy();
 	}
@@ -759,6 +767,9 @@ public final class SkyBlockItemFactory {
 		if (key.contains(":")) {
 			addCandidate(out, key.replace(':', '-'));
 		}
+		if ("RUBY_VEILSHROOM".equals(key)) {
+			addCandidate(out, "VEILSHROOM");
+		}
 		Matcher rune = SACK_RUNE_ID.matcher(key);
 		if (rune.matches()) {
 			addCandidate(out, rune.group(1) + "_RUNE;" + rune.group(2));
@@ -1047,6 +1058,10 @@ public final class SkyBlockItemFactory {
 			case "ULTIMATE" -> 0xFFAA0000;
 			default -> PvDraw.COLOR_TEXT;
 		};
+	}
+
+	public static int tierArgbFromFormattedName(String formattedName) {
+		return tierArgb(tierFromFormattingPrefix(formattedName));
 	}
 
 	public static String neuTier(String skyblockId) {

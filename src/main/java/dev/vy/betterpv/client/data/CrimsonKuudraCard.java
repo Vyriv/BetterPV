@@ -128,7 +128,10 @@ public final class CrimsonKuudraCard {
 		int level = (int) Math.floor(score / 100.0);
 
 		JsonObject storage = Leveling.obj(member.get("accessory_bag_storage"));
-		int mp = storage == null ? 0 : (int) num(storage.get("highest_magical_power"));
+		int mp = MagicalPowerCalculator.fromMember(member);
+		if (mp <= 0) {
+			mp = storage == null ? 0 : (int) num(storage.get("highest_magical_power"));
+		}
 		String power = storage == null ? "" : str(storage.get("selected_power"));
 		Map<String, Double> powerStats = MaxwellPowers.statsFor(power, mp);
 		double intel = powerStats.getOrDefault("intelligence", 0.0);

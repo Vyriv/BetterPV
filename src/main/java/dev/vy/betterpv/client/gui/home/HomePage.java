@@ -1425,10 +1425,8 @@ public final class HomePage {
 		int xp = this.snapshot.skyBlockXpIntoLevel();
 		int levelColor = SkyBlockLevelColors.colorFor(level);
 		int pad = PAD + 6;
-		int lx = x + pad;
 		int ly = y + pad;
-		int lw = w - pad * 2;
-		int barW = Math.min(lw, 160);
+		int barW = Math.min(w - pad * 2, 160);
 
 		PvDraw.textCentered(g, font, Component.translatable("betterpv.home.sb_level", level).getString(),
 			x + w / 2, ly, levelColor);
@@ -1442,74 +1440,9 @@ public final class HomePage {
 		PvDraw.progressBar(g, x + (w - barW) / 2, ly, barW, BAR_H, this.snapshot.skyBlockProgress(), levelColor);
 		ly += BAR_H + 12;
 
-		ProfileSnapshot.EmblemInfo emblems = this.snapshot.emblems();
-		if (emblems == null || !emblems.present()) {
-			this.emblemListH = 0;
-			this.emblemMaxScroll = 0;
-			PvDraw.textCentered(g, font, "No emblems unlocked", x + w / 2, ly + 20, PvDraw.COLOR_MUTED);
-			return;
-		}
-
-		int rowH = font.lineHeight + 4;
-		int selectedExtra = emblems.selected().isBlank() ? 0 : font.lineHeight + 8 + 6;
-		int headerExtra = font.lineHeight + 2;
-		int emblemContentH = emblems.unlocked().size() * rowH;
-		int emblemAvailH = y + h - pad - ly;
-		int emblemNeededH = headerExtra + selectedExtra + emblemContentH;
-		if (emblemNeededH > emblemAvailH) {
-			this.emblemListH = 0;
-			this.emblemMaxScroll = 0;
-			return;
-		}
-
-		ly += PvDraw.sectionHeader(g, font, "Emblems", lx, ly, lw);
-		String count = emblems.unlocked().size() + " unlocked";
-		PvDraw.textRight(g, font, count, lx + lw, ly - font.lineHeight - 2, PvDraw.COLOR_ACCENT);
-		this.zones.add(new HoverZone(lx, ly - font.lineHeight - 4, lw, font.lineHeight + 4, emblemHoverLines(emblems, false)));
-
-		if (!emblems.selected().isBlank()) {
-			int selH = font.lineHeight + 8;
-			PvDraw.innerPanel(g, lx, ly, lw, selH);
-			PvDraw.text(g, font, "Selected", lx + 6, ly + 4, PvDraw.COLOR_MUTED);
-			PvDraw.textRight(
-				g, font, InventoryDecoder.prettyWords(emblems.selected()), lx + lw - 6, ly + 4, PvDraw.COLOR_GOLD
-			);
-			ly += selH + 6;
-		}
-
-		this.emblemListX = lx;
-		this.emblemListY = ly;
-		this.emblemListW = lw;
-		this.emblemListH = Math.max(rowH, y + h - pad - ly);
-		int contentH = emblems.unlocked().size() * rowH;
-		this.emblemMaxScroll = Math.max(0, contentH - this.emblemListH);
-		this.emblemScroll = Math.max(0, Math.min(this.emblemScroll, this.emblemMaxScroll));
-
-		PvDraw.innerPanel(g, lx, ly, lw, this.emblemListH);
-		int listInnerX = lx + 4;
-		int listInnerW = lw - 8;
-		g.enableScissor(listInnerX, ly + 2, listInnerX + listInnerW, ly + this.emblemListH - 2);
-		int rowY = ly + 4 - this.emblemScroll;
-		String selectedId = emblems.selected();
-		for (String id : emblems.unlocked()) {
-			if (rowY + font.lineHeight >= ly && rowY < ly + this.emblemListH) {
-				boolean selected = id.equalsIgnoreCase(selectedId);
-				PvDraw.text(g, font, InventoryDecoder.prettyWords(id), listInnerX, rowY,
-					selected ? PvDraw.COLOR_GOLD : PvDraw.COLOR_TEXT);
-			}
-			rowY += rowH;
-		}
-		g.disableScissor();
-
-		if (this.emblemMaxScroll > 0) {
-			int trackX = lx + lw - 3;
-			int trackH = this.emblemListH - 4;
-			PvDraw.fill(g, trackX, ly + 2, 2, trackH, 0x662A2A35);
-			int thumbH = Math.max(8, (int) (trackH * (this.emblemListH / (double) contentH)));
-			int travel = Math.max(0, trackH - thumbH);
-			int thumbY = ly + 2 + (int) Math.round(travel * (this.emblemScroll / (double) this.emblemMaxScroll));
-			PvDraw.fill(g, trackX, thumbY, 2, thumbH, PvDraw.COLOR_ACCENT);
-		}
+		this.emblemListH = 0;
+		this.emblemMaxScroll = 0;
+		PvDraw.textCentered(g, font, "Coming soon", x + w / 2, ly + 20, PvDraw.COLOR_MUTED);
 	}
 
 	private static List<PvTooltip.Line> emblemHoverLines(ProfileSnapshot.EmblemInfo emblems, boolean includeHeader) {

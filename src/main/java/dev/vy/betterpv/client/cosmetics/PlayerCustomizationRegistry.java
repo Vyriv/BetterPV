@@ -163,7 +163,8 @@ public final class PlayerCustomizationRegistry {
 		for (String raw : names) {
 			String name = raw == null ? "" : raw.trim();
 			if (name.isEmpty()) continue;
-			candidates.putIfAbsent(name.toLowerCase(Locale.ROOT), new NameCandidate(customization, name, false));
+			// Word boundaries only: substring matches bleach unrelated HUD/chat colors.
+			candidates.putIfAbsent(name.toLowerCase(Locale.ROOT), new NameCandidate(customization, name, true));
 		}
 		return List.copyOf(candidates.values());
 	}
@@ -173,7 +174,7 @@ public final class PlayerCustomizationRegistry {
 		for (String raw : names) {
 			String name = raw == null ? "" : raw.trim();
 			if (name.isEmpty()) continue;
-			candidates.putIfAbsent("exact:" + name.toLowerCase(Locale.ROOT), new NameCandidate(customization, name, false));
+			candidates.putIfAbsent("exact:" + name.toLowerCase(Locale.ROOT), new NameCandidate(customization, name, true));
 			if (name.length() < 8) continue;
 
 			int minimumLength = Math.max(6, Math.max(name.length() - 4, (int) (name.length() * 0.7F)));
@@ -379,9 +380,10 @@ public final class PlayerCustomizationRegistry {
 		}
 
 		public List<String> matchNames() {
+			// Nicknames are display-only. Matching them on the Font path caused false hits
+			// (e.g. spaced nicknames) that rebuilt unrelated colored text.
 			List<String> names = new ArrayList<>();
 			addName(names, username);
-			addName(names, nickname);
 			for (String alias : aliases) addName(names, alias);
 			return List.copyOf(names);
 		}

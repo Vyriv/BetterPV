@@ -3,10 +3,8 @@
 	"package": "dev.vy.betterpv.mixin",
 	"compatibilityLevel": "JAVA_21",
 	"client": [
-		"ChatComponentMixin",
 		"EntityCosmeticsMixin",
 		"EntityRendererCosmeticsMixin",
-		"FontCosmeticsMixin",
 		"ItemModelResolverIconProbeMixin",
 		"PlayerInfoCosmeticsMixin",
 		"PlayerTabOverlayCosmeticsMixin",

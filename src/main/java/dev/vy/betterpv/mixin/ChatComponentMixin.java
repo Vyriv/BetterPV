@@ -1,16 +1,20 @@
 package dev.vy.betterpv.mixin;
 
-import dev.vy.betterpv.client.ChatClickProcessor;
 import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.network.chat.Component;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.ModifyVariable;
 
+/**
+ * Intentionally idle. Rewriting chat Components here bleached message colors
+ * (false sender matches like {@code OdinClient:} and Hypixel click remaps).
+ * Name clicks open BetterPV via {@link ScreenClickCommandMixin} + Hypixel
+ * SocialOptions / viewprofile intercept in {@code ProfileViewerOpener}.
+ */
 @Mixin(ChatComponent.class)
 public abstract class ChatComponentMixin {
-	@ModifyVariable(method = "addMessage", at = @At("HEAD"), argsOnly = true, ordinal = 0)
-	private Component betterpv$injectClickEvents(Component component) {
-		return ChatClickProcessor.process(component);
+	// Kept so older refs / docs stay valid. Not registered in mixins.json.
+	@SuppressWarnings("unused")
+	private static Component betterpv$passthrough(Component component) {
+		return component;
 	}
 }

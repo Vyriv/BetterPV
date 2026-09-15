@@ -44,6 +44,13 @@ public final class ProfileViewerOpener {
 			handleTypedArg(trimmed.substring("betterpv pv ".length()).trim());
 			return true;
 		}
+		// Hypixel name clicks stay on the original Component (keeps chat colors).
+		// Open BetterPV instead of forwarding SocialOptions / viewprofile to the server.
+		String hypixelName = ChatClickProcessor.usernameFromCommand(trimmed);
+		if (hypixelName != null) {
+			open(hypixelName);
+			return true;
+		}
 		return false;
 	}
 

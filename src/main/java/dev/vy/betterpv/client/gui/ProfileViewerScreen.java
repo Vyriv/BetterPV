@@ -512,6 +512,9 @@ public final class ProfileViewerScreen extends Screen {
 				);
 			}
 
+			// Higher stratum than EditBox / search chrome so tall item tips are not covered
+			// by the footer "Search player" field (vanilla deferred tips use the same pattern).
+			graphics.nextStratum();
 			renderDeferredTooltips(graphics, panelX, panelY, panelW, panelH, mouseX, mouseY);
 
 			if (this.tab == PvTab.DUNGEONS) {

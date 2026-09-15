@@ -464,7 +464,10 @@ public final class PlayerStatsCalculator {
 			return false;
 		}
 		boolean added = false;
-		int mp = intOr(storage, "highest_magical_power");
+		int mp = MagicalPowerCalculator.fromMember(member);
+		if (mp <= 0) {
+			mp = intOr(storage, "highest_magical_power");
+		}
 		String power = storage.has("selected_power") && storage.get("selected_power").isJsonPrimitive()
 			? storage.get("selected_power").getAsString()
 			: "";

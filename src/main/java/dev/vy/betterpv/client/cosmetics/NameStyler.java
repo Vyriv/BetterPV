@@ -42,9 +42,9 @@ public final class NameStyler {
 	private static final NameStylerIdentityCache<Component, Component> SCOREBOARD_TEXT_IDENTITY_CACHE = new NameStylerIdentityCache<>(IDENTITY_CACHE_SIZE);
 	private static final NameStylerIdentityCache<Component, Component> CHAT_HEADER_TEXT_IDENTITY_CACHE = new NameStylerIdentityCache<>(IDENTITY_CACHE_SIZE);
 	private static final NameStylerIdentityCache<FormattedCharSequence, FormattedCharSequence> GRADIENT_ORDERED_TEXT_IDENTITY_CACHE = new NameStylerIdentityCache<>(IDENTITY_CACHE_SIZE);
+	private static final NameStylerIdentityCache<FormattedCharSequence, FormattedCharSequence> CHAT_HEADER_ORDERED_TEXT_IDENTITY_CACHE = new NameStylerIdentityCache<>(IDENTITY_CACHE_SIZE);
 	private static final NameStylerIdentityCache<FormattedCharSequence, FormattedCharSequence> NAMEPLATE_ORDERED_TEXT_IDENTITY_CACHE = new NameStylerIdentityCache<>(IDENTITY_CACHE_SIZE);
 	private static final NameStylerIdentityCache<FormattedCharSequence, FormattedCharSequence> SCOREBOARD_ORDERED_TEXT_IDENTITY_CACHE = new NameStylerIdentityCache<>(IDENTITY_CACHE_SIZE);
-	private static final NameStylerIdentityCache<FormattedCharSequence, OrderedTextSourceData> ORDERED_TEXT_SOURCE_CACHE = new NameStylerIdentityCache<>(IDENTITY_CACHE_SIZE);
 
 	private static volatile long observedRegistryVersion = Long.MIN_VALUE;
 
@@ -64,9 +64,9 @@ public final class NameStyler {
 		SCOREBOARD_TEXT_IDENTITY_CACHE.clear();
 		CHAT_HEADER_TEXT_IDENTITY_CACHE.clear();
 		GRADIENT_ORDERED_TEXT_IDENTITY_CACHE.clear();
+		CHAT_HEADER_ORDERED_TEXT_IDENTITY_CACHE.clear();
 		NAMEPLATE_ORDERED_TEXT_IDENTITY_CACHE.clear();
 		SCOREBOARD_ORDERED_TEXT_IDENTITY_CACHE.clear();
-		ORDERED_TEXT_SOURCE_CACHE.clear();
 	}
 
 	public static boolean hasGradientStyles() {
@@ -146,7 +146,7 @@ public final class NameStyler {
 	}
 
 	public static FormattedCharSequence applyChatHeaderToOrderedText(FormattedCharSequence text) {
-		return applyCachedOrderedTextTransform(text, TransformKind.CHAT_HEADER_TEXT, GRADIENT_ORDERED_TEXT_IDENTITY_CACHE);
+		return applyCachedOrderedTextTransform(text, TransformKind.CHAT_HEADER_TEXT, CHAT_HEADER_ORDERED_TEXT_IDENTITY_CACHE);
 	}
 
 	public static String applyChatHeaderToString(String raw) {
@@ -184,7 +184,6 @@ public final class NameStyler {
 		List<StyledRun> runs = collectRuns(message);
 		String plain = runsToPlain(runs);
 		if (plain.isEmpty()) {
-			identityCache.put(message, message);
 			return message;
 		}
 
@@ -206,7 +205,10 @@ public final class NameStyler {
 		}
 
 		OrderedTextTransformPlan plan = buildTransformPlan(runs, plain, kind);
-		Component transformed = plan == null ? message : rebuildComponentFromPlan(new OrderedTextSourceData(plain, runs, styleHash(runs)), plan, currentAnimationTime(), kind);
+		if (plan == null) {
+			return message;
+		}
+		Component transformed = rebuildComponentFromPlan(new OrderedTextSourceData(plain, runs, styleHash(runs)), plan, currentAnimationTime(), kind);
 		TEXT_TRANSFORM_CACHE.putCached(key, transformed);
 		if (!animated) {
 			identityCache.put(message, transformed);
@@ -222,13 +224,12 @@ public final class NameStyler {
 
 		OrderedTextSourceData source = orderedTextSource(text);
 		if (source.plain.isEmpty()) {
-			identityCache.put(text, text);
 			return text;
 		}
 
 		OrderedTextTransformPlan plan = buildOrderedTextPlan(source, kind);
 		if (plan == null) {
-			identityCache.put(text, text);
+			// Do not identity-cache negatives. Unrelated HUD strings must stay untouched.
 			return text;
 		}
 
@@ -324,13 +325,10 @@ public final class NameStyler {
 	}
 
 	private static OrderedTextSourceData orderedTextSource(FormattedCharSequence text) {
-		OrderedTextSourceData cached = ORDERED_TEXT_SOURCE_CACHE.get(text);
-		if (cached != null) return cached;
-
+		// Never identity-cache source runs. Reused FormattedCharSequence instances with new
+		// content would rebuild from stale styles and bleach / wrong-color HUD text.
 		List<StyledRun> runs = collectRuns(text);
-		OrderedTextSourceData source = new OrderedTextSourceData(runsToPlain(runs), runs, styleHash(runs));
-		ORDERED_TEXT_SOURCE_CACHE.put(text, source);
-		return source;
+		return new OrderedTextSourceData(runsToPlain(runs), runs, styleHash(runs));
 	}
 
 	private static OrderedTextTransformPlan buildOrderedTextPlan(OrderedTextSourceData source, TransformKind kind) {

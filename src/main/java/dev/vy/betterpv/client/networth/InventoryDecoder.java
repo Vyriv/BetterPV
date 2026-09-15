@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.vy.betterpv.client.data.InventorySnapshot;
+import dev.vy.betterpv.client.data.MagicalPowerCalculator;
 import dev.vy.betterpv.client.gui.SkyBlockSymbols;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import dev.vy.betterpv.client.neu.NeuRepoCache;
@@ -115,6 +116,46 @@ public final class InventoryDecoder {
 		put(categories, "equipment", decodeField(inventory, "equipment_contents"));
 		put(categories, "accessories", bags == null ? List.of() : decodeField(bags, "talisman_bag"));
 		return categories;
+	}
+
+	/**
+	 * Accessory bag plus armor/inventory accessories that still grant Magical Power.
+	 * Bag slots are always included; other locations need an ACCESSORY lore line.
+	 */
+	public static List<Stack> accessoryCandidates(JsonObject member) {
+		List<Stack> out = new ArrayList<>();
+		if (member == null) {
+			return out;
+		}
+		Map<String, List<Stack>> home = parseHomeGear(member);
+		out.addAll(home.getOrDefault("accessories", List.of()));
+		for (Stack stack : home.getOrDefault("armor", List.of())) {
+			if (looksLikeAccessory(stack)) {
+				out.add(stack);
+			}
+		}
+		JsonObject inventory = obj(member.get("inventory"));
+		if (inventory == null) {
+			inventory = obj(member.get("inventories"));
+		}
+		for (Stack stack : decodeField(inventory, "inv_contents")) {
+			if (looksLikeAccessory(stack)) {
+				out.add(stack);
+			}
+		}
+		return out;
+	}
+
+	private static boolean looksLikeAccessory(Stack stack) {
+		if (stack == null || stack.id() == null || stack.id().isBlank()) {
+			return false;
+		}
+		List<String> lore = stack.lore();
+		if (lore == null || lore.isEmpty()) {
+			return false;
+		}
+		String last = lore.get(lore.size() - 1);
+		return last != null && (last.contains("ACCESSORY") || last.contains("HATCESSORY"));
 	}
 
 	public static Map<String, List<Stack>> parseCategories(JsonObject member, JsonObject museumMember) {
@@ -526,56 +567,59 @@ public final class InventoryDecoder {
 	}
 
 	public static InventorySnapshot.AccessoryInfo parseAccessoryInfo(JsonObject member) {
-		JsonObject storage = obj(member.get("accessory_bag_storage"));
-		if (storage == null) {
-			return InventorySnapshot.AccessoryInfo.empty();
-		}
-		int mp = storage.has("highest_magical_power") && storage.get("highest_magical_power").isJsonPrimitive()
-			? storage.get("highest_magical_power").getAsInt()
-			: 0;
-		String power = storage.has("selected_power") && storage.get("selected_power").isJsonPrimitive()
-			? storage.get("selected_power").getAsString()
-			: "";
-		int bagUpgrades = storage.has("bag_upgrades_purchased") && storage.get("bag_upgrades_purchased").isJsonPrimitive()
-			? Math.max(0, storage.get("bag_upgrades_purchased").getAsInt())
-			: 0;
+		JsonObject storage = obj(member == null ? null : member.get("accessory_bag_storage"));
+		int highest = 0;
+		String power = "";
+		int bagUpgrades = 0;
 		List<String> unlockedPowers = new ArrayList<>();
-		if (storage.has("unlocked_powers") && storage.get("unlocked_powers").isJsonArray()) {
-			for (JsonElement el : storage.getAsJsonArray("unlocked_powers")) {
-				if (el != null && el.isJsonPrimitive()) {
-					try {
-						String id = el.getAsString();
-						if (id != null && !id.isBlank()) {
-							unlockedPowers.add(id);
+		List<InventorySnapshot.TuningTemplate> tunings = new ArrayList<>();
+		if (storage != null) {
+			highest = storage.has("highest_magical_power") && storage.get("highest_magical_power").isJsonPrimitive()
+				? Math.max(0, storage.get("highest_magical_power").getAsInt())
+				: 0;
+			power = storage.has("selected_power") && storage.get("selected_power").isJsonPrimitive()
+				? storage.get("selected_power").getAsString()
+				: "";
+			bagUpgrades = storage.has("bag_upgrades_purchased") && storage.get("bag_upgrades_purchased").isJsonPrimitive()
+				? Math.max(0, storage.get("bag_upgrades_purchased").getAsInt())
+				: 0;
+			if (storage.has("unlocked_powers") && storage.get("unlocked_powers").isJsonArray()) {
+				for (JsonElement el : storage.getAsJsonArray("unlocked_powers")) {
+					if (el != null && el.isJsonPrimitive()) {
+						try {
+							String id = el.getAsString();
+							if (id != null && !id.isBlank()) {
+								unlockedPowers.add(id);
+							}
+						} catch (Exception ignored) {
 						}
-					} catch (Exception ignored) {
+					}
+				}
+			}
+			JsonObject tuning = obj(storage.get("tuning"));
+			if (tuning != null) {
+				List<String> keys = new ArrayList<>();
+				for (String key : tuning.keySet()) {
+					if (key != null && key.startsWith("slot_")) {
+						keys.add(key);
+					}
+				}
+				keys.sort(InventoryDecoder::compareKeys);
+				for (String key : keys) {
+					Integer index = tryParseInt(key.substring("slot_".length()));
+					if (index == null) {
+						continue;
+					}
+					JsonObject slot = obj(tuning.get(key));
+					List<InventorySnapshot.StatPoint> stats = readTuningStats(slot);
+					if (!stats.isEmpty() || slot != null) {
+						tunings.add(new InventorySnapshot.TuningTemplate(index, stats));
 					}
 				}
 			}
 		}
-		List<InventorySnapshot.TuningTemplate> tunings = new ArrayList<>();
-		JsonObject tuning = obj(storage.get("tuning"));
-		if (tuning != null) {
-			List<String> keys = new ArrayList<>();
-			for (String key : tuning.keySet()) {
-				if (key != null && key.startsWith("slot_")) {
-					keys.add(key);
-				}
-			}
-			keys.sort(InventoryDecoder::compareKeys);
-			for (String key : keys) {
-				Integer index = tryParseInt(key.substring("slot_".length()));
-				if (index == null) {
-					continue;
-				}
-				JsonObject slot = obj(tuning.get(key));
-				List<InventorySnapshot.StatPoint> stats = readTuningStats(slot);
-				if (!stats.isEmpty() || slot != null) {
-					tunings.add(new InventorySnapshot.TuningTemplate(index, stats));
-				}
-			}
-		}
-		return new InventorySnapshot.AccessoryInfo(mp, power, tunings, bagUpgrades, unlockedPowers);
+		int current = MagicalPowerCalculator.fromMember(member);
+		return new InventorySnapshot.AccessoryInfo(current, highest, power, tunings, bagUpgrades, unlockedPowers);
 	}
 
 	public static RiftInventories parseRiftUi(JsonObject member) {

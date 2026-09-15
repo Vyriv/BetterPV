@@ -46,8 +46,6 @@ public final class InventoryPage {
 	private static final int META_GAP = 6;
 	private static final int LOADOUT_GAP = 14;
 	private static final int LOADOUTS_PER_PAGE = 2;
-	/** Fixed band under the title so every pane’s preview shares the same top edge. */
-	private static final int META_BAND_LINES = 2;
 	private static final int SEARCH_HIGHLIGHT = 0xFF55FF55;
 	private static final int PANEL_HOVER = 0x0AFFFFFF;
 	private static final int FLIP_MS = 480;
@@ -75,7 +73,7 @@ public final class InventoryPage {
 	private int gemHoverX;
 	private int gemHoverY;
 
-	/** Accessory bag preview flip: bag items ↔ unlocked powers (this pane only). */
+	/** Accessory bag panel flip: bag face ↔ unlocked powers (whole content area). */
 	private boolean accessoryPowersFace;
 	private boolean accessoryFlipTarget;
 	private long accessoryFlipStartMs;
@@ -85,6 +83,11 @@ public final class InventoryPage {
 	private int accessoryFlipH;
 	private int accessoryPowersScroll;
 	private int accessoryPowersMaxScroll;
+	private int accessoryTuningsX;
+	private int accessoryTuningsY;
+	private int accessoryTuningsW;
+	private int accessoryTuningsH;
+	private boolean accessoryTuningsHover;
 	private final ItemValueOverlay valueOverlay = new ItemValueOverlay();
 
 	public void apply(InventorySnapshot snapshot) {
@@ -121,6 +124,9 @@ public final class InventoryPage {
 		this.accessoryPowersMaxScroll = 0;
 		this.accessoryFlipW = 0;
 		this.accessoryFlipH = 0;
+		this.accessoryTuningsW = 0;
+		this.accessoryTuningsH = 0;
+		this.accessoryTuningsHover = false;
 	}
 
 	public InventoryPane pane() {
@@ -168,6 +174,12 @@ public final class InventoryPage {
 		this.hoveredSlot = null;
 		this.hoveredStack = ItemStack.EMPTY;
 		this.gemHoverTip = null;
+		this.accessoryTuningsHover = false;
+
+		if (this.pane == InventoryPane.ACCESSORY_BAG) {
+			renderAccessoryBagPanel(g, font, x, y, w, h, mouseX, mouseY);
+			return;
+		}
 
 		PvDraw.innerPanel(g, x, y, w, h);
 
@@ -190,25 +202,13 @@ public final class InventoryPage {
 		PvDraw.text(g, font, title, x + 8, headerY, PvDraw.COLOR_TEXT);
 
 		int metaTop = headerY + font.lineHeight + 4;
-		int metaBandH = META_BAND_LINES * font.lineHeight + (META_BAND_LINES - 1) * 2;
-		// Accessory bag keeps its MP/power/tuning band; every other pane starts the grid under the title.
-		int previewTop;
-		if (this.pane == InventoryPane.ACCESSORY_BAG) {
-			drawAccessoryMeta(g, font, x + 8, metaTop, w - 16, this.snapshot.accessoryInfo());
-			previewTop = metaTop + metaBandH + 6;
-		} else {
-			previewTop = metaTop + PREVIEW_TOP_PAD;
-		}
+		int previewTop = metaTop + PREVIEW_TOP_PAD;
 		int gridBottom = y + h - (multi ? PAGE_BTN + 10 : 6);
 		int previewH = Math.max(SLOT, gridBottom - previewTop);
 		int previewX = x + 8;
 		int previewW = w - 16;
 
-		if (this.pane == InventoryPane.ACCESSORY_BAG) {
-			renderAccessoryBagPreview(
-				g, font, previewX, previewTop, previewW, previewH, pages, page, mouseX, mouseY
-			);
-		} else if (loadouts) {
+		if (loadouts) {
 			drawLoadoutsPage(g, font, previewX, previewTop, previewW, previewH, loadoutList, page, mouseX, mouseY);
 		} else if (this.pane == InventoryPane.INVENTORY) {
 			InventorySnapshot.Page current = pages.isEmpty()
@@ -236,7 +236,7 @@ public final class InventoryPage {
 			);
 		}
 
-		if (multi && !(this.pane == InventoryPane.ACCESSORY_BAG && showingAccessoryPowersFace())) {
+		if (multi) {
 			Set<Integer> matches = this.searchPages.getOrDefault(this.pane, Set.of());
 			boolean highlightPrev = matches.stream().anyMatch(p -> p < page);
 			boolean highlightNext = matches.stream().anyMatch(p -> p > page);
@@ -375,6 +375,13 @@ public final class InventoryPage {
 			PvTooltip.drawComponents(g, font, this.gemHoverTip, mouseX, mouseY, screenW, screenH);
 			return;
 		}
+		if (this.accessoryTuningsHover) {
+			List<Component> tip = accessoryTuningsTooltip();
+			if (tip != null && !tip.isEmpty()) {
+				PvTooltip.drawComponents(g, font, tip, mouseX, mouseY, screenW, screenH);
+				return;
+			}
+		}
 		if (this.hoveredSlot != null && !this.hoveredStack.isEmpty()) {
 			List<Component> tip = SkyBlockItemFactory.tooltipLines(this.hoveredSlot, this.hoveredStack);
 			PvTooltip.drawComponents(g, font, tip, mouseX, mouseY, screenW, screenH);
@@ -395,23 +402,24 @@ public final class InventoryPage {
 				return true;
 			}
 		}
+		for (SlotHit hit : this.hits) {
+			if (mx >= hit.x && mx < hit.x + hit.w && my >= hit.y && my < hit.y + hit.h) {
+				openItemValue(hit.slot(), hit.stack());
+				return true;
+			}
+		}
 		if (this.pane == InventoryPane.ACCESSORY_BAG
 			&& canFlipAccessoryPowers()
 			&& this.accessoryFlipW > 0
 			&& mx >= this.accessoryFlipX && mx < this.accessoryFlipX + this.accessoryFlipW
-			&& my >= this.accessoryFlipY && my < this.accessoryFlipY + this.accessoryFlipH) {
+			&& my >= this.accessoryFlipY && my < this.accessoryFlipY + this.accessoryFlipH
+			&& !overAccessoryTunings(mx, my)) {
 			if (this.accessoryFlipStartMs != 0L) {
 				return true;
 			}
 			this.accessoryFlipTarget = !this.accessoryPowersFace;
 			this.accessoryFlipStartMs = System.currentTimeMillis();
 			return true;
-		}
-		for (SlotHit hit : this.hits) {
-			if (mx >= hit.x && mx < hit.x + hit.w && my >= hit.y && my < hit.y + hit.h) {
-				openItemValue(hit.slot(), hit.stack());
-				return true;
-			}
 		}
 		return false;
 	}
@@ -505,13 +513,26 @@ public final class InventoryPage {
 		return pages.get(Math.min(page, pages.size() - 1)).title();
 	}
 
-	private void drawAccessoryMeta(GuiGraphicsExtractor g, Font font, int x, int y, int w, InventorySnapshot.AccessoryInfo info) {
+	private void drawAccessoryMeta(
+		GuiGraphicsExtractor g,
+		Font font,
+		int x,
+		int y,
+		int w,
+		InventorySnapshot.AccessoryInfo info,
+		int mouseX,
+		int mouseY
+	) {
+		this.accessoryTuningsW = 0;
+		this.accessoryTuningsH = 0;
+		this.accessoryTuningsHover = false;
 		if (info == null) {
 			return;
 		}
+
 		MutableComponent line1 = Component.empty();
 		line1.append(PvDraw.styled("MP ", PvDraw.COLOR_MUTED, false));
-		line1.append(PvDraw.styled(String.valueOf(info.magicalPower()), 0xFF55FFFF, true));
+		line1.append(PvDraw.styled(FormatUtil.commas(info.magicalPower()), 0xFF55FFFF, true));
 		line1.append(PvDraw.styled("  ·  Power ", PvDraw.COLOR_MUTED, false));
 		line1.append(SkyBlockStats.powerName(info.selectedPower()));
 		if (info.bagUpgrades() > 0) {
@@ -520,53 +541,82 @@ public final class InventoryPage {
 		}
 		PvDraw.text(g, font, trimComponent(font, line1, w), x, y);
 
-		MutableComponent tune = Component.empty();
-		tune.append(PvDraw.styled("Tuning ", PvDraw.COLOR_MUTED, false));
-		if (info.tunings().isEmpty()) {
-			tune.append(PvDraw.styled("-", PvDraw.COLOR_MUTED, false));
-		} else {
-			boolean first = true;
-			for (InventorySnapshot.TuningTemplate template : info.tunings()) {
-				if (!first) {
-					tune.append(PvDraw.styled("  |  ", PvDraw.COLOR_MUTED, false));
-				}
-				first = false;
-				tune.append(PvDraw.styled("#" + template.slot() + " ", PvDraw.COLOR_MUTED, false));
-				tune.append(SkyBlockStats.tuningStats(template.stats()));
-			}
+		int tuningsY = y + font.lineHeight + 2;
+		int color = PvDraw.COLOR_MUTED;
+		Component tunings = Component.literal("Tunings").setStyle(
+			Style.EMPTY
+				.withColor(net.minecraft.network.chat.TextColor.fromRgb(color & 0xFFFFFF))
+				.withUnderlined(true)
+		);
+		int tuningsW = font.width(tunings);
+		boolean hover = mouseX >= x && mouseX < x + tuningsW
+			&& mouseY >= tuningsY && mouseY < tuningsY + font.lineHeight;
+		if (hover) {
+			tunings = Component.literal("Tunings").setStyle(
+				Style.EMPTY
+					.withColor(net.minecraft.network.chat.TextColor.fromRgb(PvDraw.COLOR_ACCENT & 0xFFFFFF))
+					.withUnderlined(true)
+			);
+			tuningsW = font.width(tunings);
 		}
-		if (canFlipAccessoryPowers()) {
-			tune.append(PvDraw.styled("  ·  ", PvDraw.COLOR_MUTED, false));
-			tune.append(PvDraw.styled(
-				showingAccessoryPowersFace() ? "Click bag" : "Click powers",
-				PvDraw.COLOR_MUTED,
-				false
-			));
-		}
-		PvDraw.text(g, font, trimComponent(font, tune, w), x, y + font.lineHeight + 2);
+		this.accessoryTuningsX = x;
+		this.accessoryTuningsY = tuningsY;
+		this.accessoryTuningsW = tuningsW;
+		this.accessoryTuningsH = font.lineHeight;
+		this.accessoryTuningsHover = hover;
+		PvDraw.text(g, font, tunings, x, tuningsY);
 	}
 
-	/** Accessory bag preview only: flip between item grid and unlocked Maxwell powers. */
-	private void renderAccessoryBagPreview(
+	private List<Component> accessoryTuningsTooltip() {
+		InventorySnapshot.AccessoryInfo info = this.snapshot.accessoryInfo();
+		List<Component> lines = new ArrayList<>();
+		lines.add(PvDraw.styled("Tunings", PvDraw.COLOR_TEXT, true));
+		if (info == null || info.tunings().isEmpty()) {
+			lines.add(PvDraw.styled("No saved tunings", PvDraw.COLOR_MUTED, false));
+			return lines;
+		}
+		for (InventorySnapshot.TuningTemplate template : info.tunings()) {
+			MutableComponent line = Component.empty();
+			line.append(PvDraw.styled("#" + template.slot() + " ", PvDraw.COLOR_MUTED, false));
+			line.append(SkyBlockStats.tuningStats(template.stats()));
+			lines.add(line);
+		}
+		return lines;
+	}
+
+	private boolean overAccessoryTunings(double mx, double my) {
+		return this.accessoryTuningsW > 0
+			&& mx >= this.accessoryTuningsX && mx < this.accessoryTuningsX + this.accessoryTuningsW
+			&& my >= this.accessoryTuningsY && my < this.accessoryTuningsY + this.accessoryTuningsH;
+	}
+
+	/** Whole left inventory panel flips: border, content, and pager. */
+	private void renderAccessoryBagPanel(
 		GuiGraphicsExtractor g,
 		Font font,
 		int x,
 		int y,
 		int w,
 		int h,
-		List<InventorySnapshot.Page> pages,
-		int page,
 		int mouseX,
 		int mouseY
 	) {
+		List<InventorySnapshot.Page> pages = pagesFor(InventoryPane.ACCESSORY_BAG);
+		int pageCount = Math.max(1, pages.size());
+		int page = clampPage(this.pane, pageCount);
+		boolean multi = pageCount > 1 && !showingAccessoryPowersFace();
+
 		this.accessoryFlipX = x;
 		this.accessoryFlipY = y;
 		this.accessoryFlipW = w;
 		this.accessoryFlipH = h;
 
 		boolean canFlip = canFlipAccessoryPowers();
+		boolean overTunings = overAccessoryTunings(mouseX, mouseY);
 		boolean hovered = canFlip
-			&& mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + h;
+			&& !overTunings
+			&& mouseX >= x && mouseX < x + w
+			&& mouseY >= y && mouseY < y + h;
 		float flipProgress = 0F;
 		boolean animating = this.accessoryFlipStartMs != 0L;
 		if (animating) {
@@ -600,20 +650,45 @@ public final class InventoryPage {
 		g.pose().scale(scaleX, scaleY);
 		g.pose().translate(-cxFlip, -cyFlip);
 
+		PvDraw.innerPanel(g, x, y, w, h);
 		if (hovered && !animating) {
 			PvDraw.fill(g, x, y, w, h, PANEL_HOVER);
 		}
 
+		int contentX = x + 8;
+		int contentY = y + 6;
+		int contentW = w - 16;
+		int contentBottom = y + h - (multi ? PAGE_BTN + 10 : 6);
+		int contentH = Math.max(SLOT, contentBottom - contentY);
+
 		if (showPowers) {
-			drawAccessoryPowersFace(g, font, x, y, w, h);
+			this.accessoryTuningsW = 0;
+			this.accessoryTuningsH = 0;
+			this.accessoryTuningsHover = false;
+			drawAccessoryPowersFace(g, font, contentX, contentY, contentW, contentH);
 		} else {
+			String title = titleFor(false, List.of(), pages, page);
+			PvDraw.text(g, font, title, contentX, contentY, PvDraw.COLOR_TEXT);
+			int metaTop = contentY + font.lineHeight + 4;
+			drawAccessoryMeta(g, font, contentX, metaTop, contentW, this.snapshot.accessoryInfo(), mouseX, mouseY);
+			int previewTop = metaTop + font.lineHeight + 2 + font.lineHeight + 6;
+			int previewH = Math.max(SLOT, contentY + contentH - previewTop);
 			InventorySnapshot.Page current = pages.isEmpty()
 				? InventorySnapshot.emptyPage("Accessory Bag", 9)
 				: pages.get(Math.min(page, pages.size() - 1));
 			drawGrid(
-				g, font, x, y, w, h,
+				g, font, contentX, previewTop, contentW, previewH,
 				current.columns(), current.slots(), false, -1, mouseX, mouseY
 			);
+			if (multi) {
+				Set<Integer> matches = this.searchPages.getOrDefault(this.pane, Set.of());
+				boolean highlightPrev = matches.stream().anyMatch(p -> p < page);
+				boolean highlightNext = matches.stream().anyMatch(p -> p > page);
+				drawPager(
+					g, font, x, y + h - PAGE_BTN - 6, w, page, pageCount,
+					mouseX, mouseY, highlightPrev, highlightNext, null
+				);
+			}
 		}
 
 		g.pose().popMatrix();
@@ -629,7 +704,7 @@ public final class InventoryPage {
 		PvDraw.textRight(g, font, count, x + w, y, PvDraw.COLOR_ACCENT);
 
 		int listTop = y + font.lineHeight + 4;
-		int listBottom = y + h - font.lineHeight - 2;
+		int listBottom = y + h;
 		int listH = Math.max(0, listBottom - listTop);
 		int colGap = 10;
 		int colW = Math.max(40, (w - colGap) / 2);
@@ -660,8 +735,6 @@ public final class InventoryPage {
 
 		if (powers.isEmpty()) {
 			PvDraw.textCentered(g, font, "None unlocked", x + w / 2, y + h / 2, PvDraw.COLOR_MUTED);
-		} else {
-			PvDraw.text(g, font, "← Click bag", x, y + h - font.lineHeight, PvDraw.COLOR_MUTED);
 		}
 	}
 
@@ -1121,7 +1194,9 @@ public final class InventoryPage {
 		if (slot != null && !slot.isEmpty()) {
 			ItemStack stack = cachedStack(slot);
 			SkyBlockIconRenderer.draw(g, stack, slot.id(), sx + 1, sy + 1, 16);
-			boolean hideCount = this.pane == InventoryPane.SACKS && this.openSackIndex >= 0;
+			boolean hideCount = this.pane == InventoryPane.SACKS
+				&& this.openSackIndex != null
+				&& this.openSackIndex >= 0;
 			if (!hideCount && slot.count() > 1) {
 				String count = slot.count() <= 64
 					? String.valueOf(slot.count())

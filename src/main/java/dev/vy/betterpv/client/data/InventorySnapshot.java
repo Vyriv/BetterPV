@@ -68,12 +68,15 @@ public final class InventorySnapshot {
 	/** Magical power / power stone / tuning for the Accessory Bag pane. */
 	public record AccessoryInfo(
 		int magicalPower,
+		int highestMagicalPower,
 		String selectedPower,
 		List<TuningTemplate> tunings,
 		int bagUpgrades,
 		List<String> unlockedPowers
 	) {
 		public AccessoryInfo {
+			magicalPower = Math.max(0, magicalPower);
+			highestMagicalPower = Math.max(0, highestMagicalPower);
 			selectedPower = selectedPower == null ? "" : selectedPower;
 			tunings = tunings == null ? List.of() : List.copyOf(tunings);
 			bagUpgrades = Math.max(0, bagUpgrades);
@@ -81,7 +84,7 @@ public final class InventorySnapshot {
 		}
 
 		public static AccessoryInfo empty() {
-			return new AccessoryInfo(0, "", List.of(), 0, List.of());
+			return new AccessoryInfo(0, 0, "", List.of(), 0, List.of());
 		}
 	}
 

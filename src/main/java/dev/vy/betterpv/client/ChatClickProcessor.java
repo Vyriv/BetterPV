@@ -11,14 +11,18 @@ import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 
 /**
- * Rewrites Hypixel chat name clicks/hovers to open BetterPV, and makes
- * party/guild/officer/PM/all-chat sender names clickable when needed.
- * Live party-join BPV lines are handled by {@link PartyJoinPvNotifier}.
+ * Makes party/friends-list/sender names clickable for {@code /pv} when Hypixel
+ * did not already attach a profile click.
+ *
+ * <p>Does not flatten/rebuild ordinary Hypixel chat. Remapping existing
+ * SocialOptions clicks used to rebuild every message and bleach colors. Those
+ * clicks are handled in {@link ProfileViewerOpener} instead.
  */
 public final class ChatClickProcessor {
 	private static final Pattern PLAYER_NAME_PATTERN = Pattern.compile("[A-Za-z0-9_]{3,16}");
+	/** Hypixel often uses a curly apostrophe in "name's profile". */
 	private static final Pattern VIEW_PROFILE_HOVER = Pattern.compile(
-		"(?i)Click here to view ([A-Za-z0-9_]{1,16})'s profile"
+		"(?i)Click(?: here)? to view ([A-Za-z0-9_]{1,16})['\u2019\u02BC]?s profile"
 	);
 	/** {@code [MVP+] Name joined the party.} */
 	private static final Pattern PARTY_JOIN = Pattern.compile(
@@ -26,7 +30,7 @@ public final class ChatClickProcessor {
 	);
 	/** {@code You have joined [MVP+] Name's party!} */
 	private static final Pattern YOU_JOINED_PARTY = Pattern.compile(
-		"(?i)^You have joined\\s+(?:\\[[^\\]]+]\\s*)?([A-Za-z0-9_]{3,16})'s?\\s+party!?\\s*$"
+		"(?i)^You have joined\\s+(?:\\[[^\\]]+]\\s*)?([A-Za-z0-9_]{3,16})['\u2019\u02BC]?s?\\s+party!?\\s*$"
 	);
 	/**
 	 * Dungeon / Kuudra Party Finder:
@@ -35,6 +39,14 @@ public final class ChatClickProcessor {
 	 */
 	private static final Pattern PARTY_FINDER_JOIN = Pattern.compile(
 		"(?i)^Party Finder\\s*>\\s*(?:\\[[^\\]]+]\\s*)?([A-Za-z0-9_]{3,16})\\s+joined the (?:dungeon )?group!"
+	);
+	/**
+	 * Hypixel {@code /fl} lines:
+	 * {@code Name is in SkyBlock - Private Island}
+	 * {@code Name is offline}
+	 */
+	private static final Pattern FRIENDS_LIST_LINE = Pattern.compile(
+		"(?i)^(?:\\[[^\\]]+]\\s*)?([A-Za-z0-9_]{3,16})\\s+is\\s+(?:in\\b|offline\\b)"
 	);
 	/**
 	 * Username immediately before {@code : }, optionally followed by a guild rank
@@ -54,6 +66,16 @@ public final class ChatClickProcessor {
 
 		String plain = component.getString();
 		NameRange range = findClickableNameRange(plain);
+		if (range == null) {
+			return component;
+		}
+
+		// Hypixel chat already has profile clicks on the name. Leave the Component
+		// tree alone so colors/styles stay intact; ProfileViewerOpener handles the click.
+		if (rangeAlreadyHasPlayerClick(component, range)) {
+			return component;
+		}
+
 		MutableComponent result = Component.empty();
 		int[] index = {0};
 		boolean[] changed = {false};
@@ -66,9 +88,28 @@ public final class ChatClickProcessor {
 			return Optional.empty();
 		}, Style.EMPTY);
 
-		// Party-join BPV lines are scheduled from live receive events only.
-		// Chat Patches / More Chat History replay old joins through addMessage.
 		return changed[0] ? result : component;
+	}
+
+	private static boolean rangeAlreadyHasPlayerClick(Component component, NameRange range) {
+		int[] index = {0};
+		boolean[] found = {false};
+		component.visit((style, segment) -> {
+			if (found[0] || segment.isEmpty()) {
+				return Optional.empty();
+			}
+			int start = index[0];
+			int end = start + segment.length();
+			index[0] = end;
+			if (end <= range.start || start >= range.end) {
+				return Optional.empty();
+			}
+			if (usernameFromHypixelStyle(style) != null) {
+				found[0] = true;
+			}
+			return Optional.empty();
+		}, Style.EMPTY);
+		return found[0];
 	}
 
 	private static NameRange findClickableNameRange(String text) {
@@ -80,7 +121,19 @@ public final class ChatClickProcessor {
 		if (party != null) {
 			return party;
 		}
+		NameRange friends = friendsListRange(text, trimmed);
+		if (friends != null) {
+			return friends;
+		}
 		return findChatSenderRange(text);
+	}
+
+	private static NameRange friendsListRange(String full, String trimmed) {
+		Matcher m = FRIENDS_LIST_LINE.matcher(trimmed);
+		if (!m.find()) {
+			return null;
+		}
+		return rangeForGroup(full, trimmed, m, 1);
 	}
 
 	private static NameRange partyJoinRange(String full, String trimmed) {
@@ -177,13 +230,7 @@ public final class ChatClickProcessor {
 		NameRange range,
 		boolean[] changed
 	) {
-		String hypixelName = usernameFromHypixelStyle(style);
-		if (hypixelName != null) {
-			target.append(Component.literal(text).setStyle(pvStyle(style, hypixelName)));
-			changed[0] = true;
-			return;
-		}
-
+		// Never remap existing Hypixel profile styles here. Flattening them bleached chat colors.
 		int segmentEnd = segmentStart + text.length();
 		if (range == null || range.end <= segmentStart || range.start >= segmentEnd) {
 			target.append(Component.literal(text).setStyle(style));
@@ -205,10 +252,19 @@ public final class ChatClickProcessor {
 		}
 	}
 
-	private static String usernameFromHypixelStyle(Style style) {
+	static String usernameFromHypixelStyle(Style style) {
+		if (style == null) {
+			return null;
+		}
 		ClickEvent click = style.getClickEvent();
 		if (click instanceof ClickEvent.RunCommand run) {
 			String name = usernameFromCommand(run.command());
+			if (name != null) {
+				return name;
+			}
+		}
+		if (click instanceof ClickEvent.SuggestCommand suggest) {
+			String name = usernameFromCommand(suggest.command());
 			if (name != null) {
 				return name;
 			}
@@ -228,7 +284,7 @@ public final class ChatClickProcessor {
 		return null;
 	}
 
-	private static String usernameFromCommand(String command) {
+	static String usernameFromCommand(String command) {
 		if (command == null || command.isBlank()) {
 			return null;
 		}

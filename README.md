@@ -6,6 +6,11 @@ A better profile viewer for Hypixel SkyBlock.
 
 Use `/pv <player>` to open it.
 
+## Supported versions
+
+- Minecraft 26.1.2
+- Minecraft 26.2
+
 ## Features
 
 - 15 profile tabs covering pretty much every part of SkyBlock
@@ -20,16 +25,17 @@ Use `/pv <player>` to open it.
 - Search for players, inventories and bestiary entries
 - Senither + Lily weight
 - Networth with multiple calculation modes
+- Estimated item values on tooltips, with a clickable value breakdown
 - Skill, Slayer and Dungeon XP calculators
 - Custom item textures and proper SkyBlock item tooltips
 
-BetterPV also hooks into various places in Hypixel chat/UI so player names can open directly in `/pv`.
-
 ## Commands
 
-`/pv [player]`
+`/pv`
 
-`/betterpv pv [player]`
+`/pv <player>`
+
+`/pv <player> <page>`
 
 Running `/pv` without a name opens your own profile.
 

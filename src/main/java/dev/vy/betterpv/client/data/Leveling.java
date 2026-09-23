@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
+import dev.vy.betterpv.client.price.HypixelCollectionsCache;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -79,7 +80,7 @@ public final class Leveling {
 
 		/** Skill hover used by Mining HOTM bars, e.g. {@code HOTM 7 - 60k / 300k to Level 8}. */
 		public String skillHover(String name) {
-			int lvl = displayLevel();
+			int lvl = cappedLevel();
 			if (maxed) {
 				return name + " " + lvl + " - " + overflowHoverText();
 			}
@@ -91,7 +92,8 @@ public final class Leveling {
 		}
 
 		public List<PvTooltip.Line> skillHoverLines(String name) {
-			int lvl = displayLevel();
+			// Match Hypixel Skills menu: title is the soft cap, overflow is listed separately.
+			int lvl = cappedLevel();
 			String title = (name == null ? "?" : name) + " " + lvl;
 			List<PvTooltip.Line> lines = new ArrayList<>(6);
 			lines.add(PvTooltip.Line.of(title, PvDraw.COLOR_ACCENT));
@@ -115,11 +117,13 @@ public final class Leveling {
 					PvDraw.COLOR_MUTED
 				));
 				if (maxXpForLevel > 0F) {
-					int next = lvl + 1;
+					int next = maxLevel + 1;
 					long into = Math.round(xpIntoLevel);
 					long need = Math.round(maxXpForLevel);
+					double pct = need > 0L ? (into * 100.0) / need : 100.0;
 					lines.add(PvTooltip.Line.of(
-						FormatUtil.commas(into) + " / " + FormatUtil.commas(need) + " to Level " + next,
+						FormatUtil.commas(into) + " / " + FormatUtil.commas(need)
+							+ " (" + FormatUtil.oneDecimal(pct) + "%) to Level " + next,
 						PvDraw.COLOR_GOLD
 					));
 				}
@@ -141,7 +145,7 @@ public final class Leveling {
 			if (maxXpForLevel > 0F) {
 				text += " · " + FormatUtil.commas(Math.round(xpIntoLevel))
 					+ " / " + FormatUtil.commas(Math.round(maxXpForLevel))
-					+ " to " + (displayLevel() + 1);
+					+ " to " + (maxLevel + 1);
 			}
 			return text;
 		}
@@ -350,8 +354,23 @@ public final class Leveling {
 		boolean maxed = level >= levelCap || xp + 0.5D >= xpToCap;
 		float overflowLevel = (float) (level + (xpForNext > 0D ? remaining / xpForNext : 0D));
 		float cappedLevel = maxed ? levelCap : overflowLevel;
-		float into = maxed ? (float) remaining : (float) remaining;
-		float step = (float) xpForNext;
+		float into;
+		float step;
+		if (maxed) {
+			// Hypixel Skills menu: progress toward (cap+1) can exceed 100% while soft-capped.
+			if (levelCap < table.size()) {
+				step = (float) table.get(levelCap).getAsDouble();
+			} else {
+				step = overflowStepXp(table, levelCap, false);
+			}
+			if (step <= 0F) {
+				step = (float) xpForNext;
+			}
+			into = overflowXp;
+		} else {
+			into = (float) remaining;
+			step = (float) xpForNext;
+		}
 		if (maxed && step <= 0F) {
 			step = overflowStepXp(table, levelCap, false);
 			into = step;
@@ -562,10 +581,19 @@ public final class Leveling {
 	}
 
 	/**
-	 * Extra Foraging levels from {@code player_data.experience.SKILL_FORAGING_extra_level_cap}.
-	 * Absent or malformed values are treated as {@code 0}. Does not affect other skills.
+	 * Extra Foraging levels past the base soft cap (50 → up to 57).
+	 *
+	 * <p>Uses {@code SKILL_FORAGING_extra_level_cap} when present, and also recomputes from
+	 * Fig/Mangrove/Helix IX collections + Heart of the Forest (same approach as Skyblocker),
+	 * taking the higher of the two so a stale API field cannot under-report the in-game cap.
 	 */
 	public static int foragingExtraLevelCap(JsonObject member) {
+		int fromApi = foragingExtraLevelCapFromApi(member);
+		int fromProgress = foragingExtraLevelCapFromProgress(member);
+		return Math.min(7, Math.max(fromApi, fromProgress));
+	}
+
+	private static int foragingExtraLevelCapFromApi(JsonObject member) {
 		JsonObject playerData = obj(member == null ? null : member.get("player_data"));
 		JsonObject experience = playerData == null ? null : obj(playerData.get("experience"));
 		if (experience == null) {
@@ -576,6 +604,131 @@ public final class Leveling {
 			return 0;
 		}
 		return Math.max(0, Math.round(extra));
+	}
+
+	/**
+	 * Skyblocker-style recompute: +1 per Fig/Mangrove/Helix collection IX, +2 Agatha
+	 * once any foraging-cap progress exists, +2 when HOTF level is at least 4 (Miria).
+	 */
+	private static int foragingExtraLevelCapFromProgress(JsonObject member) {
+		int collections = 0;
+		if (collectionTierAtLeast(member, "FIG_LOG", 9)) {
+			collections++;
+		}
+		if (collectionTierAtLeast(member, "MANGROVE_LOG", 9)) {
+			collections++;
+		}
+		if (collectionTierAtLeast(member, "HELIX_LOG", 9)) {
+			collections++;
+		}
+		int hotf = hotfLevel(member);
+		int api = foragingExtraLevelCapFromApi(member);
+		int extra = collections;
+		// Agatha shop pair. Skyblocker always adds these once foraging-cap progress exists.
+		if (collections > 0 || hotf > 0 || api > 0) {
+			extra += 2;
+		}
+		if (hotf >= 4) {
+			extra += 2;
+		}
+		return extra;
+	}
+
+	private static boolean collectionTierAtLeast(JsonObject member, String collectionId, int minTier) {
+		if (member == null || collectionId == null || collectionId.isBlank() || minTier <= 0) {
+			return false;
+		}
+		int best = unlockedCollectionTier(member, collectionId);
+		if (best >= minTier) {
+			return true;
+		}
+		// Fallback: derive tier from collection amounts when unlocked_coll_tiers is incomplete.
+		JsonObject collection = obj(member.get("collection"));
+		if (collection == null) {
+			return false;
+		}
+		Double amount = numDouble(collection.get(collectionId));
+		if (amount == null) {
+			amount = numDouble(collection.get(collectionId.toUpperCase(Locale.ROOT)));
+		}
+		if (amount == null || amount <= 0D) {
+			return false;
+		}
+		for (HypixelCollectionsCache.Category category : HypixelCollectionsCache.categories()) {
+			for (HypixelCollectionsCache.Item item : category.items()) {
+				if (item == null || item.id() == null) {
+					continue;
+				}
+				if (!item.id().equalsIgnoreCase(collectionId)) {
+					continue;
+				}
+				return item.tierFor(Math.round(amount)) >= minTier;
+			}
+		}
+		return false;
+	}
+
+	private static int unlockedCollectionTier(JsonObject member, String collectionId) {
+		JsonObject playerData = obj(member.get("player_data"));
+		JsonArray array = null;
+		if (playerData != null && playerData.get("unlocked_coll_tiers") != null
+			&& playerData.get("unlocked_coll_tiers").isJsonArray()) {
+			array = playerData.getAsJsonArray("unlocked_coll_tiers");
+		} else if (member.get("unlocked_coll_tiers") != null && member.get("unlocked_coll_tiers").isJsonArray()) {
+			array = member.getAsJsonArray("unlocked_coll_tiers");
+		}
+		if (array == null) {
+			return 0;
+		}
+		String prefix = collectionId.trim().toUpperCase(Locale.ROOT) + "_";
+		int best = 0;
+		for (JsonElement el : array) {
+			if (el == null || !el.isJsonPrimitive()) {
+				continue;
+			}
+			String key;
+			try {
+				key = el.getAsString();
+			} catch (RuntimeException exception) {
+				if (!SoftDataFailure.isSoft(exception)) {
+					throw exception;
+				}
+				continue;
+			}
+			if (key == null) {
+				continue;
+			}
+			String upper = key.trim().toUpperCase(Locale.ROOT);
+			if (!upper.startsWith(prefix)) {
+				continue;
+			}
+			String tierPart = upper.substring(prefix.length());
+			try {
+				best = Math.max(best, Integer.parseInt(tierPart));
+			} catch (NumberFormatException ignored) {
+				// ignore malformed tier suffixes
+			}
+		}
+		return best;
+	}
+
+	private static int hotfLevel(JsonObject member) {
+		JsonObject skillTree = obj(member == null ? null : member.get("skill_tree"));
+		JsonObject experience = skillTree == null ? null : obj(skillTree.get("experience"));
+		Double xp = experience == null ? null : numDouble(experience.get("foraging"));
+		if (xp == null || xp <= 0D) {
+			return 0;
+		}
+		JsonObject leveling = RepoData.leveling();
+		JsonArray table = leveling != null && leveling.has("HOTF") && leveling.get("HOTF").isJsonArray()
+			? leveling.getAsJsonArray("HOTF")
+			: null;
+		if (table == null || table.isEmpty()) {
+			return 0;
+		}
+		int cap = Math.max(1, RepoData.skillCap("HOTF"));
+		Progress progress = getLevel(table, xp, cap, false);
+		return (int) Math.floor(progress.level());
 	}
 
 	public static JsonArray skillTable(String skill) {
@@ -609,6 +762,18 @@ public final class Leveling {
 			}
 			return null;
 		}
+	}
+
+	/**
+	 * Large counts (collections, crop milestones, etc.). Uses {@link Math#round(double)} so values
+	 * above {@link Integer#MAX_VALUE} are not clipped the way {@link Math#round(float)} is.
+	 */
+	public static long longAmount(JsonElement element) {
+		Double value = numDouble(element);
+		if (value == null || value.isNaN() || value.isInfinite()) {
+			return 0L;
+		}
+		return Math.max(0L, Math.round(value));
 	}
 
 	public static JsonObject obj(JsonElement element) {

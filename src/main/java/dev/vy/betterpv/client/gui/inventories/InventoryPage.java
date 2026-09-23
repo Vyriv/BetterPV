@@ -443,7 +443,7 @@ public final class InventoryPage {
 		String title = slot.displayName() != null && !slot.displayName().isBlank()
 			? slot.displayName().replaceAll("§.", "").trim()
 			: SkyBlockItemFactory.plainDisplayName(slot.id());
-		this.valueOverlay.open(title, stack, breakdown);
+		this.valueOverlay.open(title, stack, slot.id(), breakdown);
 	}
 
 	public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {

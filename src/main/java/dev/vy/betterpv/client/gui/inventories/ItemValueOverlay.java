@@ -37,6 +37,7 @@ public final class ItemValueOverlay {
 	private ItemWorth.Breakdown breakdown;
 	private String title = "Item value";
 	private ItemStack icon = ItemStack.EMPTY;
+	private String skyblockId = "";
 	private int panelX;
 	private int panelY;
 	private int panelW;
@@ -51,8 +52,13 @@ public final class ItemValueOverlay {
 	}
 
 	public void open(String title, ItemStack icon, ItemWorth.Breakdown breakdown) {
+		open(title, icon, null, breakdown);
+	}
+
+	public void open(String title, ItemStack icon, String skyblockId, ItemWorth.Breakdown breakdown) {
 		this.title = title == null || title.isBlank() ? "Item value" : title;
 		this.icon = icon == null ? ItemStack.EMPTY : icon;
+		this.skyblockId = skyblockId == null ? "" : skyblockId;
 		this.breakdown = breakdown == null ? ItemWorth.Breakdown.empty() : breakdown;
 		this.open = true;
 		this.scroll = 0;
@@ -62,6 +68,7 @@ public final class ItemValueOverlay {
 		this.open = false;
 		this.breakdown = null;
 		this.icon = ItemStack.EMPTY;
+		this.skyblockId = "";
 		this.scroll = 0;
 		this.maxScroll = 0;
 	}
@@ -106,8 +113,9 @@ public final class ItemValueOverlay {
 		PvDraw.panel(g, this.panelX, this.panelY, this.panelW, this.panelH);
 
 		int titleX = this.panelX + PAD;
-		if (!this.icon.isEmpty()) {
-			SkyBlockIconRenderer.draw(g, this.icon, null, titleX, this.panelY + PAD, 16);
+		if (!this.icon.isEmpty() || (this.skyblockId != null && !this.skyblockId.isBlank())) {
+			// Pass skyblock id so Hypixel models / official PNGs match the inventory slot.
+			SkyBlockIconRenderer.draw(g, this.icon, this.skyblockId, titleX, this.panelY + PAD, 16);
 			titleX += 20;
 		}
 		PvDraw.textBold(g, font, trim(font, this.title, this.panelW - PAD * 2 - CLOSE_SIZE - 24),

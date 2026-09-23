@@ -52,6 +52,25 @@ public final class NbtAttrs {
 		}
 	}
 
+	public static long longValue(CompoundTag tag, String key, long fallback) {
+		if (tag == null || !tag.contains(key)) {
+			return fallback;
+		}
+		try {
+			return tag.getLongOr(key, fallback);
+		} catch (Throwable ignored) {
+			Tag value = tag.get(key);
+			if (value instanceof NumericTag numeric) {
+				return numeric.longValue();
+			}
+			try {
+				return Long.parseLong(string(tag, key));
+			} catch (Exception ignored2) {
+				return fallback;
+			}
+		}
+	}
+
 	public static double doubleValue(CompoundTag tag, String key, double fallback) {
 		if (tag == null || !tag.contains(key)) {
 			return fallback;
@@ -79,6 +98,10 @@ public final class NbtAttrs {
 		return value instanceof CompoundTag c ? c : null;
 	}
 
+	/**
+	 * Reads a compound of numeric entries. Keys are kept lowercase so callers can look up
+	 * Hypixel ids like {@code ultimate_chimera} / {@code rend} reliably.
+	 */
 	public static Map<String, Integer> intMap(CompoundTag tag, String key) {
 		Map<String, Integer> out = new LinkedHashMap<>();
 		CompoundTag map = compound(tag, key);
@@ -86,7 +109,10 @@ public final class NbtAttrs {
 			return out;
 		}
 		for (String entryKey : map.keySet()) {
-			out.put(entryKey.toUpperCase(Locale.ROOT), intValue(map, entryKey, 0));
+			if (entryKey == null) {
+				continue;
+			}
+			out.put(entryKey.toLowerCase(Locale.ROOT), intValue(map, entryKey, 0));
 		}
 		return out;
 	}

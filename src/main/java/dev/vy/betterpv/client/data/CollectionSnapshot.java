@@ -350,15 +350,15 @@ public final class CollectionSnapshot {
 			return out;
 		}
 		for (var entry : collection.entrySet()) {
-			Float value = Leveling.num(entry.getValue());
-			if (value == null || value <= 0F) {
+			long amount = Leveling.longAmount(entry.getValue());
+			if (amount <= 0L) {
 				continue;
 			}
 			String key = entry.getKey();
 			if (key == null || key.isBlank()) {
 				continue;
 			}
-			putAmount(out, key, Math.round((double) value));
+			putAmount(out, key, amount);
 		}
 		synthesizeComposites(out);
 		return out;

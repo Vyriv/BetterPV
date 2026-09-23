@@ -518,9 +518,9 @@ public final class GardenSnapshot {
 		Map<String, Long> amounts = new LinkedHashMap<>();
 		if (resources != null) {
 			for (Map.Entry<String, JsonElement> e : resources.entrySet()) {
-				Float n = Leveling.num(e.getValue());
-				if (n != null) {
-					amounts.put(e.getKey(), Math.max(0L, Math.round(n)));
+				long amount = Leveling.longAmount(e.getValue());
+				if (amount > 0L) {
+					amounts.put(e.getKey(), amount);
 				}
 			}
 		}
@@ -599,16 +599,14 @@ public final class GardenSnapshot {
 		if (visits != null) {
 			for (Map.Entry<String, JsonElement> e : visits.entrySet()) {
 				String id = e.getKey().toLowerCase(Locale.ROOT);
-				Float n = Leveling.num(e.getValue());
-				long v = n == null ? 0L : Math.round(n);
+				long v = Leveling.longAmount(e.getValue());
 				stats.computeIfAbsent(id, k -> new long[] {0L, 0L})[0] = v;
 			}
 		}
 		if (completed != null) {
 			for (Map.Entry<String, JsonElement> e : completed.entrySet()) {
 				String id = e.getKey().toLowerCase(Locale.ROOT);
-				Float n = Leveling.num(e.getValue());
-				long c = n == null ? 0L : Math.round(n);
+				long c = Leveling.longAmount(e.getValue());
 				stats.computeIfAbsent(id, k -> new long[] {0L, 0L})[1] = c;
 			}
 		}
@@ -804,11 +802,11 @@ public final class GardenSnapshot {
 		}
 		List<PersonalBest> out = new ArrayList<>();
 		for (Map.Entry<String, JsonElement> e : pbs.entrySet()) {
-			Float n = Leveling.num(e.getValue());
-			if (n == null) {
+			long amount = Leveling.longAmount(e.getValue());
+			if (amount <= 0L) {
 				continue;
 			}
-			out.add(new PersonalBest(e.getKey(), GardenData.prettyCrop(e.getKey()), Math.round(n)));
+			out.add(new PersonalBest(e.getKey(), GardenData.prettyCrop(e.getKey()), amount));
 		}
 		out.sort(Comparator.comparingLong(PersonalBest::amount).reversed());
 		return out;
@@ -1046,8 +1044,7 @@ public final class GardenSnapshot {
 		if (obj == null || !obj.has(key)) {
 			return 0L;
 		}
-		Float n = Leveling.num(obj.get(key));
-		return n == null ? 0L : Math.round(n);
+		return Leveling.longAmount(obj.get(key));
 	}
 
 	private static double doubleOf(JsonObject obj, String key) {

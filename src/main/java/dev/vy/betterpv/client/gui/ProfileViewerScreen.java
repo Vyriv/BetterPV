@@ -81,6 +81,8 @@ public final class ProfileViewerScreen extends Screen {
 	private MuseumSort museumSort = MuseumSort.ALL;
 	private boolean fetchStarted;
 	private boolean dataReady;
+	/** Set when fetch fails (e.g. unknown IGN). Shown instead of infinite loading. */
+	private String loadError;
 	/** Bumps on each fetch/switch so stale async results cannot overwrite newer state. */
 	private int loadGeneration;
 	private final Consumer<ProfileFetcher.LoadedProfile> networthListener = this::onDeferredNetworth;
@@ -205,10 +207,10 @@ public final class ProfileViewerScreen extends Screen {
 				if (!displayed.ok()) {
 					BetterPV.LOGGER.warn("Profile fetch failed for {}: {}", this.requestedName, displayed.error());
 					BetterPvSessionAuth.notifyPlayerIfNeeded();
-					// Stay on the loading face (easter egg) instead of an empty template.
-					// Intentionally do NOT set dataReady — Loading... + eventual kick remain.
+					this.loadError = friendlyLoadError(displayed.error());
 					return;
 				}
+				this.loadError = null;
 				applyLoadedProfile(displayed);
 				this.dataReady = true;
 			});
@@ -454,7 +456,32 @@ public final class ProfileViewerScreen extends Screen {
 		return this.dataReady && openScale() >= 0.98F;
 	}
 
+	private static String friendlyLoadError(String raw) {
+		if (raw == null || raw.isBlank()) {
+			return "Player not found";
+		}
+		String lower = raw.toLowerCase(java.util.Locale.ROOT);
+		if (lower.contains("not found") || lower.contains("unknown") || lower.contains("no player")) {
+			return "Player not found";
+		}
+		return raw;
+	}
+
 	private void drawLoadingFace(GuiGraphicsExtractor g, int panelX, int panelY, int panelW, int panelH) {
+		if (this.loadError != null && !this.loadError.isBlank()) {
+			int cx = panelX + panelW / 2;
+			int cy = panelY + panelH / 2 - this.font.lineHeight;
+			PvDraw.textCentered(g, this.font, this.loadError, cx, cy, 0xFFFF5555);
+			PvDraw.textCentered(
+				g,
+				this.font,
+				"Press Esc to close",
+				cx,
+				cy + this.font.lineHeight + 6,
+				PvDraw.COLOR_MUTED
+			);
+			return;
+		}
 		long elapsedMs = System.currentTimeMillis() - this.openAnimStartMs;
 		List<LoadingEgg.Stage> stages = LoadingEgg.stagesUnlocked(elapsedMs);
 		int cx = panelX + panelW / 2;

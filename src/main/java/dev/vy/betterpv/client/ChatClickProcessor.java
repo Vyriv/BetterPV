@@ -11,21 +11,24 @@ import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 
 /**
- * Makes party/friends-list/ranked-sender names clickable for {@code /pv} when Hypixel
- * did not already attach a profile click.
+ * Makes party/friends-list/ranked-sender names open {@code /pv}.
  *
- * <p>Does not remap existing SocialOptions styles (that bleached chat colors). Those
- * clicks are handled in {@link ProfileViewerOpener#tryHandleStyle} /
- * {@link ProfileViewerOpener#tryHandleChatCommand}.
+ * <p>Hypixel attaches SocialOptions clicks (and profile hover) on many names, but those
+ * only work in lobbies. For lines where we can parse the IGN from the text, replace the
+ * click with {@code /pv <name>} so it works in SkyBlock too. Skips only when the name
+ * already has our {@code /pv} click.
  *
- * <p>Wired via Fabric {@code MODIFY_GAME} only (Hypixel party / {@code /fl} / chat are
- * game messages). Not via {@code ChatComponent} rebuilds.
+ * <p>Wired via Fabric {@code MODIFY_GAME} (Hypixel party / {@code /fl} / chat are game
+ * messages).
  */
 public final class ChatClickProcessor {
 	private static final Pattern PLAYER_NAME_PATTERN = Pattern.compile("[A-Za-z0-9_]{3,16}");
+	private static final Pattern UUID_PATTERN = Pattern.compile(
+		"(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+	);
 	/** Hypixel often uses a curly apostrophe in "name's profile". */
 	private static final Pattern VIEW_PROFILE_HOVER = Pattern.compile(
-		"(?i)Click(?: here)? to view ([A-Za-z0-9_]{1,16})['\u2019\u02BC]?s profile"
+		"(?i)Click(?: here)? to view ([A-Za-z0-9_]{1,16})['\u2019\u02BC\u2018]?s profile"
 	);
 	/** {@code [MVP+] Name joined the party.} */
 	private static final Pattern PARTY_JOIN = Pattern.compile(
@@ -33,7 +36,7 @@ public final class ChatClickProcessor {
 	);
 	/** {@code You have joined [MVP+] Name's party!} */
 	private static final Pattern YOU_JOINED_PARTY = Pattern.compile(
-		"(?i)^You have joined\\s+(?:\\[[^\\]]+]\\s*)?([A-Za-z0-9_]{3,16})['\u2019\u02BC]?s?\\s+party!?\\s*$"
+		"(?i)^You have joined\\s+(?:\\[[^\\]]+]\\s*)?([A-Za-z0-9_]{3,16})['\u2019\u02BC\u2018]?s?\\s+party!?\\s*$"
 	);
 	/**
 	 * Dungeon / Kuudra Party Finder:
@@ -46,10 +49,10 @@ public final class ChatClickProcessor {
 	/**
 	 * Hypixel {@code /fl} lines:
 	 * {@code Name is in SkyBlock - Private Island}
-	 * {@code Name is offline}
+	 * {@code Name is offline} / {@code Name is currently offline}
 	 */
 	private static final Pattern FRIENDS_LIST_LINE = Pattern.compile(
-		"(?i)^(?:\\[[^\\]]+]\\s*)?([A-Za-z0-9_]{3,16})\\s+is\\s+(?:in\\b|offline\\b)"
+		"(?i)^(?:\\[[^\\]]+]\\s*)?([A-Za-z0-9_]{3,16})\\s+is\\s+(?:in\\b|(?:currently\\s+)?offline\\b)"
 	);
 	/**
 	 * Username immediately before {@code : }, optionally followed by a guild rank
@@ -73,9 +76,9 @@ public final class ChatClickProcessor {
 			return component;
 		}
 
-		// Hypixel chat already has profile clicks on the name. Leave the Component
-		// tree alone so colors/styles stay intact; ProfileViewerOpener handles the click.
-		if (rangeAlreadyHasPlayerClick(component, range)) {
+		// Hypixel SocialOptions is lobby-only ("You can only use the Social Menu in lobbies!").
+		// Always swap to /pv when we know the IGN from the line text. Skip only if already ours.
+		if (rangeAlreadyHasPvClick(component, range)) {
 			return component;
 		}
 
@@ -94,7 +97,7 @@ public final class ChatClickProcessor {
 		return changed[0] ? result : component;
 	}
 
-	private static boolean rangeAlreadyHasPlayerClick(Component component, NameRange range) {
+	private static boolean rangeAlreadyHasPvClick(Component component, NameRange range) {
 		int[] index = {0};
 		boolean[] found = {false};
 		component.visit((style, segment) -> {
@@ -107,8 +110,19 @@ public final class ChatClickProcessor {
 			if (end <= range.start || start >= range.end) {
 				return Optional.empty();
 			}
-			if (usernameFromHypixelStyle(style) != null) {
-				found[0] = true;
+			ClickEvent click = style.getClickEvent();
+			if (click instanceof ClickEvent.RunCommand run) {
+				String cmd = run.command();
+				if (cmd != null) {
+					String t = cmd.trim();
+					if (t.startsWith("/")) {
+						t = t.substring(1);
+					}
+					String lower = t.toLowerCase(Locale.ROOT);
+					if (lower.equals("pv") || lower.startsWith("pv ") || lower.startsWith("betterpv pv")) {
+						found[0] = true;
+					}
+				}
 			}
 			return Optional.empty();
 		}, Style.EMPTY);
@@ -326,22 +340,28 @@ public final class ChatClickProcessor {
 		}
 		String lower = trimmed.toLowerCase(Locale.ROOT);
 		String rest;
-		if (lower.startsWith("socialoptions ")) {
-			rest = trimmed.substring("socialoptions ".length()).trim();
-		} else if (lower.startsWith("viewprofile ")) {
-			rest = trimmed.substring("viewprofile ".length()).trim();
+		if (lower.startsWith("socialoptions")) {
+			rest = trimmed.substring("socialoptions".length()).trim();
+		} else if (lower.startsWith("viewprofile")) {
+			rest = trimmed.substring("viewprofile".length()).trim();
 		} else if (lower.startsWith("view ")) {
-			// Older / alternate Hypixel profile suggests.
 			rest = trimmed.substring("view ".length()).trim();
 		} else {
 			return null;
 		}
-		int space = rest.indexOf(' ');
-		if (space > 0) {
-			rest = rest.substring(0, space);
+		if (rest.isEmpty()) {
+			return null;
 		}
-		// Some payloads are UUID-only; ignore those (hover text still works).
-		return PLAYER_NAME_PATTERN.matcher(rest).matches() ? rest : null;
+		// Prefer the first non-UUID token (Hypixel sometimes sends uuid, or uuid + name).
+		for (String token : rest.split("\\s+")) {
+			if (token.isEmpty() || UUID_PATTERN.matcher(token).matches()) {
+				continue;
+			}
+			if (PLAYER_NAME_PATTERN.matcher(token).matches()) {
+				return token;
+			}
+		}
+		return null;
 	}
 
 	private static Style pvStyle(Style style, String name) {

@@ -414,34 +414,43 @@ public final class CrimsonKuudraCard {
 			String id = baseId(stack);
 			if (!id.contains("TERMINATOR")) continue;
 			String mod = NbtAttrs.string(stack.extraAttributes(), "modifier");
-			Map<String, Integer> ench = NbtAttrs.intMap(stack.extraAttributes(), "enchantments");
 			boolean hasSpiritual = mod != null && mod.equalsIgnoreCase("spiritual");
 			boolean hasHasty = mod != null && mod.equalsIgnoreCase("hasty");
-			boolean hasRend = ench.getOrDefault("rend", 0) > 0 || ench.getOrDefault("ultimate_rend", 0) > 0;
 			if (spiritual) {
 				if (hasSpiritual) {
 					best = prefer(best, stack);
 				}
-			} else if (hasHasty || hasRend) {
+			} else if (hasHasty) {
 				best = prefer(best, stack);
 			}
 		}
-		String label = spiritual ? "Spiritual Duplex Terminator" : "Hasty Rend Terminator";
 		if (best == null) {
-			return missingItem(label, "TERMINATOR");
+			return missingItem(spiritual ? "Spiritual Duplex Terminator" : "Hasty Terminator", "TERMINATOR");
 		}
 		Map<String, Integer> ench = NbtAttrs.intMap(best.extraAttributes(), "enchantments");
 		List<String> details = new ArrayList<>();
 		String mod = NbtAttrs.string(best.extraAttributes(), "modifier");
 		if (mod != null) details.add(prettyId(mod));
-		int cubism = ench.getOrDefault("cubism", 0);
-		int power = ench.getOrDefault("power", 0);
-		int rend = Math.max(ench.getOrDefault("rend", 0), ench.getOrDefault("ultimate_rend", 0));
-		int duplex = Math.max(ench.getOrDefault("ultimate_duplex", 0), ench.getOrDefault("duplex", 0));
+		int cubism = enchLevel(ench, "cubism");
+		int power = enchLevel(ench, "power");
+		int rend = enchLevel(ench, "rend", "ultimate_rend");
+		int duplex = enchLevel(ench, "ultimate_duplex", "duplex");
+		int fatalTempo = enchLevel(ench, "ultimate_fatal_tempo", "fatal_tempo");
 		if (cubism > 0) details.add("Cubism " + cubism);
 		if (power > 0) details.add("Power " + power);
-		if (rend > 0) details.add("Rend " + rend);
+		if (fatalTempo > 0) details.add("Fatal Tempo " + fatalTempo);
+		else if (rend > 0) details.add("Rend " + rend);
 		if (duplex > 0) details.add("Duplex " + duplex);
+		String label;
+		if (spiritual) {
+			label = "Spiritual Duplex Terminator";
+		} else if (fatalTempo > 0) {
+			label = "Hasty Fatal Tempo Terminator";
+		} else if (rend > 0) {
+			label = "Hasty Rend Terminator";
+		} else {
+			label = "Hasty Terminator";
+		}
 		boolean ownedOk = spiritual
 			? (mod != null && mod.equalsIgnoreCase("spiritual"))
 			: true;
@@ -461,13 +470,27 @@ public final class CrimsonKuudraCard {
 		}
 		Map<String, Integer> ench = NbtAttrs.intMap(best.extraAttributes(), "enchantments");
 		int s = stars(best);
-		int chimera = ench.getOrDefault("ultimate_chimera", 0);
-		if (chimera <= 0) {
-			chimera = ench.getOrDefault("chimera", 0);
-		}
+		int chimera = enchLevel(ench, "ultimate_chimera", "chimera");
 		// Line: [Ragnarock] [N★] [Chim x]
 		String label = "[Ragnarock] [" + s + "★] [Chim " + chimera + "]";
 		return ownedItem(label, baseId(best), List.of(), best);
+	}
+
+	private static int enchLevel(Map<String, Integer> ench, String... keys) {
+		if (ench == null || ench.isEmpty() || keys == null) {
+			return 0;
+		}
+		int best = 0;
+		for (String key : keys) {
+			if (key == null || key.isBlank()) {
+				continue;
+			}
+			Integer value = ench.get(key.toLowerCase(Locale.ROOT));
+			if (value != null) {
+				best = Math.max(best, value);
+			}
+		}
+		return best;
 	}
 
 	private static ImportantItem sosFlare(List<InventoryDecoder.Stack> all) {

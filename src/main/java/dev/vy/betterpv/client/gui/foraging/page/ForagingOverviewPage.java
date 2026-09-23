@@ -346,7 +346,7 @@ public final class ForagingOverviewPage {
 		} else {
 			for (ForagingSnapshot.WhisperPool pool : pools) {
 				int poolColor = whisperPoolColor(pool.id());
-				ry = ForagingUi.statLine(g, font, pool.label(), FormatUtil.commas(pool.earned()),
+				ry = ForagingUi.statLine(g, font, pool.label(), FormatUtil.commas(pool.balance()),
 					rx, ry, rw, poolColor) + 1;
 			}
 		}

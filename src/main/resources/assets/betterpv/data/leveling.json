@@ -75,7 +75,8 @@
     "catacombs": 50,
     "HOTM": 10,
     "social": 25,
-    "hunting": 50
+    "hunting": 50,
+    "HOTF": 8
   },
   "runecrafting_xp": [
     50,
@@ -197,7 +198,7 @@
     "Tarantula Broodfather": "spider",
     "Sven Packmaster": "wolf",
     "Voidgloom Seraph": "enderman",
-    "Inferno Demonlord":"blaze",
+    "Inferno Demonlord": "blaze",
     "Riftstalker Bloodfiend": "vampire"
   },
   "slayer_to_highest_tier": {
@@ -209,15 +210,15 @@
     "vampire": 5
   },
   "slayer_tier_colors": [
-    "§a",
-    "§e",
-    "§c",
-    "§4",
-    "§5"
+    "\u00a7a",
+    "\u00a7e",
+    "\u00a7c",
+    "\u00a74",
+    "\u00a75"
   ],
   "rng_meter_dungeon_score": {
-    "§b§lS+": 300,
-    "§6§lS": 189
+    "\u00a7b\u00a7lS+": 300,
+    "\u00a76\u00a7lS": 189
   },
   "catacombs": [
     50,
@@ -458,5 +459,15 @@
       "BOSS": 3200,
       "MOB": 3000000
     }
-  }
+  },
+  "HOTF": [
+    0,
+    3000,
+    9000,
+    25000,
+    60000,
+    100000,
+    150000,
+    200000
+  ]
 }

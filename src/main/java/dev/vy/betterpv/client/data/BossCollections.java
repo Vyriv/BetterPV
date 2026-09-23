@@ -102,7 +102,6 @@ public final class BossCollections {
 		if (obj == null || key == null || !obj.has(key)) {
 			return 0L;
 		}
-		Float value = Leveling.num(obj.get(key));
-		return value == null ? 0L : Math.max(0L, Math.round(value.doubleValue()));
+		return Leveling.longAmount(obj.get(key));
 	}
 }

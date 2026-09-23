@@ -52,12 +52,59 @@ final class ItemTooltipEnricher {
 		if (lore != null) {
 			lines.addAll(lore.lines());
 		}
-		// Re-apply so tooltip rendering always gets live obfuscated markers.
+		// Re-apply each frame so §k markers and max-enchant rainbow stay live.
 		applyRecombobulatorMarkers(lines, slot);
+		recolorizeEnchantLines(lines);
 		if (includeEstimatedValue) {
 			appendEstimatedValueHint(lines, slot);
 		}
+		appendCreatedDate(lines, slot);
 		return lines;
+	}
+
+	/** Rebuild T7 rainbow enchants from current time (cached lore bakes a static rainbow). */
+	static void recolorizeEnchantLines(List<Component> lines) {
+		if (lines == null || lines.isEmpty()) {
+			return;
+		}
+		for (int i = 0; i < lines.size(); i++) {
+			Component line = lines.get(i);
+			if (line == null) {
+				continue;
+			}
+			Component colored = EnchantTooltip.colorize(line);
+			if (colored != line) {
+				lines.set(i, colored);
+			}
+		}
+	}
+
+	/** Hypixel {@code timestamp} on extraAttributes (item craft / obtain time). */
+	static void appendCreatedDate(List<Component> lines, InventorySnapshot.Slot slot) {
+		if (slot == null || slot.isEmpty() || lines == null) {
+			return;
+		}
+		CompoundTag ea = slot.extraAttributes();
+		if (ea == null) {
+			return;
+		}
+		long ms = NbtAttrs.longValue(ea, "timestamp", 0L);
+		if (ms <= 0L) {
+			ms = NbtAttrs.longValue(ea, "TIMESTAMP", 0L);
+		}
+		if (ms <= 0L) {
+			return;
+		}
+		// Some payloads store seconds.
+		if (ms < 10_000_000_000L) {
+			ms *= 1000L;
+		}
+		String date = FormatUtil.prettyDate(ms);
+		if (date.isBlank()) {
+			return;
+		}
+		lines.add(Component.literal("Created " + date)
+			.withStyle(Style.EMPTY.withColor(ChatFormatting.DARK_GRAY).withItalic(false)));
 	}
 
 	/** Inserts estimated value + click hint under the rarity line when the item has a price. */

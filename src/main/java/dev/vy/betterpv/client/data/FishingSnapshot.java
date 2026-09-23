@@ -240,8 +240,7 @@ public final class FishingSnapshot {
 		if (obj == null) {
 			return 0L;
 		}
-		Float n = Leveling.num(obj.get(key));
-		return n == null ? 0L : Math.round(n.doubleValue());
+		return Leveling.longAmount(obj.get(key));
 	}
 
 	private static String str(JsonObject obj, String key) {

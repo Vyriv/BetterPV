@@ -85,19 +85,19 @@ public final class HotfPage {
 				int poolColor = whisperPoolColor(pool.id());
 				PvDraw.text(g, font, pool.label(), rx, ry, poolColor);
 				ry += font.lineHeight + 1;
-				int totalY = ry;
-				ry = ForagingUi.statLine(g, font, "Total", FormatUtil.commas(pool.earned()),
+				int balanceY = ry;
+				ry = ForagingUi.statLine(g, font, "Balance", FormatUtil.commas(pool.balance()),
 					rx, ry, rw, poolColor) + 2;
 				List<PvTooltip.Line> tip = new ArrayList<>();
 				tip.add(PvTooltip.Line.title(pool.label() + " whispers", poolColor));
 				tip.add(PvTooltip.Line.divider());
-				tip.add(PvTooltip.Line.row("Total", PvDraw.COLOR_MUTED,
-					FormatUtil.commas(pool.earned()), poolColor));
 				tip.add(PvTooltip.Line.row("Balance", PvDraw.COLOR_MUTED,
-					FormatUtil.commas(pool.balance()), PvDraw.COLOR_ACCENT));
+					FormatUtil.commas(pool.balance()), poolColor));
 				tip.add(PvTooltip.Line.row("Spent", PvDraw.COLOR_MUTED,
 					FormatUtil.commas(pool.spent()), PvDraw.COLOR_TEXT));
-				this.zones.add(HoverZone.of(rx, totalY - font.lineHeight - 1, rw, STAT_ROW + font.lineHeight + 1, tip));
+				tip.add(PvTooltip.Line.row("Lifetime earned", PvDraw.COLOR_MUTED,
+					FormatUtil.commas(pool.earned()), PvDraw.COLOR_MUTED));
+				this.zones.add(HoverZone.of(rx, balanceY - font.lineHeight - 1, rw, STAT_ROW + font.lineHeight + 1, tip));
 			}
 		}
 

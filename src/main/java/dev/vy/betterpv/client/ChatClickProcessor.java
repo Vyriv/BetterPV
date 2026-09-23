@@ -11,12 +11,15 @@ import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 
 /**
- * Makes party/friends-list/sender names clickable for {@code /pv} when Hypixel
+ * Makes party/friends-list/ranked-sender names clickable for {@code /pv} when Hypixel
  * did not already attach a profile click.
  *
- * <p>Does not flatten/rebuild ordinary Hypixel chat. Remapping existing
- * SocialOptions clicks used to rebuild every message and bleach colors. Those
- * clicks are handled in {@link ProfileViewerOpener} instead.
+ * <p>Does not remap existing SocialOptions styles (that bleached chat colors). Those
+ * clicks are handled in {@link ProfileViewerOpener#tryHandleStyle} /
+ * {@link ProfileViewerOpener#tryHandleChatCommand}.
+ *
+ * <p>Wired via Fabric {@code MODIFY_GAME} only (Hypixel party / {@code /fl} / chat are
+ * game messages). Not via {@code ChatComponent} rebuilds.
  */
 public final class ChatClickProcessor {
 	private static final Pattern PLAYER_NAME_PATTERN = Pattern.compile("[A-Za-z0-9_]{3,16}");
@@ -125,6 +128,8 @@ public final class ChatClickProcessor {
 		if (friends != null) {
 			return friends;
 		}
+		// Only inject on clear Hypixel channel/rank senders. Bare "FooClient: ..." false
+		// positives used to rebuild whole lines and bleach colors.
 		return findChatSenderRange(text);
 	}
 
@@ -182,6 +187,9 @@ public final class ChatClickProcessor {
 		if (isRosterOrSystemLabel(beforeColon)) {
 			return null;
 		}
+		if (!looksLikeHypixelChatSender(beforeColon)) {
+			return null;
+		}
 
 		Matcher matcher = SENDER_BEFORE_COLON.matcher(beforeColon);
 		if (!matcher.find()) {
@@ -191,9 +199,33 @@ public final class ChatClickProcessor {
 		if (!PLAYER_NAME_PATTERN.matcher(name).matches()) {
 			return null;
 		}
+		String lower = name.toLowerCase(Locale.ROOT);
+		if (lower.endsWith("client") || lower.endsWith("mod") || "npc".equals(lower)) {
+			return null;
+		}
 		int start = matcher.start(1);
 		int end = matcher.end(1);
 		return new NameRange(start, end, name);
+	}
+
+	/**
+	 * Require Hypixel channel / msg / rank markers so mod banners like
+	 * {@code OdinClient: ...} are never treated as player chat.
+	 */
+	private static boolean looksLikeHypixelChatSender(String beforeColon) {
+		String trimmed = beforeColon.trim();
+		if (trimmed.isEmpty()) {
+			return false;
+		}
+		String upper = trimmed.toUpperCase(Locale.ROOT);
+		if (upper.contains(" > ")) {
+			return true;
+		}
+		if (upper.startsWith("FROM ") || upper.startsWith("TO ")) {
+			return true;
+		}
+		// Ranked chat: [VIP] Name / [MVP+] Name
+		return trimmed.charAt(0) == '[' && trimmed.indexOf(']') > 1;
 	}
 
 	/**
@@ -298,6 +330,9 @@ public final class ChatClickProcessor {
 			rest = trimmed.substring("socialoptions ".length()).trim();
 		} else if (lower.startsWith("viewprofile ")) {
 			rest = trimmed.substring("viewprofile ".length()).trim();
+		} else if (lower.startsWith("view ")) {
+			// Older / alternate Hypixel profile suggests.
+			rest = trimmed.substring("view ".length()).trim();
 		} else {
 			return null;
 		}
@@ -305,6 +340,7 @@ public final class ChatClickProcessor {
 		if (space > 0) {
 			rest = rest.substring(0, space);
 		}
+		// Some payloads are UUID-only; ignore those (hover text still works).
 		return PLAYER_NAME_PATTERN.matcher(rest).matches() ? rest : null;
 	}
 

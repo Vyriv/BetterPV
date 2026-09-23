@@ -733,7 +733,7 @@ public final class RiftSnapshot {
 		}
 		try {
 			return obj.get(key).getAsBoolean();
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return false;
 		}
 	}
@@ -754,7 +754,7 @@ public final class RiftSnapshot {
 		}
 		try {
 			return element.getAsString();
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return "";
 		}
 	}

@@ -689,7 +689,7 @@ public final class MiningSnapshot {
 			String key;
 			try {
 				key = el.getAsString();
-			} catch (Exception ignored) {
+			} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 				continue;
 			}
 			if (!key.startsWith(prefix)) {
@@ -712,7 +712,7 @@ public final class MiningSnapshot {
 			if (item != null && item.isJsonPrimitive()) {
 				try {
 					out.add(item.getAsString());
-				} catch (Exception ignored) {
+				} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 				}
 			}
 		}
@@ -785,7 +785,7 @@ public final class MiningSnapshot {
 		}
 		try {
 			return el.getAsString();
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return "";
 		}
 	}
@@ -807,7 +807,7 @@ public final class MiningSnapshot {
 			}
 			String s = el.getAsString();
 			return "true".equalsIgnoreCase(s) || "1".equals(s) || "yes".equalsIgnoreCase(s);
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return false;
 		}
 	}

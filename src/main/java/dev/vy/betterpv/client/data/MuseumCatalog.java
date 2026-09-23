@@ -132,7 +132,7 @@ public final class MuseumCatalog {
 						if (entry.getValue() != null && entry.getValue().isJsonPrimitive()) {
 							xp = entry.getValue().getAsInt();
 						}
-					} catch (Exception ignored) {
+					} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 						xp = 0;
 					}
 					Mutable m = building.computeIfAbsent(key, k -> new Mutable(k, sort, true));
@@ -152,7 +152,7 @@ public final class MuseumCatalog {
 				if (museum.has("donation_xp") && museum.get("donation_xp").isJsonPrimitive()) {
 					xp = museum.get("donation_xp").getAsInt();
 				}
-			} catch (Exception ignored) {
+			} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 				xp = 0;
 			}
 			Mutable m = building.computeIfAbsent(itemId, k -> new Mutable(k, sort, false));
@@ -285,7 +285,7 @@ public final class MuseumCatalog {
 			String to;
 			try {
 				to = entry.getValue().getAsString();
-			} catch (Exception ignored) {
+			} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 				continue;
 			}
 			if (to == null || to.isBlank()) {
@@ -307,7 +307,7 @@ public final class MuseumCatalog {
 			String variant;
 			try {
 				variant = el.getAsString();
-			} catch (Exception ignored) {
+			} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 				continue;
 			}
 			if (variant == null || variant.isBlank()) {
@@ -484,7 +484,7 @@ public final class MuseumCatalog {
 		}
 		try {
 			return obj.get(key).getAsString();
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return "";
 		}
 	}

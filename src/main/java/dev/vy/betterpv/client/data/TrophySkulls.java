@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.vy.betterpv.BetterPV;
 import java.io.InputStream;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
@@ -60,7 +61,10 @@ public final class TrophySkulls {
 					VALUES.put(e.getKey().toUpperCase(Locale.ROOT), v);
 				}
 			}
-		} catch (Exception ex) {
+		} catch (IOException | RuntimeException ex) {
+			if (ex instanceof RuntimeException runtime && !SoftDataFailure.isSoft(runtime)) {
+				throw runtime;
+			}
 			BetterPV.LOGGER.warn("Failed to load trophy_skulls.json", ex);
 		}
 	}

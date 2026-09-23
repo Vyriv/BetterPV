@@ -577,10 +577,10 @@ public final class AuctionSnapshot {
 		}
 		try {
 			return obj.get(key).getAsInt();
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			try {
 				return (int) obj.get(key).getAsDouble();
-			} catch (Exception ignored2) {
+			} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored2) {
 				return 0;
 			}
 		}
@@ -763,7 +763,7 @@ public final class AuctionSnapshot {
 		}
 		try {
 			return obj.get(key).getAsString();
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return "";
 		}
 	}
@@ -774,10 +774,10 @@ public final class AuctionSnapshot {
 		}
 		try {
 			return obj.get(key).getAsLong();
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			try {
 				return (long) obj.get(key).getAsDouble();
-			} catch (Exception ignored2) {
+			} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored2) {
 				return 0L;
 			}
 		}

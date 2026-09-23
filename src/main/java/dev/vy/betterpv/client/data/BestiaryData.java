@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.vy.betterpv.BetterPV;
 import java.io.Reader;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -181,7 +182,10 @@ public final class BestiaryData {
 			categories = List.copyOf(cats);
 			familiesById = Map.copyOf(byId);
 			BetterPV.LOGGER.info("Loaded bestiary catalog ({} categories, {} families)", cats.size(), byId.size());
-		} catch (Exception exception) {
+		} catch (IOException | RuntimeException exception) {
+			if (exception instanceof RuntimeException runtime && !SoftDataFailure.isSoft(runtime)) {
+				throw runtime;
+			}
 			BetterPV.LOGGER.warn("Failed to load bestiary.json", exception);
 			categories = List.of();
 			brackets = Map.of();
@@ -301,7 +305,7 @@ public final class BestiaryData {
 				if (el != null && el.isJsonPrimitive()) {
 					try {
 						ladder.add(Math.max(0, el.getAsInt()));
-					} catch (Exception ignored) {
+					} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 					}
 				}
 			}
@@ -330,7 +334,7 @@ public final class BestiaryData {
 		}
 		try {
 			return obj.get(key).getAsString();
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return "";
 		}
 	}
@@ -341,7 +345,7 @@ public final class BestiaryData {
 		}
 		try {
 			return obj.get(key).getAsInt();
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return fallback;
 		}
 	}

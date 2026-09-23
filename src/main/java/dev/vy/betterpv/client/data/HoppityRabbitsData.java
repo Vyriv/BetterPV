@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.vy.betterpv.BetterPV;
 import java.io.Reader;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -107,7 +108,10 @@ public final class HoppityRabbitsData {
 			}
 			rarityById = Collections.unmodifiableMap(map);
 			BetterPV.LOGGER.info("Loaded {} chocolate rabbits from hoppity.json", rarityById.size());
-		} catch (Exception exception) {
+		} catch (IOException | RuntimeException exception) {
+			if (exception instanceof RuntimeException runtime && !SoftDataFailure.isSoft(runtime)) {
+				throw runtime;
+			}
 			BetterPV.LOGGER.warn("Failed loading hoppity.json", exception);
 			rarityById = Map.of();
 		}

@@ -674,7 +674,7 @@ public final class CrimsonSnapshot {
 		}
 		try {
 			return el.getAsString();
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return "";
 		}
 	}
@@ -685,7 +685,7 @@ public final class CrimsonSnapshot {
 		}
 		try {
 			return el.getAsDouble();
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return 0;
 		}
 	}
@@ -704,7 +704,7 @@ public final class CrimsonSnapshot {
 				}
 				String s = el.getAsString();
 				return "true".equalsIgnoreCase(s) || "1".equals(s);
-			} catch (Exception ignored) {
+			} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 				return false;
 			}
 		}

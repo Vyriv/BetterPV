@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.vy.betterpv.BetterPV;
 import java.io.InputStream;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -84,7 +85,10 @@ public final class GardenData {
 				}
 				visitorIds = List.copyOf(visitors);
 				visitorRarities = Map.copyOf(rarities);
-			} catch (Exception exception) {
+			} catch (IOException | RuntimeException exception) {
+				if (exception instanceof RuntimeException runtime && !SoftDataFailure.isSoft(runtime)) {
+					throw runtime;
+				}
 				BetterPV.LOGGER.warn("Failed to load garden.json", exception);
 				root = new JsonObject();
 			}
@@ -530,7 +534,7 @@ public final class GardenData {
 		for (int i = 0; i < array.size(); i++) {
 			try {
 				out[i] = array.get(i).getAsLong();
-			} catch (Exception ignored) {
+			} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 				out[i] = 0L;
 			}
 		}

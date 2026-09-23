@@ -368,7 +368,7 @@ public final class Leveling {
 		try {
 			return Math.abs(table.get(0).getAsDouble() - 50D) < 0.01D
 				&& Math.abs(table.get(HYPIXEL_OVERFLOW_START - 1).getAsDouble() - 7_000_000D) < 0.01D;
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return false;
 		}
 	}
@@ -603,7 +603,10 @@ public final class Leveling {
 		}
 		try {
 			return element.getAsDouble();
-		} catch (Exception exception) {
+		} catch (RuntimeException exception) {
+			if (!SoftDataFailure.isSoft(exception)) {
+				throw exception;
+			}
 			return null;
 		}
 	}

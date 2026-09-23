@@ -5,6 +5,8 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.vy.betterpv.BetterPV;
+import dev.vy.betterpv.client.data.SoftDataFailure;
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -100,8 +102,17 @@ public final class CoflnetApiClient {
 				return Optional.empty();
 			}
 			return Optional.of(JsonParser.parseString(response.body()));
-		} catch (Exception exception) {
+		} catch (IOException | InterruptedException exception) {
 			BetterPV.LOGGER.warn("Coflnet request failed: {}", url, exception);
+			if (exception instanceof InterruptedException) {
+				Thread.currentThread().interrupt();
+			}
+			return Optional.empty();
+		} catch (RuntimeException exception) {
+			if (!SoftDataFailure.isSoft(exception)) {
+				throw exception;
+			}
+			BetterPV.LOGGER.warn("Coflnet parse failed: {}", url, exception);
 			return Optional.empty();
 		}
 	}

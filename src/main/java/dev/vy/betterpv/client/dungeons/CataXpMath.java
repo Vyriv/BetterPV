@@ -11,16 +11,24 @@ public final class CataXpMath {
 	private CataXpMath() {
 	}
 
-	/** Soft cap before overflow levels (200M XP/step in the NEU table). */
+	/**
+	 * Soft / stat cap. Levels above this are cosmetic mastery levels (200M XP each in the
+	 * NEU table) and do not grant dungeon item stat bonuses.
+	 */
 	public static final int SOFT_CAP = 50;
 
-	/** Highest level the catacombs XP table supports (includes overflow steps). */
+	/** Highest level the catacombs XP table supports (includes mastery steps). */
 	public static int maxLevel() {
 		JsonArray table = RepoData.catacombsXp();
 		if (table == null || table.isEmpty()) {
 			return SOFT_CAP;
 		}
 		return table.size();
+	}
+
+	/** Catacombs / class progress using the full XP table (not soft-capped at 50). */
+	public static Leveling.Progress progress(float xp) {
+		return Leveling.getLevel(RepoData.catacombsXp(), xp, maxLevel(), false);
 	}
 
 	/**

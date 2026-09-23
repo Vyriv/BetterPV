@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.vy.betterpv.BetterPV;
 import java.io.Reader;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -138,7 +139,10 @@ public final class ForagingHotfData {
 			perks = List.copyOf(list);
 			maxX = mx;
 			maxY = my;
-		} catch (Exception ex) {
+		} catch (IOException | RuntimeException ex) {
+			if (ex instanceof RuntimeException runtime && !SoftDataFailure.isSoft(runtime)) {
+				throw runtime;
+			}
 			BetterPV.LOGGER.warn("Failed to load HOTF layout", ex);
 			perks = List.of();
 			byId = Map.of();
@@ -153,7 +157,7 @@ public final class ForagingHotfData {
 		}
 		try {
 			return o.get(key).getAsString();
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return "";
 		}
 	}

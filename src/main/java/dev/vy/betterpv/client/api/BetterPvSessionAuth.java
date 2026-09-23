@@ -52,18 +52,19 @@ public final class BetterPvSessionAuth {
 	private static volatile long expiresAtMillis;
 	private static CompletableFuture<Optional<String>> inFlight;
 	private static volatile Failure lastFailure = Failure.NONE;
+	private static volatile String lastFailureDetail = "";
 	private static volatile long lastChatNoticeAtMillis;
 	private static volatile String lastChatNotice;
 
 	public enum Failure {
 		NONE(""),
-		MISSING_SESSION("BetterPV could not authenticate /pv"),
-		OFFLINE_SESSION("BetterPV could not authenticate /pv"),
-		JOIN_SERVER_FAILED("BetterPV could not authenticate /pv"),
-		SERVER_AUTH_UNAVAILABLE("BetterPV could not authenticate /pv"),
-		AUTH_REJECTED("BetterPV could not authenticate /pv"),
-		AUTH_HTTP("BetterPV could not authenticate /pv"),
-		MISSING_JWT("BetterPV could not authenticate /pv");
+		MISSING_SESSION("BetterPV could not authenticate /pv (missing Minecraft session)"),
+		OFFLINE_SESSION("BetterPV could not authenticate /pv (offline / Fabric session)"),
+		JOIN_SERVER_FAILED("BetterPV could not authenticate /pv (Minecraft session rejected). Fully quit Minecraft, reopen Prism, and re-login to Microsoft if it keeps failing."),
+		SERVER_AUTH_UNAVAILABLE("BetterPV could not authenticate /pv (auth service unavailable)"),
+		AUTH_REJECTED("BetterPV could not authenticate /pv (session proof rejected)"),
+		AUTH_HTTP("BetterPV could not authenticate /pv (auth HTTP error)"),
+		MISSING_JWT("BetterPV could not authenticate /pv (missing JWT)");
 
 		private final String userMessage;
 
@@ -85,6 +86,11 @@ public final class BetterPvSessionAuth {
 			expiresAtMillis = 0L;
 			inFlight = null;
 		}
+	}
+
+	private static void setFailure(Failure failure, String detail) {
+		lastFailure = failure == null ? Failure.NONE : failure;
+		lastFailureDetail = detail == null ? "" : detail.trim();
 	}
 
 	public static Failure lastFailure() {
@@ -157,10 +163,12 @@ public final class BetterPvSessionAuth {
 		User user = mc.getUser();
 		String name = user != null && user.getName() != null ? user.getName() : "?";
 		String uuid = user != null && user.getProfileId() != null ? user.getProfileId().toString() : "?";
+		String detail = lastFailureDetail == null || lastFailureDetail.isBlank() ? "" : "\ndetail: " + lastFailureDetail;
 		return "BetterPV /pv auth failed"
 			+ "\nname: " + name
 			+ "\nuuid: " + uuid
 			+ "\nreason: " + failure.name()
+			+ detail
 			+ "\nmod: " + modVersion();
 	}
 
@@ -212,7 +220,7 @@ public final class BetterPvSessionAuth {
 		try {
 			Optional<String> token = future.join();
 			return token == null ? Optional.empty() : token;
-		} catch (Exception exception) {
+		} catch (java.util.concurrent.CompletionException exception) {
 			BetterPV.LOGGER.warn("BetterPV session auth failed", exception);
 			invalidate();
 			lastFailure = Failure.AUTH_HTTP;
@@ -228,13 +236,13 @@ public final class BetterPvSessionAuth {
 	private static Optional<String> authenticateOnce() {
 		Minecraft mc = Minecraft.getInstance();
 		if (mc == null) {
-			lastFailure = Failure.MISSING_SESSION;
+			setFailure(Failure.MISSING_SESSION, "minecraft instance null");
 			return Optional.empty();
 		}
 
 		User user = mc.getUser();
 		if (user == null) {
-			lastFailure = Failure.MISSING_SESSION;
+			setFailure(Failure.MISSING_SESSION, "user null");
 			return Optional.empty();
 		}
 
@@ -243,7 +251,7 @@ public final class BetterPvSessionAuth {
 		String accessToken = user.getAccessToken();
 		if (username == null || username.isBlank() || profileId == null || accessToken == null || accessToken.isBlank()) {
 			BetterPV.LOGGER.warn("BetterPV session auth skipped: missing Minecraft user session");
-			lastFailure = Failure.MISSING_SESSION;
+			setFailure(Failure.MISSING_SESSION, "blank username/uuid/token");
 			return Optional.empty();
 		}
 
@@ -252,30 +260,29 @@ public final class BetterPvSessionAuth {
 				"BetterPV session JWT skipped: Fabric offline token user={}",
 				username
 			);
-			lastFailure = Failure.OFFLINE_SESSION;
+			setFailure(Failure.OFFLINE_SESSION, "FabricMC offline token");
 			return Optional.empty();
 		}
 
 		String serverId = randomServerId();
-		try {
-			// Access token is ONLY for official Minecraft session-service join; never sent to Vyriv.
-			MinecraftSessionService sessionService = mc.services().sessionService();
-			sessionService.joinServer(profileId, accessToken, serverId);
-		} catch (InvalidCredentialsException exception) {
-			BetterPV.LOGGER.warn(
-				"Minecraft joinServer rejected credentials for BetterPV auth user={}",
-				username
-			);
-			lastFailure = Failure.JOIN_SERVER_FAILED;
-			return Optional.empty();
-		} catch (AuthenticationException exception) {
-			BetterPV.LOGGER.warn("Minecraft joinServer failed for BetterPV auth: {}", exception.toString());
-			lastFailure = Failure.JOIN_SERVER_FAILED;
-			return Optional.empty();
-		} catch (RuntimeException exception) {
-			BetterPV.LOGGER.warn("Minecraft joinServer failed for BetterPV auth: {}", exception.toString());
-			lastFailure = Failure.JOIN_SERVER_FAILED;
-			return Optional.empty();
+		Optional<String> joinError = joinMinecraftSession(mc, profileId, accessToken, serverId, username);
+		if (joinError.isPresent()) {
+			// One quick retry for transient Mojang blips; expired tokens stay failed.
+			if (!joinError.get().startsWith("InvalidCredentials")) {
+				try {
+					Thread.sleep(400L);
+				} catch (InterruptedException interrupted) {
+					Thread.currentThread().interrupt();
+					setFailure(Failure.JOIN_SERVER_FAILED, joinError.get());
+					return Optional.empty();
+				}
+				serverId = randomServerId();
+				joinError = joinMinecraftSession(mc, profileId, accessToken, serverId, username);
+			}
+			if (joinError.isPresent()) {
+				setFailure(Failure.JOIN_SERVER_FAILED, joinError.get());
+				return Optional.empty();
+			}
 		}
 
 		try {
@@ -291,22 +298,25 @@ public final class BetterPvSessionAuth {
 			String responseBody = response.body() == null ? "" : response.body();
 			if (status == 503 || causeEquals(responseBody, "session_auth_unavailable")) {
 				BetterPV.LOGGER.warn("BetterPV /hypixel/auth unavailable status={} (signing secret missing?)", status);
-				lastFailure = Failure.SERVER_AUTH_UNAVAILABLE;
+				setFailure(Failure.SERVER_AUTH_UNAVAILABLE, "status=" + status);
 				return Optional.empty();
 			}
 			if (status < 200 || status >= 300 || responseBody.isBlank()) {
 				BetterPV.LOGGER.warn("BetterPV /hypixel/auth failed status={}", status);
-				lastFailure = status == 401 || status == 403 ? Failure.AUTH_REJECTED : Failure.AUTH_HTTP;
+				setFailure(
+					status == 401 || status == 403 ? Failure.AUTH_REJECTED : Failure.AUTH_HTTP,
+					"status=" + status
+				);
 				return Optional.empty();
 			}
 
 			JsonObject root = JsonParser.parseString(responseBody).getAsJsonObject();
 			if (root.has("success") && root.get("success").isJsonPrimitive() && !root.get("success").getAsBoolean()) {
-				lastFailure = Failure.AUTH_REJECTED;
+				setFailure(Failure.AUTH_REJECTED, "success=false");
 				return Optional.empty();
 			}
 			if (!root.has("token") || !root.get("token").isJsonPrimitive()) {
-				lastFailure = Failure.AUTH_REJECTED;
+				setFailure(Failure.AUTH_REJECTED, "missing token field");
 				return Optional.empty();
 			}
 
@@ -318,19 +328,50 @@ public final class BetterPvSessionAuth {
 				cachedJwt = token;
 				expiresAtMillis = System.currentTimeMillis() + (expiresInSeconds * 1000L);
 			}
-			lastFailure = Failure.NONE;
+			setFailure(Failure.NONE, "");
 			return Optional.of(token);
 		} catch (IOException | InterruptedException exception) {
 			BetterPV.LOGGER.warn("BetterPV /hypixel/auth request failed", exception);
 			if (exception instanceof InterruptedException) {
 				Thread.currentThread().interrupt();
 			}
-			lastFailure = Failure.AUTH_HTTP;
+			setFailure(Failure.AUTH_HTTP, exception.toString());
 			return Optional.empty();
 		} catch (RuntimeException exception) {
 			BetterPV.LOGGER.warn("BetterPV /hypixel/auth parse failed", exception);
-			lastFailure = Failure.AUTH_HTTP;
+			setFailure(Failure.AUTH_HTTP, exception.toString());
 			return Optional.empty();
+		}
+	}
+
+	/**
+	 * Registers this client session with Mojang for {@code serverId}.
+	 * Returns empty on success, or a short error tag on failure.
+	 */
+	private static Optional<String> joinMinecraftSession(
+		Minecraft mc,
+		UUID profileId,
+		String accessToken,
+		String serverId,
+		String username
+	) {
+		try {
+			// Access token is ONLY for official Minecraft session-service join; never sent to Vyriv.
+			MinecraftSessionService sessionService = mc.services().sessionService();
+			sessionService.joinServer(profileId, accessToken, serverId);
+			return Optional.empty();
+		} catch (InvalidCredentialsException exception) {
+			BetterPV.LOGGER.warn(
+				"Minecraft joinServer rejected credentials for BetterPV auth user={}",
+				username
+			);
+			return Optional.of("InvalidCredentials: " + exception.toString());
+		} catch (AuthenticationException exception) {
+			BetterPV.LOGGER.warn("Minecraft joinServer failed for BetterPV auth: {}", exception.toString());
+			return Optional.of(exception.getClass().getSimpleName() + ": " + exception.toString());
+		} catch (RuntimeException exception) {
+			BetterPV.LOGGER.warn("Minecraft joinServer failed for BetterPV auth: {}", exception.toString());
+			return Optional.of(exception.getClass().getSimpleName() + ": " + exception.toString());
 		}
 	}
 

@@ -376,7 +376,7 @@ public final class MiscStatsSnapshot {
 		}
 		try {
 			return Math.max(0L, (long) obj.get(key).getAsDouble());
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return 0L;
 		}
 	}
@@ -387,7 +387,7 @@ public final class MiscStatsSnapshot {
 		}
 		try {
 			return Math.max(0D, obj.get(key).getAsDouble());
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return 0D;
 		}
 	}
@@ -398,7 +398,7 @@ public final class MiscStatsSnapshot {
 		}
 		try {
 			return obj.get(key).getAsBoolean();
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return false;
 		}
 	}
@@ -410,7 +410,7 @@ public final class MiscStatsSnapshot {
 		try {
 			String s = obj.get(key).getAsString();
 			return s == null ? "" : s;
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return "";
 		}
 	}
@@ -429,7 +429,7 @@ public final class MiscStatsSnapshot {
 				if (s != null && !s.isBlank()) {
 					out.add(InventoryDecoder.prettyWords(s));
 				}
-			} catch (Exception ignored) {
+			} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			}
 		}
 		return out;

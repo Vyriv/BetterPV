@@ -149,7 +149,7 @@ public final class PetSnapshot {
 						if (type != null && !type.isBlank()) {
 							sacrificed.add(InventoryDecoder.prettyWords(type));
 						}
-					} catch (Exception ignored) {
+					} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 					}
 				}
 			}
@@ -169,7 +169,7 @@ public final class PetSnapshot {
 				if (rule.has("name") && rule.get("name").isJsonPrimitive()) {
 					try {
 						name = rule.get("name").getAsString();
-					} catch (Exception ignored) {
+					} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 					}
 				}
 				String id = str(rule, "id");
@@ -206,7 +206,7 @@ public final class PetSnapshot {
 		try {
 			String v = obj.get(key).getAsString();
 			return v == null ? "" : v;
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return "";
 		}
 	}
@@ -287,7 +287,7 @@ public final class PetSnapshot {
 		}
 		try {
 			return Math.max(0, (int) obj.get(key).getAsDouble());
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return 0;
 		}
 	}

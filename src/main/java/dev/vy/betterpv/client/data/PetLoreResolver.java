@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.vy.betterpv.client.neu.NeuRepoCache;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -188,7 +189,7 @@ public final class PetLoreResolver {
 			if (entry.getValue().isJsonPrimitive()) {
 				try {
 					out.put(entry.getKey().toUpperCase(Locale.ROOT), entry.getValue().getAsDouble());
-				} catch (Exception ignored) {
+				} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 				}
 			}
 		}
@@ -205,7 +206,7 @@ public final class PetLoreResolver {
 			if (el != null && el.isJsonPrimitive()) {
 				try {
 					out.add(el.getAsDouble());
-				} catch (Exception ignored) {
+				} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 					out.add(0.0);
 				}
 			}
@@ -305,7 +306,7 @@ public final class PetLoreResolver {
 						}
 					}
 				}
-			} catch (Exception ignored) {
+			} catch (IOException | IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			}
 		}
 		return new JsonObject();

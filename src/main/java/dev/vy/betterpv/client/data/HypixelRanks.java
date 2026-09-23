@@ -104,7 +104,7 @@ public final class HypixelRanks {
 		try {
 			String value = obj.get(key).getAsString();
 			return value == null || value.isBlank() ? fallback : value.toUpperCase(Locale.ROOT);
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return fallback;
 		}
 	}

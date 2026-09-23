@@ -220,7 +220,7 @@ public final class FishingSnapshot {
 				if (el != null && el.isJsonPrimitive()) {
 					try {
 						tasks.add(el.getAsString().toUpperCase(Locale.ROOT));
-					} catch (Exception ignored) {
+					} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 					}
 				}
 			}
@@ -250,7 +250,7 @@ public final class FishingSnapshot {
 		}
 		try {
 			return obj.get(key).getAsString();
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return "";
 		}
 	}

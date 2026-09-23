@@ -3,6 +3,7 @@ package dev.vy.betterpv.client.api;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import dev.vy.betterpv.BetterPV;
+import dev.vy.betterpv.client.data.SoftDataFailure;
 import dev.vy.betterpv.client.data.AuctionSnapshot;
 import dev.vy.betterpv.client.data.BestiarySnapshot;
 import dev.vy.betterpv.client.data.ColeWeight;
@@ -212,7 +213,9 @@ final class ProfileEnrichmentSession {
 				}
 				try {
 					runJob(next);
-				} catch (Exception exception) {
+				} catch (RuntimeException exception) {
+					// Soft or hard: keep enriching other tabs. Core is already on screen;
+					// aborting the session would strand the rest of the viewer empty.
 					BetterPV.LOGGER.warn("Enrichment job {} failed for {}", next, this.name, exception);
 				}
 				synchronized (this.lock) {
@@ -262,7 +265,10 @@ final class ProfileEnrichmentSession {
 			try {
 				inventories = InventoryDecoder.parseUi(this.member);
 				dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory.warmAsync(inventories);
-			} catch (Exception exception) {
+			} catch (RuntimeException exception) {
+				if (!SoftDataFailure.isSoft(exception)) {
+					throw exception;
+				}
 				BetterPV.LOGGER.warn("Inventory decode failed for {}", this.name, exception);
 				inventories = InventorySnapshot.empty();
 			}
@@ -283,7 +289,7 @@ final class ProfileEnrichmentSession {
 
 	private void runDungeons() {
 		ensureInventoryCategories();
-		JsonObject election = this.electionFut.join().orElse(null);
+		JsonObject election = joinOptional(this.electionFut, "election").orElse(null);
 		DungeonSnapshot dungeons = ProfileFetcher.parseDungeonsPublic(
 			this.member, null, election, this.inventoryCategories
 		);
@@ -300,7 +306,10 @@ final class ProfileEnrichmentSession {
 		try {
 			pets = PetSnapshot.fromMember(this.member);
 			dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory.warmPetsAsync(pets);
-		} catch (Exception exception) {
+		} catch (RuntimeException exception) {
+			if (!SoftDataFailure.isSoft(exception)) {
+				throw exception;
+			}
 			BetterPV.LOGGER.warn("Pets decode failed for {}", this.name, exception);
 			pets = PetSnapshot.empty();
 		}
@@ -316,7 +325,10 @@ final class ProfileEnrichmentSession {
 		CollectionSnapshot collections;
 		try {
 			collections = CollectionSnapshot.fromProfile(this.members, this.uuid, this.name);
-		} catch (Exception exception) {
+		} catch (RuntimeException exception) {
+			if (!SoftDataFailure.isSoft(exception)) {
+				throw exception;
+			}
 			BetterPV.LOGGER.warn("Collections decode failed for {}", this.name, exception);
 			collections = CollectionSnapshot.empty();
 		}
@@ -333,7 +345,10 @@ final class ProfileEnrichmentSession {
 		try {
 			mining = MiningSnapshot.fromMember(this.member);
 			mining = mining.withColeWeight(ColeWeight.calculate(mining, this.current.collections(), this.member));
-		} catch (Exception exception) {
+		} catch (RuntimeException exception) {
+			if (!SoftDataFailure.isSoft(exception)) {
+				throw exception;
+			}
 			BetterPV.LOGGER.warn("Mining member parse failed for {}", this.name, exception);
 			mining = MiningSnapshot.empty();
 		}
@@ -349,7 +364,10 @@ final class ProfileEnrichmentSession {
 		GardenSnapshot garden;
 		try {
 			garden = GardenSnapshot.fromMember(this.member);
-		} catch (Exception exception) {
+		} catch (RuntimeException exception) {
+			if (!SoftDataFailure.isSoft(exception)) {
+				throw exception;
+			}
 			BetterPV.LOGGER.warn("Garden member parse failed for {}", this.name, exception);
 			garden = GardenSnapshot.empty();
 		}
@@ -365,7 +383,10 @@ final class ProfileEnrichmentSession {
 		ForagingSnapshot foraging;
 		try {
 			foraging = ForagingSnapshot.fromMember(this.member);
-		} catch (Exception exception) {
+		} catch (RuntimeException exception) {
+			if (!SoftDataFailure.isSoft(exception)) {
+				throw exception;
+			}
 			BetterPV.LOGGER.warn("Foraging member parse failed for {}", this.name, exception);
 			foraging = ForagingSnapshot.empty();
 		}
@@ -381,7 +402,10 @@ final class ProfileEnrichmentSession {
 		FishingSnapshot fishing;
 		try {
 			fishing = FishingSnapshot.fromMember(this.member);
-		} catch (Exception exception) {
+		} catch (RuntimeException exception) {
+			if (!SoftDataFailure.isSoft(exception)) {
+				throw exception;
+			}
 			BetterPV.LOGGER.warn("Fishing member parse failed for {}", this.name, exception);
 			fishing = FishingSnapshot.empty();
 		}
@@ -400,7 +424,10 @@ final class ProfileEnrichmentSession {
 			crimson = crimson.withPlayerStats(
 				this.current.playerStats() == null ? PlayerStatsSnapshot.empty() : this.current.playerStats()
 			);
-		} catch (Exception exception) {
+		} catch (RuntimeException exception) {
+			if (!SoftDataFailure.isSoft(exception)) {
+				throw exception;
+			}
 			BetterPV.LOGGER.warn("Crimson member parse failed for {}", this.name, exception);
 			crimson = CrimsonSnapshot.empty();
 		}
@@ -416,7 +443,10 @@ final class ProfileEnrichmentSession {
 		RiftSnapshot rift;
 		try {
 			rift = RiftSnapshot.fromMember(this.member);
-		} catch (Exception exception) {
+		} catch (RuntimeException exception) {
+			if (!SoftDataFailure.isSoft(exception)) {
+				throw exception;
+			}
 			BetterPV.LOGGER.warn("Rift member parse failed for {}", this.name, exception);
 			rift = RiftSnapshot.empty();
 		}
@@ -432,7 +462,10 @@ final class ProfileEnrichmentSession {
 		BestiarySnapshot bestiary;
 		try {
 			bestiary = BestiarySnapshot.fromMember(this.member);
-		} catch (Exception exception) {
+		} catch (RuntimeException exception) {
+			if (!SoftDataFailure.isSoft(exception)) {
+				throw exception;
+			}
 			BetterPV.LOGGER.warn("Bestiary member parse failed for {}", this.name, exception);
 			bestiary = BestiarySnapshot.empty();
 		}
@@ -448,7 +481,10 @@ final class ProfileEnrichmentSession {
 		EventsSnapshot events;
 		try {
 			events = EventsSnapshot.fromMember(this.member, this.root, this.uuid);
-		} catch (Exception exception) {
+		} catch (RuntimeException exception) {
+			if (!SoftDataFailure.isSoft(exception)) {
+				throw exception;
+			}
 			BetterPV.LOGGER.warn("Events member parse failed for {}", this.name, exception);
 			events = EventsSnapshot.empty();
 		}
@@ -463,9 +499,9 @@ final class ProfileEnrichmentSession {
 	private void runAuctions() {
 		AuctionSnapshot auctions = AuctionSnapshot.build(
 			this.uuid,
-			this.auctionFut.join().orElse(null),
-			this.soldFut.join().orElse(null),
-			this.bidsFut.join().orElse(null)
+			joinOptional(this.auctionFut, "auctions").orElse(null),
+			joinOptional(this.soldFut, "sold auctions").orElse(null),
+			joinOptional(this.bidsFut, "auction bids").orElse(null)
 		);
 		auctions = auctions.withStats(AuctionSnapshot.Stats.fromMember(this.member));
 		publish(merge(
@@ -477,7 +513,7 @@ final class ProfileEnrichmentSession {
 	}
 
 	private void runMuseum() {
-		JsonObject museumRoot = this.museumFut.join().orElse(null);
+		JsonObject museumRoot = joinOptional(this.museumFut, "museum").orElse(null);
 		JsonObject museumMember = ProfileFetcher.findMuseumMemberPublic(museumRoot, this.profileId, this.undashed);
 		publish(merge(
 			this.current,
@@ -489,7 +525,7 @@ final class ProfileEnrichmentSession {
 
 	private void runNetworth() {
 		ensureInventoryCategories();
-		JsonObject museumRoot = this.museumFut.join().orElse(null);
+		JsonObject museumRoot = joinOptional(this.museumFut, "museum").orElse(null);
 		JsonObject museumMember = this.current.museumMember() != null
 			? this.current.museumMember()
 			: ProfileFetcher.findMuseumMemberPublic(museumRoot, this.profileId, this.undashed);
@@ -595,5 +631,16 @@ final class ProfileEnrichmentSession {
 			playerStats != null ? playerStats : base.playerStats(),
 			null
 		);
+	}
+
+	/** Join a network future without aborting enrichment on failure. */
+	private <T> Optional<T> joinOptional(CompletableFuture<Optional<T>> future, String label) {
+		try {
+			Optional<T> value = future.join();
+			return value == null ? Optional.empty() : value;
+		} catch (RuntimeException exception) {
+			BetterPV.LOGGER.warn("Enrichment {} future failed for {}", label, this.name, exception);
+			return Optional.empty();
+		}
 	}
 }

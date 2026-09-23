@@ -477,7 +477,7 @@ public final class ForagingSnapshot {
 			Integer page = null;
 			try {
 				page = Integer.parseInt(key);
-			} catch (Exception ignored) {
+			} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 				page = null;
 			}
 			JsonObject pageObj = Leveling.obj(e.getValue());
@@ -566,7 +566,7 @@ public final class ForagingSnapshot {
 						if (id != null && !id.isBlank()) {
 							names.add(InventoryDecoder.prettyWords(id));
 						}
-					} catch (Exception ignored) {
+					} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 					}
 				}
 			}
@@ -763,7 +763,7 @@ public final class ForagingSnapshot {
 			if (nodes.has(toggleKey) && nodes.get(toggleKey).isJsonPrimitive()) {
 				try {
 					enabled = nodes.get(toggleKey).getAsBoolean();
-				} catch (Exception ignored) {
+				} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 					enabled = true;
 				}
 			}
@@ -794,7 +794,7 @@ public final class ForagingSnapshot {
 			if (nodes.has(toggleKey) && nodes.get(toggleKey).isJsonPrimitive()) {
 				try {
 					enabled = nodes.get(toggleKey).getAsBoolean();
-				} catch (Exception ignored) {
+				} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 					enabled = true;
 				}
 			}
@@ -997,7 +997,7 @@ public final class ForagingSnapshot {
 			}
 			String s = el.getAsString();
 			return "true".equalsIgnoreCase(s) || "1".equals(s) || "yes".equalsIgnoreCase(s);
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return false;
 		}
 	}
@@ -1008,7 +1008,7 @@ public final class ForagingSnapshot {
 		}
 		try {
 			return member.toString().contains(needle);
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return false;
 		}
 	}
@@ -1039,7 +1039,7 @@ public final class ForagingSnapshot {
 					}
 				}
 			}
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return false;
 		}
 		return false;
@@ -1088,7 +1088,7 @@ public final class ForagingSnapshot {
 		}
 		try {
 			return obj.get(key).getAsString();
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return "";
 		}
 	}
@@ -1099,10 +1099,10 @@ public final class ForagingSnapshot {
 		}
 		try {
 			return obj.get(key).getAsLong();
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			try {
 				return (long) obj.get(key).getAsDouble();
-			} catch (Exception ignored2) {
+			} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored2) {
 				return 0L;
 			}
 		}
@@ -1114,7 +1114,7 @@ public final class ForagingSnapshot {
 		}
 		try {
 			return obj.get(key).getAsDouble();
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return 0.0;
 		}
 	}

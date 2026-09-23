@@ -158,7 +158,7 @@ public final class GardenSnapshot {
 			if (totalEl != null && totalEl.isJsonPrimitive()) {
 				try {
 					total = totalEl.getAsDouble();
-				} catch (Exception ignored) {
+				} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 				}
 			}
 			Map<String, Double> crops = new LinkedHashMap<>();
@@ -1068,7 +1068,7 @@ public final class GardenSnapshot {
 		}
 		try {
 			return obj.get(key).getAsString();
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return "";
 		}
 	}
@@ -1260,7 +1260,7 @@ public final class GardenSnapshot {
 			}
 			String s = el.getAsString();
 			return "true".equalsIgnoreCase(s) || "1".equals(s) || "yes".equalsIgnoreCase(s);
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return false;
 		}
 	}

@@ -22,6 +22,7 @@ import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallba
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.event.Event;
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
 import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
@@ -34,6 +35,9 @@ public final class BetterPVClient implements ClientModInitializer {
 	/** Runs after {@link Event#DEFAULT_PHASE} so we replace Skyblocker's {@code /pv}. */
 	private static final Identifier PV_COMMAND_PHASE = Identifier.fromNamespaceAndPath("betterpv", "override_pv");
 	private static final AtomicBoolean SESSION_AUTH_PREFETCHED = new AtomicBoolean(false);
+	/** Set when Brigadier reflection could not strip another mod's {@code /pv}. */
+	private static final AtomicBoolean PV_OVERRIDE_FAILED = new AtomicBoolean(false);
+	private static final AtomicBoolean PV_SHADOW_CHAT_SENT = new AtomicBoolean(false);
 
 	@Override
 	public void onInitializeClient() {
@@ -43,6 +47,12 @@ public final class BetterPVClient implements ClientModInitializer {
 		SkyBlockPackCache.start();
 		BetterPvCosmetics.initialize();
 
+		// Late phase so Skyblocker (and similar) register /pv first; we then strip their
+		// literal and install ours. Phase order alone is not enough: Brigadier's
+		// CommandNode.addChild merges a duplicate literal into the existing node instead of
+		// replacing it, so a second dispatcher.register("pv") would leave Skyblocker's
+		// executes() in place. Fabric has no supported unregister API (docs still say to
+		// reflect into Brigadier's private children/literals maps).
 		ClientCommandRegistrationCallback.EVENT.addPhaseOrdering(Event.DEFAULT_PHASE, PV_COMMAND_PHASE);
 		ClientCommandRegistrationCallback.EVENT.register(PV_COMMAND_PHASE, (dispatcher, registryAccess) -> {
 			removeLiteral(dispatcher, "pv");
@@ -70,9 +80,15 @@ public final class BetterPVClient implements ClientModInitializer {
 		PlayerInteractPvOpener.register();
 		HypixelProfileSpyButton.register();
 		PartyJoinPvNotifier.register();
+		// Inject /pv clicks on party / friends-list lines that Hypixel left non-clickable.
+		// Does not remap existing SocialOptions (avoids chat color bleach).
+		ClientReceiveMessageEvents.MODIFY_GAME.register(
+			(message, overlay) -> overlay ? message : ChatClickProcessor.process(message)
+		);
 		ClientTickEvents.END_CLIENT_TICK.register(ProfileViewerOpener::tick);
 		ClientTickEvents.END_CLIENT_TICK.register(LoadingEggFinale::tick);
 		ClientTickEvents.END_CLIENT_TICK.register(BetterPVClient::prefetchSessionAuthOnce);
+		ClientTickEvents.END_CLIENT_TICK.register(BetterPVClient::warnPvShadowedOnce);
 		BetterPV.LOGGER.info("BetterPV client ready - /pv");
 	}
 
@@ -96,6 +112,21 @@ public final class BetterPVClient implements ClientModInitializer {
 			return;
 		}
 		BetterPvSessionAuth.prefetchAsync();
+	}
+
+	/** One in-game chat tip if bare {@code /pv} could not be claimed from another mod. */
+	private static void warnPvShadowedOnce(net.minecraft.client.Minecraft client) {
+		if (!PV_OVERRIDE_FAILED.get() || client == null || client.player == null || client.gui == null) {
+			return;
+		}
+		if (!PV_SHADOW_CHAT_SENT.compareAndSet(false, true)) {
+			return;
+		}
+		client.gui.getChat().addClientSystemMessage(
+			net.minecraft.network.chat.Component.literal(
+				"BetterPV: another mod kept /pv. Use /betterpv pv (or /betterpv pv <name>)."
+			).withColor(0xFFD36A)
+		);
 	}
 
 	private static com.mojang.brigadier.builder.LiteralArgumentBuilder<FabricClientCommandSource> buildPvCommand(
@@ -137,6 +168,16 @@ public final class BetterPVClient implements ClientModInitializer {
 		return builder.buildFuture();
 	}
 
+	/**
+	 * Removes an already-registered root literal from the client command dispatcher.
+	 *
+	 * <p>Necessary before re-registering {@code /pv}: Brigadier merges duplicate literals
+	 * into the existing node, so a late {@code dispatcher.register} would not override
+	 * Skyblocker's handler. Fabric documents reflection as the only unregister path.
+	 *
+	 * <p>If Brigadier field names change, this fails closed: we still register
+	 * {@code /betterpv pv}, and log that bare {@code /pv} may stay owned by another mod.
+	 */
 	@SuppressWarnings("unchecked")
 	private static void removeLiteral(CommandDispatcher<FabricClientCommandSource> dispatcher, String name) {
 		try {
@@ -152,8 +193,17 @@ public final class BetterPVClient implements ClientModInitializer {
 			Map<String, LiteralCommandNode<FabricClientCommandSource>> literals =
 				(Map<String, LiteralCommandNode<FabricClientCommandSource>>) literalsField.get(root);
 			literals.remove(name);
-		} catch (ReflectiveOperationException exception) {
-			BetterPV.LOGGER.warn("Could not remove existing /{} before override", name, exception);
+		} catch (ReflectiveOperationException | RuntimeException exception) {
+			// warn (not error): mod still works via /betterpv pv; loud only so mapping breaks are noticed.
+			PV_OVERRIDE_FAILED.set(true);
+			BetterPV.LOGGER.warn(
+				"Could not strip existing /{} via Brigadier reflection (children/literals). "
+					+ "/{} may stay owned by another mod (e.g. Skyblocker). Use /betterpv {} instead.",
+				name,
+				name,
+				name,
+				exception
+			);
 		}
 	}
 }

@@ -9,6 +9,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.Resource;
 import java.io.InputStream;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
@@ -95,7 +96,7 @@ public final class RepoData {
 			if (slayer != null && map.has(slayer) && map.get(slayer).isJsonPrimitive()) {
 				try {
 					return Math.max(1, map.get(slayer).getAsInt());
-				} catch (Exception ignored) {
+				} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 					// fall through
 				}
 			}
@@ -151,7 +152,10 @@ public final class RepoData {
 				JsonElement element = JsonParser.parseReader(reader);
 				return element.isJsonObject() ? element.getAsJsonObject() : null;
 			}
-		} catch (Exception exception) {
+		} catch (IOException | RuntimeException exception) {
+			if (exception instanceof RuntimeException runtime && !SoftDataFailure.isSoft(runtime)) {
+				throw runtime;
+			}
 			return null;
 		}
 	}
@@ -167,7 +171,10 @@ public final class RepoData {
 				JsonElement element = JsonParser.parseReader(reader);
 				return element.isJsonObject() ? element.getAsJsonObject() : null;
 			}
-		} catch (Exception exception) {
+		} catch (IOException | RuntimeException exception) {
+			if (exception instanceof RuntimeException runtime && !SoftDataFailure.isSoft(runtime)) {
+				throw runtime;
+			}
 			BetterPV.LOGGER.warn("Failed loading {}", path, exception);
 			return null;
 		}

@@ -131,7 +131,7 @@ public final class BestiarySnapshot {
 		if (killsObj != null && killsObj.has("last_killed_mob") && killsObj.get("last_killed_mob").isJsonPrimitive()) {
 			try {
 				lastKilled = killsObj.get("last_killed_mob").getAsString();
-			} catch (Exception ignored) {
+			} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			}
 		}
 		int claimed = 0;
@@ -139,7 +139,7 @@ public final class BestiarySnapshot {
 			&& milestone.get("last_claimed_milestone").isJsonPrimitive()) {
 			try {
 				claimed = Math.max(0, milestone.get("last_claimed_milestone").getAsInt());
-			} catch (Exception ignored) {
+			} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			}
 		}
 		boolean maxVisible = misc != null && misc.has("max_kills_visible")
@@ -297,7 +297,7 @@ public final class BestiarySnapshot {
 				if (v > 0L) {
 					out.put(key.toLowerCase(Locale.ROOT), v);
 				}
-			} catch (Exception ignored) {
+			} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			}
 		}
 		return out;

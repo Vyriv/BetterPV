@@ -355,7 +355,7 @@ public final class EventsSnapshot {
 		}
 		try {
 			return obj.get(key).getAsString();
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return "";
 		}
 	}
@@ -374,7 +374,7 @@ public final class EventsSnapshot {
 		}
 		try {
 			return el.getAsDouble();
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return 0;
 		}
 	}

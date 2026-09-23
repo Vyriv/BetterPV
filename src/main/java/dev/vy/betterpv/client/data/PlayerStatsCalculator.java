@@ -5,9 +5,11 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.vy.betterpv.BetterPV;
+import dev.vy.betterpv.client.dungeons.CataXpMath;
 import dev.vy.betterpv.client.networth.InventoryDecoder;
 import dev.vy.betterpv.client.networth.PetWorth;
 import java.io.Reader;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -303,7 +305,7 @@ public final class PlayerStatsCalculator {
 			for (int i = 0; i < arr.size(); i++) {
 				try {
 					costs[i] = arr.get(i).getAsInt();
-				} catch (Exception ignored) {
+				} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 					costs[i] = 0;
 				}
 			}
@@ -398,10 +400,9 @@ public final class PlayerStatsCalculator {
 		if (xp <= 0F) {
 			return false;
 		}
-		JsonArray table = RepoData.catacombsXp();
-		int cap = table == null || table.isEmpty() ? 50 : table.size();
-		Leveling.Progress progress = Leveling.getLevel(table, xp, cap, false);
-		int level = progress == null ? 0 : (int) Math.floor(progress.level());
+		Leveling.Progress progress = CataXpMath.progress(xp);
+		// Stat bonuses stop at the soft cap; mastery levels are cosmetic only.
+		int level = progress == null ? 0 : Math.min(CataXpMath.SOFT_CAP, progress.displayLevel());
 		if (level <= 0) {
 			return false;
 		}
@@ -503,7 +504,7 @@ public final class PlayerStatsCalculator {
 					if (stat.getValue().isJsonPrimitive()) {
 						try {
 							points += Math.abs(stat.getValue().getAsInt());
-						} catch (Exception ignored) {
+						} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 						}
 					}
 				}
@@ -689,7 +690,7 @@ public final class PlayerStatsCalculator {
 		}
 		try {
 			return Math.max(0L, collection.get("GOLD_INGOT").getAsLong());
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return 0L;
 		}
 	}
@@ -869,7 +870,7 @@ public final class PlayerStatsCalculator {
 			if (wanted(key)) {
 				try {
 					out.put(key, entry.getValue().getAsDouble());
-				} catch (Exception ignored) {
+				} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 				}
 			}
 		}
@@ -995,7 +996,10 @@ public final class PlayerStatsCalculator {
 		try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
 			JsonElement el = JsonParser.parseReader(reader);
 			return el != null && el.isJsonObject() ? el.getAsJsonObject() : null;
-		} catch (Exception exception) {
+		} catch (IOException | RuntimeException exception) {
+			if (exception instanceof RuntimeException runtime && !SoftDataFailure.isSoft(runtime)) {
+				throw runtime;
+			}
 			BetterPV.LOGGER.debug("Failed loading NEU {}", fileName, exception);
 			return null;
 		}
@@ -1044,7 +1048,7 @@ public final class PlayerStatsCalculator {
 		}
 		try {
 			return object.get(key).getAsInt();
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return 0;
 		}
 	}

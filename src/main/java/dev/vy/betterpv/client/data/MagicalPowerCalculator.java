@@ -1,5 +1,6 @@
 package dev.vy.betterpv.client.data;
 
+import java.io.IOException;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -315,7 +316,10 @@ public final class MagicalPowerCalculator {
 					}
 				}
 			}
-		} catch (Exception exception) {
+		} catch (IOException | RuntimeException exception) {
+			if (exception instanceof RuntimeException runtime && !SoftDataFailure.isSoft(runtime)) {
+				throw runtime;
+			}
 			BetterPV.LOGGER.warn("Failed loading {} from resource manager", path, exception);
 		}
 		try (InputStream stream = MagicalPowerCalculator.class.getResourceAsStream("/assets/betterpv/" + path)) {
@@ -326,7 +330,10 @@ public final class MagicalPowerCalculator {
 			try (InputStreamReader reader = new InputStreamReader(stream, StandardCharsets.UTF_8)) {
 				return JsonParser.parseReader(reader).getAsJsonObject();
 			}
-		} catch (Exception exception) {
+		} catch (IOException | RuntimeException exception) {
+			if (exception instanceof RuntimeException runtime && !SoftDataFailure.isSoft(runtime)) {
+				throw runtime;
+			}
 			BetterPV.LOGGER.warn("Failed loading {}", path, exception);
 			return null;
 		}

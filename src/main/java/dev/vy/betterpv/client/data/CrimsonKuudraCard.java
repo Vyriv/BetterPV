@@ -1,6 +1,7 @@
 package dev.vy.betterpv.client.data;
 
 import com.google.gson.JsonObject;
+import dev.vy.betterpv.client.dungeons.CataXpMath;
 import dev.vy.betterpv.client.neu.NeuRepoCache;
 import dev.vy.betterpv.client.networth.InventoryDecoder;
 import dev.vy.betterpv.client.networth.NbtAttrs;
@@ -138,7 +139,7 @@ public final class CrimsonKuudraCard {
 		double mf = powerStats.getOrDefault("magic_find", 0.0);
 
 		float cataXp = Leveling.readCatacombsXp(member);
-		int cata = (int) Math.floor(Leveling.getLevel(RepoData.catacombsXp(), cataXp, 50, false).level());
+		int cata = CataXpMath.progress(cataXp).displayLevel();
 		int combat = skillLevel(member, "combat", 60);
 		int foraging = skillLevel(member, "foraging", 60);
 		int sb = 0;
@@ -835,11 +836,11 @@ public final class CrimsonKuudraCard {
 
 	private static String str(com.google.gson.JsonElement el) {
 		if (el == null || !el.isJsonPrimitive()) return "";
-		try { return el.getAsString(); } catch (Exception ignored) { return ""; }
+		try { return el.getAsString(); } catch (IllegalStateException | ClassCastException | UnsupportedOperationException ignored) { return ""; }
 	}
 
 	private static double num(com.google.gson.JsonElement el) {
 		if (el == null || !el.isJsonPrimitive()) return 0;
-		try { return el.getAsDouble(); } catch (Exception ignored) { return 0; }
+		try { return el.getAsDouble(); } catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) { return 0; }
 	}
 }

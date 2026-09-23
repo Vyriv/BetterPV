@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.vy.betterpv.BetterPV;
 import java.io.Reader;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -169,7 +170,7 @@ public final class AttributeShardsData {
 					for (int i = 0; i < arr.size(); i++) {
 						try {
 							row[i] = arr.get(i).getAsInt();
-						} catch (Exception ignored) {
+						} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 							row[i] = 0;
 						}
 					}
@@ -209,7 +210,10 @@ public final class AttributeShardsData {
 			list.sort((a, b) -> a.displayName().compareToIgnoreCase(b.displayName()));
 			defs = List.copyOf(list);
 			byStackId = Map.copyOf(map);
-		} catch (Exception ex) {
+		} catch (IOException | RuntimeException ex) {
+			if (ex instanceof RuntimeException runtime && !SoftDataFailure.isSoft(runtime)) {
+				throw runtime;
+			}
 			BetterPV.LOGGER.warn("Failed to load attribute shards", ex);
 			defs = List.of();
 			byStackId = Map.of();
@@ -238,7 +242,7 @@ public final class AttributeShardsData {
 		}
 		try {
 			return o.get(key).getAsString();
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return "";
 		}
 	}

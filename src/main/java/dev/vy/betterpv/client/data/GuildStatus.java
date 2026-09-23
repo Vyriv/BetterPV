@@ -163,7 +163,7 @@ public final class GuildStatus {
 		try {
 			String s = obj.get(key).getAsString();
 			return s == null ? "" : s;
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return "";
 		}
 	}
@@ -174,7 +174,7 @@ public final class GuildStatus {
 		}
 		try {
 			return Math.max(0L, (long) obj.get(key).getAsDouble());
-		} catch (Exception ignored) {
+		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return 0L;
 		}
 	}

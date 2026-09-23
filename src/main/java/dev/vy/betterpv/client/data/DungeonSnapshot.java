@@ -313,7 +313,7 @@ public final class DungeonSnapshot {
 		if (root.has("selected_race") && root.get("selected_race").isJsonPrimitive()) {
 			try {
 				race = root.get("selected_race").getAsString();
-			} catch (Exception ignored) {
+			} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 				race = "";
 			}
 		}
@@ -321,7 +321,7 @@ public final class DungeonSnapshot {
 		if (root.has("selected_setting") && root.get("selected_setting").isJsonPrimitive()) {
 			try {
 				setting = root.get("selected_setting").getAsString();
-			} catch (Exception ignored) {
+			} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 				setting = "";
 			}
 		}
@@ -329,7 +329,7 @@ public final class DungeonSnapshot {
 		if (root.has("runback") && root.get("runback").isJsonPrimitive()) {
 			try {
 				runback = root.get("runback").getAsBoolean();
-			} catch (Exception ignored) {
+			} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 				runback = null;
 			}
 		}

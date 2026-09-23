@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.vy.betterpv.BetterPV;
+import dev.vy.betterpv.client.data.SoftDataFailure;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -20,6 +21,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicLong;
 
 public final class HypixelApiClient {
 	private static final String WORKER_BASE = "https://api.vyriv.dev";
@@ -32,7 +34,7 @@ public final class HypixelApiClient {
 	private static final ConcurrentHashMap<String, JsonObject> PLAYER_CACHE = new ConcurrentHashMap<>();
 	/** Mojang names do not change during this client session often enough to justify repeat lookups. */
 	private static final ConcurrentHashMap<String, UuidName> UUID_NAME_CACHE = new ConcurrentHashMap<>();
-	/** Small pool so museum + election (and other GETs) can overlap; rate limit still serializes spacing. */
+	/** Small pool so museum + election (and other GETs) can overlap while spacing starts. */
 	private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(4, r -> {
 		Thread t = new Thread(r, "BetterPV-HypixelApi");
 		t.setDaemon(true);
@@ -53,7 +55,8 @@ public final class HypixelApiClient {
 		return EXECUTOR;
 	}
 
-	private static long nextRequestAtMillis;
+	/** Next allowed request start time. Claimed with CAS so sleep happens off the shared path. */
+	private static final AtomicLong NEXT_REQUEST_AT_MILLIS = new AtomicLong();
 
 	private HypixelApiClient() {
 	}
@@ -90,8 +93,17 @@ public final class HypixelApiClient {
 				UUID_NAME_CACHE.put(cleaned.toLowerCase(Locale.ROOT), uuidName);
 				UUID_NAME_CACHE.put(resolved.toLowerCase(Locale.ROOT), uuidName);
 				return Optional.of(uuidName);
-			} catch (Exception exception) {
+			} catch (IOException | InterruptedException exception) {
 				BetterPV.LOGGER.warn("Mojang UUID lookup failed for {}", cleaned, exception);
+				if (exception instanceof InterruptedException) {
+					Thread.currentThread().interrupt();
+				}
+				return Optional.empty();
+			} catch (RuntimeException exception) {
+				if (!SoftDataFailure.isSoft(exception)) {
+					throw exception;
+				}
+				BetterPV.LOGGER.warn("Mojang UUID lookup parse failed for {}", cleaned, exception);
 				return Optional.empty();
 			}
 		}, EXECUTOR);
@@ -120,8 +132,17 @@ public final class HypixelApiClient {
 				UuidName uuidName = new UuidName(uuid, resolved);
 				UUID_NAME_CACHE.put(resolved.toLowerCase(Locale.ROOT), uuidName);
 				return Optional.of(uuidName);
-			} catch (Exception exception) {
+			} catch (IOException | InterruptedException exception) {
 				BetterPV.LOGGER.debug("Mojang name lookup failed for {}", id, exception);
+				if (exception instanceof InterruptedException) {
+					Thread.currentThread().interrupt();
+				}
+				return Optional.empty();
+			} catch (RuntimeException exception) {
+				if (!SoftDataFailure.isSoft(exception)) {
+					throw exception;
+				}
+				BetterPV.LOGGER.debug("Mojang name lookup parse failed for {}", id, exception);
 				return Optional.empty();
 			}
 		}, EXECUTOR);
@@ -317,17 +338,29 @@ public final class HypixelApiClient {
 		}
 	}
 
-	private static synchronized void waitForSlot() {
-		long now = System.currentTimeMillis();
-		long wait = nextRequestAtMillis - now;
-		if (wait > 0L) {
-			try {
-				Thread.sleep(wait);
-			} catch (InterruptedException exception) {
-				Thread.currentThread().interrupt();
+	/**
+	 * Enforces ~{@code SPACING_MS} between request starts without holding a lock during sleep.
+	 * Callers sleep only for their own booked slot; other workers can claim later slots meanwhile.
+	 */
+	private static void waitForSlot() {
+		long sleepMs;
+		while (true) {
+			long now = System.currentTimeMillis();
+			long current = NEXT_REQUEST_AT_MILLIS.get();
+			long scheduled = Math.max(now, current);
+			if (NEXT_REQUEST_AT_MILLIS.compareAndSet(current, scheduled + SPACING_MS)) {
+				sleepMs = scheduled - now;
+				break;
 			}
 		}
-		nextRequestAtMillis = System.currentTimeMillis() + SPACING_MS;
+		if (sleepMs <= 0L) {
+			return;
+		}
+		try {
+			Thread.sleep(sleepMs);
+		} catch (InterruptedException exception) {
+			Thread.currentThread().interrupt();
+		}
 	}
 
 	public static String undashed(UUID uuid) {
@@ -374,11 +407,23 @@ public final class HypixelApiClient {
 		String dashed = uuid == null ? "" : uuid.toString();
 		String labyId = dashed.isBlank() ? id : dashed;
 		CompletableFuture<Optional<com.google.gson.JsonArray>> laby =
-			CompletableFuture.supplyAsync(() -> fetchLabyNameHistory(labyId), EXECUTOR);
+			CompletableFuture.supplyAsync(() -> fetchLabyNameHistory(labyId), EXECUTOR)
+				.exceptionally(error -> {
+					BetterPV.LOGGER.warn("Laby name history future failed for {}", labyId, error);
+					return Optional.empty();
+				});
 		CompletableFuture<Optional<com.google.gson.JsonArray>> crafty =
-			CompletableFuture.supplyAsync(() -> fetchCraftyNameHistory(labyId), EXECUTOR);
+			CompletableFuture.supplyAsync(() -> fetchCraftyNameHistory(labyId), EXECUTOR)
+				.exceptionally(error -> {
+					BetterPV.LOGGER.warn("Crafty name history future failed for {}", labyId, error);
+					return Optional.empty();
+				});
 		CompletableFuture<Optional<com.google.gson.JsonArray>> namemc =
-			CompletableFuture.supplyAsync(() -> fetchNameMcNameHistory(labyId), EXECUTOR);
+			CompletableFuture.supplyAsync(() -> fetchNameMcNameHistory(labyId), EXECUTOR)
+				.exceptionally(error -> {
+					BetterPV.LOGGER.warn("NameMC name history future failed for {}", labyId, error);
+					return Optional.empty();
+				});
 		return CompletableFuture.allOf(laby, crafty, namemc).thenApply(ignored -> {
 			com.google.gson.JsonArray merged = new com.google.gson.JsonArray();
 			mergeNameHistory(merged, laby.join());
@@ -427,8 +472,17 @@ public final class HypixelApiClient {
 				}
 			}
 			return Optional.empty();
-		} catch (Exception exception) {
+		} catch (IOException | InterruptedException exception) {
 			BetterPV.LOGGER.warn("Laby name history failed for {}", uuidPath, exception);
+			if (exception instanceof InterruptedException) {
+				Thread.currentThread().interrupt();
+			}
+			return Optional.empty();
+		} catch (RuntimeException exception) {
+			if (!SoftDataFailure.isSoft(exception)) {
+				throw exception;
+			}
+			BetterPV.LOGGER.warn("Laby name history parse failed for {}", uuidPath, exception);
 			return Optional.empty();
 		}
 	}
@@ -481,8 +535,17 @@ public final class HypixelApiClient {
 				out.add(normalized);
 			}
 			return out.size() == 0 ? Optional.empty() : Optional.of(out);
-		} catch (Exception exception) {
+		} catch (IOException | InterruptedException exception) {
 			BetterPV.LOGGER.warn("Crafty name history failed for {}", uuidPath, exception);
+			if (exception instanceof InterruptedException) {
+				Thread.currentThread().interrupt();
+			}
+			return Optional.empty();
+		} catch (RuntimeException exception) {
+			if (!SoftDataFailure.isSoft(exception)) {
+				throw exception;
+			}
+			BetterPV.LOGGER.warn("Crafty name history parse failed for {}", uuidPath, exception);
 			return Optional.empty();
 		}
 	}
@@ -510,8 +573,17 @@ public final class HypixelApiClient {
 				return Optional.empty();
 			}
 			return parseNameMcHistoryHtml(response.body());
-		} catch (Exception exception) {
+		} catch (IOException | InterruptedException exception) {
 			BetterPV.LOGGER.warn("NameMC name history failed for {}", uuidPath, exception);
+			if (exception instanceof InterruptedException) {
+				Thread.currentThread().interrupt();
+			}
+			return Optional.empty();
+		} catch (RuntimeException exception) {
+			if (!SoftDataFailure.isSoft(exception)) {
+				throw exception;
+			}
+			BetterPV.LOGGER.warn("NameMC name history parse failed for {}", uuidPath, exception);
 			return Optional.empty();
 		}
 	}
@@ -687,8 +759,17 @@ public final class HypixelApiClient {
 				return Optional.of(normalizeNameHistoryArray(root.getAsJsonArray("username_history")));
 			}
 			return Optional.empty();
-		} catch (Exception exception) {
+		} catch (IOException | InterruptedException exception) {
 			BetterPV.LOGGER.warn("Ashcon name history failed for {}", undashedUuid, exception);
+			if (exception instanceof InterruptedException) {
+				Thread.currentThread().interrupt();
+			}
+			return Optional.empty();
+		} catch (RuntimeException exception) {
+			if (!SoftDataFailure.isSoft(exception)) {
+				throw exception;
+			}
+			BetterPV.LOGGER.warn("Ashcon name history parse failed for {}", undashedUuid, exception);
 			return Optional.empty();
 		}
 	}
@@ -717,7 +798,7 @@ public final class HypixelApiClient {
 				&& !obj.get("changed_at").isJsonNull()) {
 				try {
 					changed = obj.get("changed_at").getAsString();
-				} catch (Exception ignored) {
+				} catch (IllegalStateException | ClassCastException | UnsupportedOperationException ignored) {
 					changed = "";
 				}
 			} else if (obj.has("changedAt") && obj.get("changedAt").isJsonPrimitive()) {

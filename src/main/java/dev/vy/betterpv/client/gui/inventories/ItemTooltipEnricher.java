@@ -1,0 +1,263 @@
+package dev.vy.betterpv.client.gui.inventories;
+
+import dev.vy.betterpv.client.data.FormatUtil;
+import dev.vy.betterpv.client.data.InventorySnapshot;
+import dev.vy.betterpv.client.gui.SkyBlockSymbols;
+import dev.vy.betterpv.client.networth.InventoryDecoder;
+import dev.vy.betterpv.client.networth.ItemWorth;
+import dev.vy.betterpv.client.networth.NbtAttrs;
+import dev.vy.betterpv.client.util.LegacyChatFormatting;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.regex.Matcher;
+import net.minecraft.ChatFormatting;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Style;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.ItemLore;
+
+/** Tooltip assembly, recombobulator markers, and legacy § lore parsing. */
+final class ItemTooltipEnricher {
+	private ItemTooltipEnricher() {
+	}
+
+	static List<Component> tooltipLines(
+		InventorySnapshot.Slot slot,
+		ItemStack rendered,
+		boolean includeEstimatedValue
+	) {
+		List<Component> lines = new ArrayList<>();
+		Component name = rendered.get(DataComponents.CUSTOM_NAME);
+		if (name == null && slot != null && slot.displayName() != null) {
+			name = legacyText(slot.displayName());
+		}
+		if (name == null && slot != null) {
+			name = Component.literal(ItemTextFormat.prettyId(NeuItemResolver.canonicalId(slot.id())));
+		}
+		if (name != null) {
+			if (slot != null && slot.count() > 1) {
+				lines.add(
+					name.copy().append(
+						Component.literal(" x" + slot.count()).withStyle(ChatFormatting.DARK_GRAY)
+					)
+				);
+			} else {
+				lines.add(name);
+			}
+		}
+		ItemLore lore = rendered.get(DataComponents.LORE);
+		if (lore != null) {
+			lines.addAll(lore.lines());
+		}
+		// Re-apply so tooltip rendering always gets live obfuscated markers.
+		applyRecombobulatorMarkers(lines, slot);
+		if (includeEstimatedValue) {
+			appendEstimatedValueHint(lines, slot);
+		}
+		return lines;
+	}
+
+	/** Inserts estimated value + click hint under the rarity line when the item has a price. */
+	static void appendEstimatedValueHint(List<Component> lines, InventorySnapshot.Slot slot) {
+		if (slot == null || slot.isEmpty() || lines == null) {
+			return;
+		}
+		InventoryDecoder.Stack worth = new InventoryDecoder.Stack(
+			slot.id(),
+			slot.count(),
+			slot.extraAttributes() == null ? new CompoundTag() : slot.extraAttributes(),
+			slot.lore() == null ? List.of() : slot.lore(),
+			slot.soulbound(),
+			slot.displayName(),
+			slot.dyeColor(),
+			slot.skullValue(),
+			slot.skullSignature()
+		);
+		double value = ItemWorth.value(worth);
+		if (value <= 0) {
+			return;
+		}
+		String coins = FormatUtil.shortCoins(Math.round(value));
+		// Fixed colours so this line does not steal the rarity / name colour.
+		MutableComponent estimated = Component.literal("Estimated value: ")
+			.withStyle(Style.EMPTY.withColor(ChatFormatting.GRAY).withItalic(false))
+			.append(Component.literal(coins).withStyle(Style.EMPTY.withColor(ChatFormatting.GOLD).withItalic(false)));
+		MutableComponent hint = Component.literal("Click to view value breakdown")
+			.withStyle(Style.EMPTY.withColor(ChatFormatting.DARK_GRAY).withItalic(true));
+
+		int rarityIndex = findRarityLineIndex(lines);
+		int insertAt = rarityIndex >= 0 ? rarityIndex + 1 : lines.size();
+		lines.add(insertAt, estimated);
+		lines.add(insertAt + 1, hint);
+	}
+
+	/** Rarity / item-name colour for recombobulated rarity lines. */
+	static int estimatedHeaderColor(List<Component> lines, InventorySnapshot.Slot slot) {
+		int rarityIndex = findRarityLineIndex(lines);
+		if (rarityIndex >= 0) {
+			Integer styled = firstNonWhiteColor(lines.get(rarityIndex));
+			if (styled != null) {
+				return styled;
+			}
+			String plain = lines.get(rarityIndex).getString();
+			Matcher matcher = NeuItemResolver.RARITY_WORD.matcher(plain == null ? "" : plain);
+			if (matcher.find()) {
+				return SkyBlockItemFactory.tierArgb(matcher.group(1));
+			}
+		}
+		if (slot != null && slot.id() != null) {
+			return SkyBlockItemFactory.tierArgb(SkyBlockItemFactory.resolveTier(slot.id()));
+		}
+		return 0xFF55FF55;
+	}
+
+	private static Integer firstNonWhiteColor(Component component) {
+		if (component == null) {
+			return null;
+		}
+		Style style = component.getStyle();
+		if (style.getColor() != null) {
+			int rgb = style.getColor().getValue() & 0xFFFFFF;
+			if (rgb != 0xFFFFFF && rgb != 0xE8E8F0) {
+				return 0xFF000000 | rgb;
+			}
+		}
+		for (Component sibling : component.getSiblings()) {
+			Integer nested = firstNonWhiteColor(sibling);
+			if (nested != null) {
+				return nested;
+			}
+		}
+		return null;
+	}
+
+	static int findRarityLineIndex(List<Component> lines) {
+		for (int i = lines.size() - 1; i >= 0; i--) {
+			String plain = lines.get(i).getString();
+			if (plain != null && NeuItemResolver.RARITY_WORD.matcher(plain).find()) {
+				return i;
+			}
+		}
+		return -1;
+	}
+
+	/**
+	 * Hypixel API lore often keeps the recomb "a" glyphs but drops {@code obfuscated:true}.
+	 * Rebuild the rarity line from {@code rarity_upgrades} (or placeholder a's) with real obfuscation.
+	 */
+	static void applyRecombobulatorMarkers(List<Component> loreLines, InventorySnapshot.Slot slot) {
+		if (loreLines == null || loreLines.isEmpty() || slot == null) {
+			return;
+		}
+		int rarityIndex = findRarityLineIndex(loreLines);
+		if (rarityIndex < 0) {
+			return;
+		}
+		boolean recombed = NbtAttrs.intValue(slot.extraAttributes(), "rarity_upgrades", 0) > 0
+			|| looksLikeRecombPlaceholders(loreLines.get(rarityIndex).getString());
+		if (!recombed) {
+			return;
+		}
+		loreLines.set(rarityIndex, recombobulatedRarityLine(loreLines.get(rarityIndex)));
+	}
+
+	private static boolean looksLikeRecombPlaceholders(String plain) {
+		if (plain == null) {
+			return false;
+		}
+		String trimmed = plain.trim();
+		return trimmed.length() >= 5
+			&& (trimmed.charAt(0) == 'a' || trimmed.charAt(0) == 'A')
+			&& Character.isWhitespace(trimmed.charAt(1))
+			&& (trimmed.charAt(trimmed.length() - 1) == 'a' || trimmed.charAt(trimmed.length() - 1) == 'A')
+			&& Character.isWhitespace(trimmed.charAt(trimmed.length() - 2))
+			&& NeuItemResolver.RARITY_WORD.matcher(trimmed).find();
+	}
+
+	private static Component recombobulatedRarityLine(Component line) {
+		if (line == null) {
+			return Component.empty();
+		}
+		String plain = line.getString();
+		if (plain == null || plain.isBlank()) {
+			return line;
+		}
+		String core = stripRecombPlaceholders(plain.trim());
+		if (core.isBlank()) {
+			return line;
+		}
+		int colorRgb = estimatedHeaderColor(List.of(line), null);
+		Style body = Style.EMPTY
+			.withItalic(false)
+			.withBold(true)
+			.withColor(colorRgb)
+			.withObfuscated(false);
+		Style marker = body.withObfuscated(true);
+		return Component.empty()
+			.append(Component.literal("a").withStyle(marker))
+			.append(Component.literal(" " + core + " ").withStyle(body))
+			.append(Component.literal("a").withStyle(marker));
+	}
+
+	/** Removes static leading/trailing recomb "a" placeholders left by API lore. */
+	private static String stripRecombPlaceholders(String plain) {
+		String core = plain;
+		if (core.length() >= 2 && (core.charAt(0) == 'a' || core.charAt(0) == 'A')
+			&& Character.isWhitespace(core.charAt(1))) {
+			core = core.substring(2).stripLeading();
+		}
+		if (core.length() >= 2 && (core.charAt(core.length() - 1) == 'a' || core.charAt(core.length() - 1) == 'A')
+			&& Character.isWhitespace(core.charAt(core.length() - 2))) {
+			core = core.substring(0, core.length() - 1).stripTrailing();
+		}
+		return core;
+	}
+
+	static Component legacyLine(String text) {
+		return EnchantTooltip.colorize(legacyText(text));
+	}
+
+	static Component legacyText(String text) {
+		if (text == null || text.isEmpty()) {
+			return Component.empty();
+		}
+		text = SkyBlockSymbols.replace(text);
+		MutableComponent root = Component.empty();
+		Style style = Style.EMPTY.withItalic(false);
+		StringBuilder buf = new StringBuilder();
+		for (int i = 0; i < text.length(); i++) {
+			char c = text.charAt(i);
+			if ((c == '§' || c == '&') && i + 1 < text.length()) {
+				if (!buf.isEmpty()) {
+					root.append(Component.literal(buf.toString()).withStyle(style));
+					buf.setLength(0);
+				}
+				char code = Character.toLowerCase(text.charAt(++i));
+				if (code == 'k') {
+					style = style.withObfuscated(true);
+					continue;
+				}
+				ChatFormatting formatting = ChatFormatting.getByCode(code);
+				if (formatting != null) {
+					if (LegacyChatFormatting.isColor(formatting) || formatting == ChatFormatting.RESET) {
+						style = Style.EMPTY.withItalic(false);
+					}
+					style = style.applyFormat(formatting);
+				}
+			} else {
+				buf.append(c);
+			}
+		}
+		if (!buf.isEmpty()) {
+			root.append(Component.literal(buf.toString()).withStyle(style));
+		}
+		return root;
+	}
+
+	static String cleanLoreLine(String raw) {
+		return InventoryDecoder.cleanJsonText(raw);
+	}
+}

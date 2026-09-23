@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.vy.betterpv.BetterPV;
 import java.io.Reader;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -99,7 +100,10 @@ public final class TrophyFishData {
 						map.put(key, new Def(key, pretty(key)));
 					}
 				}
-			} catch (Exception ex) {
+			} catch (IOException | RuntimeException ex) {
+				if (ex instanceof RuntimeException runtime && !SoftDataFailure.isSoft(runtime)) {
+					throw runtime;
+				}
 				BetterPV.LOGGER.warn("Failed to load trophyfish.json", ex);
 			}
 		}

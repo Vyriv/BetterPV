@@ -154,7 +154,7 @@ final class ProfileCoopIndex {
 				continue;
 			}
 			JsonObject memberObj = entry.getValue().getAsJsonObject();
-			ProfileFetcher.CoopMemberRef ref = new ProfileFetcher.CoopMemberRef(uuid, shortCoopUuid(uuid));
+			ProfileFetcher.CoopMemberRef ref = new ProfileFetcher.CoopMemberRef(uuid, shortCoopUuid(uuid), coopJoinedMs(memberObj));
 			if (isDeletedCoopMember(memberObj)) {
 				former.add(ref);
 			} else if (!uuid.equals(viewedUuidUndashed)) {
@@ -164,6 +164,23 @@ final class ProfileCoopIndex {
 		current.sort(Comparator.comparing(ProfileFetcher.CoopMemberRef::fallbackName, String.CASE_INSENSITIVE_ORDER));
 		former.sort(Comparator.comparing(ProfileFetcher.CoopMemberRef::fallbackName, String.CASE_INSENSITIVE_ORDER));
 		return new ProfileFetcher.CoopSummary(current.size(), former.size(), List.copyOf(current), List.copyOf(former));
+	}
+
+	private static long coopJoinedMs(JsonObject memberObj) {
+		JsonObject profileNode = Leveling.obj(memberObj.get("profile"));
+		JsonObject invite = Leveling.obj(profileNode == null ? null : profileNode.get("coop_invitation"));
+		if (invite == null) {
+			return 0L;
+		}
+		JsonElement confirmed = invite.get("confirmed");
+		if (confirmed != null && confirmed.isJsonPrimitive() && !confirmed.getAsBoolean()) {
+			return 0L;
+		}
+		JsonElement ts = invite.get("confirmed_timestamp");
+		if (ts == null || !ts.isJsonPrimitive() || !ts.getAsJsonPrimitive().isNumber()) {
+			return 0L;
+		}
+		return ts.getAsLong();
 	}
 
 	static boolean isDeletedCoopMember(JsonObject memberObj) {

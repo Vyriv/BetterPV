@@ -10,6 +10,8 @@ import net.minecraft.world.item.Items;
 public enum PvSubTab {
 	DUNGEON_NORMAL(Items.STONE_BRICKS, "betterpv.sub.dungeon_normal"),
 	DUNGEON_MASTER(Items.NETHER_BRICKS, "betterpv.sub.dungeon_master"),
+	DUNGEON_OVERVIEW(Items.SKELETON_SKULL, "betterpv.sub.dungeon_overview"),
+	DUNGEON_CHESTS(Items.CHEST, "betterpv.sub.dungeon_chests"),
 	AUCTION_STATS(Items.GOLD_BLOCK, "betterpv.sub.auction_stats"),
 	AUCTION_SOLD(Items.GOLD_INGOT, "betterpv.sub.auction_sold"),
 	AUCTION_BOUGHT(Items.EMERALD, "betterpv.sub.auction_bought"),
@@ -37,7 +39,8 @@ public enum PvSubTab {
 	EVENTS_BINGO(Items.FILLED_MAP, "betterpv.sub.bingo"),
 	EVENTS_CHOCOLATE(Items.COOKIE, "betterpv.sub.chocolate"),
 	HOME_OVERVIEW(Items.PAPER, "betterpv.sub.home_overview"),
-	HOME_MISC(Items.BOOK, "betterpv.sub.home_misc");
+	HOME_MISC(Items.BOOK, "betterpv.sub.home_misc"),
+	HOME_RECORDS(Items.DRAGON_HEAD, "betterpv.sub.home_records");
 
 	public static final PvSubTab[] NONE = new PvSubTab[0];
 

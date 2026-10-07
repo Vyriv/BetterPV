@@ -7,6 +7,7 @@
 	"betterpv.home.networth_label": "Networth: ",
 	"betterpv.home.purse_label": "Purse: ",
 	"betterpv.home.bank_label": "Bank: ",
+	"betterpv.home.skill_avg_label": "Skill Avg: ",
 	"betterpv.home.sb_level": "SB Level: %s",
 	"betterpv.home.player": "Player",
 	"betterpv.home.profile": "Profile: %s",
@@ -17,6 +18,9 @@
 	"betterpv.home.slayers": "SLAYERS",
 	"betterpv.sub.home_overview": "Overview",
 	"betterpv.sub.home_misc": "Misc Stats",
+	"betterpv.sub.home_records": "Records",
+	"betterpv.sub.dungeon_overview": "Overview",
+	"betterpv.sub.dungeon_chests": "Chests",
 
 	"betterpv.tab.home": "Home",
 	"betterpv.tab.dungeons": "Dungeons",
@@ -136,7 +140,6 @@
 	"betterpv.museum.foraging": "Foraging",
 	"betterpv.museum.farming": "Farming",
 	"betterpv.museum.fishing": "Fishing",
-	"betterpv.museum.misc": "Misc",
 	"betterpv.museum.dungeoneering": "Dungeoneering",
 	"betterpv.museum.hunting": "Hunting",
 	"betterpv.museum.special": "Special"

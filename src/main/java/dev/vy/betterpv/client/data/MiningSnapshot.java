@@ -261,7 +261,7 @@ public final class MiningSnapshot {
 			hotmLevel = (int) Math.floor(hotm.level());
 			hotmFill = hotm.fill();
 			hotmMaxed = hotm.maxed();
-			hotmHover = hotm.skillHover("HOTM");
+			hotmHover = hotm.skillHoverText("HOTM");
 		}
 
 		Powder mithril = powder(core, "mithril");
@@ -299,7 +299,7 @@ public final class MiningSnapshot {
 		int corpseMs = highestCorpseMilestone(corpses);
 		int commissionMs = parseCommissionMilestone(member);
 
-		float miningXp = Leveling.readSkillXp(member, "mining");
+		double miningXp = Leveling.readSkillXpDouble(member, "mining");
 		int miningCap = Leveling.skillCap("mining", member);
 		Leveling.Progress mining = Leveling.getLevel(Leveling.skillTable("mining"), miningXp, miningCap, false);
 
@@ -319,7 +319,7 @@ public final class MiningSnapshot {
 			(int) Math.floor(mining.level()),
 			mining.fill(),
 			mining.maxed(),
-			mining.skillHover("Mining"),
+			mining.skillHoverText("Mining"),
 			mithril,
 			gemstone,
 			glacite,
@@ -472,6 +472,15 @@ public final class MiningSnapshot {
 		return forge;
 	}
 
+	/** Epoch ms the process finishes (recipe time with Quick Forge), or 0 when the duration is unknown. */
+	public long forgeEndMs(ForgeProcess process) {
+		if (process == null || process.startTimeMs() <= 0L) {
+			return 0L;
+		}
+		long duration = ForgeTimes.durationMs(process.id(), nodeLevel("forge_time"));
+		return duration <= 0L ? 0L : process.startTimeMs() + duration;
+	}
+
 	public List<String> fossilsDonated() {
 		return fossilsDonated;
 	}
@@ -549,14 +558,12 @@ public final class MiningSnapshot {
 		return best;
 	}
 
-	/**
-	 * Lifetime powder = available + spent (SkyCrypt).
-	 * Note: {@code powder_*_total} in the API is available - spent, not lifetime - do not use it.
-	 */
+	// Despite the names, powder_<kind> is lifetime earned and powder_<kind>_total is the spendable
+	// balance (lifetime - spent). Checked against the in-game HOTM menu.
 	private static Powder powder(JsonObject core, String kind) {
-		long available = Math.max(0L, longOf(core, "powder_" + kind));
+		long lifetime = Math.max(0L, longOf(core, "powder_" + kind));
 		long spent = Math.max(0L, longOf(core, "powder_spent_" + kind));
-		return new Powder(available, spent);
+		return new Powder(Math.max(0L, lifetime - spent), spent);
 	}
 
 	/** Merge {@code skill_tree.nodes.mining*} into one layout-id → level map. */

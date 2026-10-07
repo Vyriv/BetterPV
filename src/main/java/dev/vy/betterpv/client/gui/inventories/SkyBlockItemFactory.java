@@ -18,10 +18,12 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.component.DyedItemColor;
 import net.minecraft.world.item.component.ItemLore;
 
@@ -284,12 +286,18 @@ public final class SkyBlockItemFactory {
 		if ("RUBY_VEILSHROOM".equals(key)) {
 			ItemStack veil = baseStack("VEILSHROOM");
 			if (!veil.isEmpty() && !veil.is(Items.PAPER)) {
-				return veil.copy();
+				ItemStack copy = veil.copy();
+				applySkyBlockIdentity(copy, key);
+				return copy;
 			}
-			return new ItemStack(Items.RED_MUSHROOM);
+			ItemStack mushroom = new ItemStack(Items.RED_MUSHROOM);
+			applySkyBlockIdentity(mushroom, key);
+			return mushroom;
 		}
 		NeuRepoCache.prefetch(NeuItemResolver.candidates(skyblockId));
-		return baseStack(skyblockId).copy();
+		ItemStack stack = baseStack(skyblockId).copy();
+		applySkyBlockIdentity(stack, key);
+		return stack;
 	}
 
 	/**
@@ -426,6 +434,7 @@ public final class SkyBlockItemFactory {
 		if (!loreLines.isEmpty()) {
 			stack.set(DataComponents.LORE, new ItemLore(loreLines));
 		}
+		applySkyBlockIdentity(stack, slot.id());
 		return stack;
 	}
 
@@ -532,6 +541,22 @@ public final class SkyBlockItemFactory {
 		boolean includeEstimatedValue
 	) {
 		return ItemTooltipEnricher.tooltipLines(slot, rendered, includeEstimatedValue);
+	}
+
+	/**
+	 * Stamp SkyBlock id onto {@code custom_data} so CIT packs (FurfSky) can match.
+	 */
+	public static void applySkyBlockIdentity(ItemStack stack, String skyblockId) {
+		if (stack == null || stack.isEmpty() || skyblockId == null || skyblockId.isBlank()) {
+			return;
+		}
+		String id = skyblockId.toUpperCase(Locale.ROOT);
+		CustomData.update(DataComponents.CUSTOM_DATA, stack, tag -> {
+			tag.putString("id", id);
+			CompoundTag extra = new CompoundTag();
+			extra.putString("id", id);
+			tag.put("ExtraAttributes", extra);
+		});
 	}
 
 	private static ItemStack baseStack(String skyblockId) {

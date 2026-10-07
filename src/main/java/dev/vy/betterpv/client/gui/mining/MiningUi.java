@@ -56,9 +56,7 @@ public final class MiningUi {
 		GuiGraphicsExtractor g, Font font, String label, String value, float fill, boolean maxed,
 		int color, String hover, int x, int y, int w, int mx, int my, List<HoverZone> zones
 	) {
-		List<PvTooltip.Line> lines = hover == null || hover.isBlank()
-			? List.of()
-			: List.of(PvTooltip.Line.of(hover, PvDraw.COLOR_TEXT));
+		List<PvTooltip.Line> lines = dev.vy.betterpv.client.data.Leveling.hoverTextLines(hover);
 		return drawBar(g, font, label, value, fill, maxed, color, lines, x, y, w, mx, my, zones);
 	}
 

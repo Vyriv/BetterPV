@@ -64,6 +64,41 @@ public final class PetLoreResolver {
 		return "§7[Lvl " + pet.level() + "] " + tierColor + pet.displayName();
 	}
 
+	public record PetType(String type, String name, String tier, String neuId) {
+	}
+
+	private static final String[] PET_TIERS = {"COMMON", "UNCOMMON", "RARE", "EPIC", "LEGENDARY", "MYTHIC"};
+
+	/** Every pet type in NEU petnums.json at its highest tier, sorted by name. */
+	public static List<PetType> petTypes() {
+		List<PetType> out = new ArrayList<>();
+		for (Map.Entry<String, JsonElement> e : petnums().entrySet()) {
+			if (!e.getValue().isJsonObject()) continue;
+			JsonObject tiers = e.getValue().getAsJsonObject();
+			int best = -1;
+			for (int i = PET_TIERS.length - 1; i >= 0; i--) {
+				if (tiers.has(PET_TIERS[i])) {
+					best = i;
+					break;
+				}
+			}
+			if (best < 0) continue;
+			String type = e.getKey();
+			String neuId = type + ";" + best;
+			String name = prettyId(type);
+			JsonObject neu = NeuRepoCache.get(neuId);
+			if (neu != null && neu.has("displayname") && neu.get("displayname").isJsonPrimitive()) {
+				String raw = neu.get("displayname").getAsString();
+				int bracket = raw.indexOf("] ");
+				String stripped = (bracket >= 0 ? raw.substring(bracket + 2) : raw).replaceAll("§.", "").trim();
+				if (!stripped.isEmpty()) name = stripped;
+			}
+			out.add(new PetType(type, name, PET_TIERS[best], neuId));
+		}
+		out.sort(java.util.Comparator.comparing((PetType p) -> p.name().toLowerCase(Locale.ROOT)));
+		return out;
+	}
+
 	private static List<String> neuLore(String neuId) {
 		JsonObject neu = NeuRepoCache.get(neuId);
 		if (neu == null || !neu.has("lore") || !neu.get("lore").isJsonArray()) {

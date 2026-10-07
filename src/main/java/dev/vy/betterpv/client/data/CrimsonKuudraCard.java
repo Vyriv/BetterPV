@@ -231,7 +231,7 @@ public final class CrimsonKuudraCard {
 	}
 
 	private static int skillLevel(JsonObject member, String skill, int cap) {
-		float xp = Leveling.readSkillXp(member, skill);
+		double xp = Leveling.readSkillXpDouble(member, skill);
 		return (int) Math.floor(Leveling.getLevel(RepoData.levelingXp(), xp, cap, false).level());
 	}
 

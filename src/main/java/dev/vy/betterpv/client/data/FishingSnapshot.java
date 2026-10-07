@@ -146,7 +146,7 @@ public final class FishingSnapshot {
 		TrophyFishData.ensureLoaded();
 		TrophySkulls.ensureLoaded();
 
-		float fishingXp = Leveling.readSkillXp(member, "fishing");
+		double fishingXp = Leveling.readSkillXpDouble(member, "fishing");
 		int fishingCap = Leveling.skillCap("fishing", member);
 		Leveling.Progress fishing = Leveling.getLevel(Leveling.skillTable("fishing"), fishingXp, fishingCap, false);
 
@@ -171,7 +171,7 @@ public final class FishingSnapshot {
 		JsonObject trapper = Leveling.obj(quests == null ? null : quests.get("trapper_quest"));
 
 		return new FishingSnapshot(
-			(int) Math.floor(fishing.level()), fishing.fill(), fishing.maxed(), fishing.skillHover("Fishing"),
+			(int) Math.floor(fishing.level()), fishing.fill(), fishing.maxed(), fishing.skillHoverText("Fishing"),
 			longOf(fished, "total"),
 			longOf(fished, "normal"),
 			longOf(fished, "treasure"),

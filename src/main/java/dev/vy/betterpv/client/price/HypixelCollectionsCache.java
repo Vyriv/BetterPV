@@ -21,11 +21,15 @@ import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class HypixelCollectionsCache {
 	private static final URI COLLECTIONS_URI = URI.create("https://api.vyriv.dev/hypixel/resources/skyblock/collections");
 	private static final Duration TIMEOUT = Duration.ofSeconds(20);
 	private static final long REFRESH_HOURS = 12L;
+	private static final long RETRY_SECONDS = 60L;
+	private static final AtomicBoolean REFRESHING = new AtomicBoolean();
+	private static final AtomicBoolean RETRY_PENDING = new AtomicBoolean();
 	private static final HttpClient HTTP = HypixelApiClient.http();
 	private static final ScheduledExecutorService EXECUTOR = Executors.newSingleThreadScheduledExecutor(r -> {
 		Thread t = new Thread(r, "BetterPV-HypixelCollections");
@@ -112,8 +116,20 @@ public final class HypixelCollectionsCache {
 	}
 
 	public static void start() {
-		EXECUTOR.execute(HypixelCollectionsCache::refreshSafely);
+		requestRefresh();
 		EXECUTOR.scheduleAtFixedRate(HypixelCollectionsCache::refreshSafely, REFRESH_HOURS, REFRESH_HOURS, TimeUnit.HOURS);
+	}
+
+	private static void requestRefresh() {
+		if (REFRESHING.compareAndSet(false, true)) {
+			EXECUTOR.execute(() -> {
+				try {
+					refreshSafely();
+				} finally {
+					REFRESHING.set(false);
+				}
+			});
+		}
 	}
 
 	public static boolean isReady() {
@@ -142,6 +158,9 @@ public final class HypixelCollectionsCache {
 
 	/** Wait briefly so profile parse can attach tier tables. */
 	public static void awaitReady(long timeoutMs) {
+		if (!isReady()) {
+			requestRefresh();
+		}
 		long deadline = System.currentTimeMillis() + Math.max(0L, timeoutMs);
 		while (!isReady() && System.currentTimeMillis() < deadline) {
 			try {
@@ -158,12 +177,19 @@ public final class HypixelCollectionsCache {
 			refresh(true);
 		} catch (Exception exception) {
 			BetterPV.LOGGER.warn("Failed to refresh Hypixel collections", exception);
+			// Startup can run before session auth works; don't wait for the 12h refresh.
+			if (!isReady() && RETRY_PENDING.compareAndSet(false, true)) {
+				EXECUTOR.schedule(() -> {
+					RETRY_PENDING.set(false);
+					requestRefresh();
+				}, RETRY_SECONDS, TimeUnit.SECONDS);
+			}
 		}
 	}
 
 	private static void refresh(boolean allowReauth) throws IOException, InterruptedException {
 		HttpRequest.Builder builder = HttpRequest.newBuilder(COLLECTIONS_URI).timeout(TIMEOUT).GET();
-		if (!BetterPvSessionAuth.applyAuthHeaders(builder)) {
+		if (!BetterPvSessionAuth.applyAuthHeaders(builder, COLLECTIONS_URI)) {
 			throw new IOException(BetterPvSessionAuth.userFacingFailure()
 				.orElse("Missing BetterPV credentials for Hypixel collections"));
 		}

@@ -3,6 +3,7 @@ package dev.vy.betterpv.client.gui.bestiary;
 import dev.vy.betterpv.client.data.BestiaryData;
 import dev.vy.betterpv.client.data.BestiarySnapshot;
 import dev.vy.betterpv.client.data.FormatUtil;
+import dev.vy.betterpv.client.data.MobNames;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
@@ -561,6 +562,6 @@ public final class BestiaryPage {
 		}
 		String cleaned = id.trim().replaceAll("§[0-9a-fk-or]", "");
 		cleaned = cleaned.replaceAll("(?i)_\\d+$", "");
-		return BestiaryData.prettyId(cleaned);
+		return MobNames.pretty(cleaned);
 	}
 }

@@ -290,6 +290,7 @@ public final class CrimsonSnapshot {
 			activeSet.add(id.toLowerCase(Locale.ROOT));
 		}
 		List<AbiphoneContact> contacts = new ArrayList<>();
+		Map<String, AbiphoneContact> byNpc = new LinkedHashMap<>();
 		JsonObject contactData = abiphone == null ? null : Leveling.obj(abiphone.get("contact_data"));
 		if (contactData != null) {
 			for (Map.Entry<String, JsonElement> entry : contactData.entrySet()) {
@@ -299,16 +300,32 @@ public final class CrimsonSnapshot {
 				boolean done = row != null && bool(row.get("completed_quest"));
 				int calls = row == null ? 0 : (int) num(row.get("incoming_calls_count"));
 				boolean dnd = row != null && bool(row.get("dnd_enabled"));
-				contacts.add(new AbiphoneContact(
-					id,
-					prettyContact(id),
-					talked,
-					done,
-					activeSet.contains(id.toLowerCase(Locale.ROOT)),
-					Math.max(0, calls),
-					dnd
-				));
+				boolean isActive = activeSet.contains(id.toLowerCase(Locale.ROOT));
+				String npcKey = AbiphoneNpcs.neuId(id);
+				AbiphoneContact prev = byNpc.get(npcKey);
+				if (prev == null) {
+					byNpc.put(npcKey, new AbiphoneContact(
+						id,
+						prettyContact(id),
+						talked,
+						done,
+						isActive,
+						Math.max(0, calls),
+						dnd
+					));
+				} else {
+					byNpc.put(npcKey, new AbiphoneContact(
+						prev.id(),
+						prev.name(),
+						prev.talkedTo() || talked,
+						prev.completedQuest() || done,
+						prev.active() || isActive,
+						Math.max(prev.incomingCalls(), Math.max(0, calls)),
+						prev.dnd() || dnd
+					));
+				}
 			}
+			contacts.addAll(byNpc.values());
 			contacts.sort(Comparator
 				.comparing((AbiphoneContact c) -> !c.active())
 				.thenComparing(AbiphoneContact::name, String.CASE_INSENSITIVE_ORDER));

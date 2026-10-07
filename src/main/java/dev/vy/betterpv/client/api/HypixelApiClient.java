@@ -300,8 +300,9 @@ public final class HypixelApiClient {
 		try {
 			String url = WORKER_BASE + "/hypixel/uuid/" + URLEncoder.encode(cleaned, StandardCharsets.UTF_8)
 				+ (refresh ? "?refresh=1" : "");
-			HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url)).timeout(SERVER_UUID_TIMEOUT).GET();
-			if (!BetterPvSessionAuth.applyAuthHeaders(builder)) {
+			URI uri = URI.create(url);
+			HttpRequest.Builder builder = HttpRequest.newBuilder(uri).timeout(SERVER_UUID_TIMEOUT).GET();
+			if (!BetterPvSessionAuth.applyAuthHeaders(builder, uri)) {
 				return NameLookup.failed((System.nanoTime() - startedNanos) / 1_000_000L, "auth");
 			}
 			HttpResponse<String> response = HTTP.send(builder.build(), HttpResponse.BodyHandlers.ofString());
@@ -553,9 +554,10 @@ public final class HypixelApiClient {
 	// transfer is retried once (usually a cache HIT by then).
 	private static Optional<JsonObject> getJson(String url, boolean allowReauth, boolean allowStreamRetry) {
 		try {
-			HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url)).timeout(TIMEOUT).GET();
+			URI uri = URI.create(url);
+			HttpRequest.Builder builder = HttpRequest.newBuilder(uri).timeout(TIMEOUT).GET();
 			boolean needsProxyAuth = url != null && url.startsWith(WORKER_BASE) && url.contains("/hypixel/");
-			if (needsProxyAuth && !BetterPvSessionAuth.applyAuthHeaders(builder)) {
+			if (needsProxyAuth && !BetterPvSessionAuth.applyAuthHeaders(builder, uri)) {
 				BetterPV.LOGGER.warn(
 					"Hypixel GET {} skipped: {}",
 					url,

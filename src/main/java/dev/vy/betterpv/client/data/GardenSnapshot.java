@@ -20,6 +20,7 @@ public final class GardenSnapshot {
 	);
 
 	public static final int COMPOSTER_UPGRADE_MAX = 25;
+	private static final int COMPOSTER_ATTRIBUTE_MAX = 10;
 	private static final List<String> COMPOSTER_UPGRADE_ORDER = List.of(
 		"speed", "multi_drop", "fuel_cap", "organic_matter_cap", "cost_reduction"
 	);
@@ -28,6 +29,9 @@ public final class GardenSnapshot {
 		String id, String name, String iconId, long collected, int milestone,
 		float milestoneFill, boolean milestoneMaxed, int upgradeLevel, String hover
 	) {
+		public GardenCosts.Progress upgradeCopper() {
+			return GardenCosts.cropUpgradeCopper(upgradeLevel);
+		}
 	}
 
 	public record VisitorRow(
@@ -104,6 +108,12 @@ public final class GardenSnapshot {
 	}
 
 	public record ChipEntry(String id, String name, String iconId, int level) {
+		public GardenCosts.Progress sowdust() {
+			return GardenCosts.chipSowdust(level);
+		}
+	}
+
+	public record PlotCell(GardenCosts.Plot plot, boolean unlocked, GardenCosts.Cost unlockCost) {
 	}
 
 	public record GreenhouseRow(String id, String name, String iconId, boolean analyzed) {
@@ -217,7 +227,7 @@ public final class GardenSnapshot {
 
 	private final long copper;
 	private final long larvaConsumed;
-	private final int plotsUnlocked;
+	private final List<String> unlockedPlotIds;
 	private final int plotsMax;
 
 	private final long visitorsCompleted;
@@ -255,7 +265,7 @@ public final class GardenSnapshot {
 		boolean contestsLoaded, boolean contestsLoading, String contestsError,
 		int gardenLevel, float gardenFill, boolean gardenMaxed, String gardenHover, double gardenXp,
 		int farmingLevel, float farmingFill, boolean farmingMaxed, String farmingHover,
-		long copper, long larvaConsumed, int plotsUnlocked, int plotsMax,
+		long copper, long larvaConsumed, List<String> unlockedPlotIds, int plotsMax,
 		long visitorsCompleted, long uniqueVisitors, long totalVisits, long totalRejected,
 		int visitorMilestone, float visitorMilestoneFill, boolean visitorMilestoneMaxed, String visitorMilestoneHover,
 		int uniqueVisitorMilestone, float uniqueVisitorMilestoneFill, boolean uniqueVisitorMilestoneMaxed, String uniqueVisitorMilestoneHover,
@@ -282,7 +292,7 @@ public final class GardenSnapshot {
 		this.farmingHover = farmingHover == null ? "" : farmingHover;
 		this.copper = Math.max(0L, copper);
 		this.larvaConsumed = Math.max(0L, larvaConsumed);
-		this.plotsUnlocked = Math.max(0, plotsUnlocked);
+		this.unlockedPlotIds = List.copyOf(unlockedPlotIds == null ? List.of() : unlockedPlotIds);
 		this.plotsMax = Math.max(1, plotsMax);
 		this.visitorsCompleted = Math.max(0L, visitorsCompleted);
 		this.uniqueVisitors = Math.max(0L, uniqueVisitors);
@@ -319,7 +329,7 @@ public final class GardenSnapshot {
 			false, false, "", false, false, "",
 			0, 0f, false, "", 0,
 			0, 0f, false, "",
-			0, 0, 0, GardenData.maxPlots(),
+			0, 0, List.of(), GardenData.maxPlots(),
 			0, 0, 0, 0, 0, 0f, false, "", 0, 0f, false, "",
 			List.of(), List.of(), List.of(), null,
 			new MedalCounts(0, 0, 0), List.of(), List.of(), Map.of(), List.of(), List.of(),
@@ -333,7 +343,7 @@ public final class GardenSnapshot {
 		if (member == null) {
 			return empty();
 		}
-		float farmingXp = Leveling.readSkillXp(member, "farming");
+		double farmingXp = Leveling.readSkillXpDouble(member, "farming");
 		int farmingCap = Leveling.skillCap("farming", member);
 		Leveling.Progress farming = Leveling.getLevel(Leveling.skillTable("farming"), farmingXp, farmingCap, false);
 
@@ -360,8 +370,8 @@ public final class GardenSnapshot {
 		return new GardenSnapshot(
 			false, false, "", !contests.isEmpty(), false, "",
 			0, 0f, false, "Open Garden tab to load island", 0,
-			(int) Math.floor(farming.level()), farming.fill(), farming.maxed(), farming.skillHover("Farming"),
-			copper, larva, 0, GardenData.maxPlots(),
+			(int) Math.floor(farming.level()), farming.fill(), farming.maxed(), farming.skillHoverText("Farming"),
+			copper, larva, List.of(), GardenData.maxPlots(),
 			0, 0, 0, 0, 0, 0f, false, "", 0, 0f, false, "",
 			List.of(), List.of(), List.of(), null,
 			medals, brackets, pbs, perks, contests, chips,
@@ -400,7 +410,7 @@ public final class GardenSnapshot {
 			islandLoaded, islandLoading, islandError, true, false, "",
 			gardenLevel, gardenFill, gardenMaxed, gardenHover, gardenXp,
 			farmingLevel, farmingFill, farmingMaxed, farmingHover,
-			copper, larvaConsumed, plotsUnlocked, plotsMax,
+			copper, larvaConsumed, unlockedPlotIds, plotsMax,
 			visitorsCompleted, uniqueVisitors, totalVisits, totalRejected,
 			visitorMilestone, visitorMilestoneFill, visitorMilestoneMaxed, visitorMilestoneHover,
 			uniqueVisitorMilestone, uniqueVisitorMilestoneFill, uniqueVisitorMilestoneMaxed, uniqueVisitorMilestoneHover,
@@ -416,7 +426,7 @@ public final class GardenSnapshot {
 			islandLoaded, islandLoading, islandError, contestsLoaded, contestsLoading, contestsError,
 			gardenLevel, gardenFill, gardenMaxed, gardenHover, gardenXp,
 			farmingLevel, farmingFill, farmingMaxed, farmingHover,
-			copper, larvaConsumed, plotsUnlocked, plotsMax,
+			copper, larvaConsumed, unlockedPlotIds, plotsMax,
 			visitorsCompleted, uniqueVisitors, totalVisits, totalRejected,
 			visitorMilestone, visitorMilestoneFill, visitorMilestoneMaxed, visitorMilestoneHover,
 			uniqueVisitorMilestone, uniqueVisitorMilestoneFill, uniqueVisitorMilestoneMaxed, uniqueVisitorMilestoneHover,
@@ -444,11 +454,7 @@ public final class GardenSnapshot {
 			Leveling.obj(garden.get("crop_upgrade_levels"))
 		);
 
-		int plots = 0;
-		JsonElement plotsEl = garden.get("unlocked_plots_ids");
-		if (plotsEl != null && plotsEl.isJsonArray()) {
-			plots = plotsEl.getAsJsonArray().size();
-		}
+		List<String> plots = new ArrayList<>(new LinkedHashSet<>(rawStringList(garden.get("unlocked_plots_ids"))));
 
 		JsonObject commission = Leveling.obj(garden.get("commission_data"));
 		long totalCompleted = longOf(commission, "total_completed");
@@ -503,7 +509,7 @@ public final class GardenSnapshot {
 			islLoaded, islLoading, islError, cLoaded, cLoading, cError,
 			gardenLevel, gardenFill, gardenMaxed, gardenHover, gardenXp,
 			farmingLevel, farmingFill, farmingMaxed, farmingHover,
-			copper, larvaConsumed, plotsUnlocked, plotsMax,
+			copper, larvaConsumed, unlockedPlotIds, plotsMax,
 			visitorsCompleted, uniqueVisitors, totalVisits, totalRejected,
 			visitorMilestone, visitorMilestoneFill, visitorMilestoneMaxed, visitorMilestoneHover,
 			uniqueVisitorMilestone, uniqueVisitorMilestoneFill, uniqueVisitorMilestoneMaxed, uniqueVisitorMilestoneHover,
@@ -700,10 +706,11 @@ public final class GardenSnapshot {
 		List<ComposterUpgrade> rows = new ArrayList<>();
 		Set<String> seen = new LinkedHashSet<>();
 		for (String key : COMPOSTER_UPGRADE_ORDER) {
-			int level = clampUpgrade(intOf(upgrades, key));
+			int max = upgradeMax(key);
+			int level = clampUpgrade(intOf(upgrades, key), max);
 			rows.add(new ComposterUpgrade(
 				key, GardenData.prettyComposterUpgrade(key), GardenData.composterUpgradeIconId(key),
-				level, COMPOSTER_UPGRADE_MAX
+				level, max
 			));
 			seen.add(key);
 		}
@@ -714,10 +721,11 @@ public final class GardenSnapshot {
 					continue;
 				}
 				Float n = Leveling.num(e.getValue());
-				int level = clampUpgrade(n == null ? 0 : Math.round(n));
+				int max = upgradeMax(key);
+				int level = clampUpgrade(n == null ? 0 : Math.round(n), max);
 				rows.add(new ComposterUpgrade(
 				key, GardenData.prettyComposterUpgrade(key), GardenData.composterUpgradeIconId(key),
-				level, COMPOSTER_UPGRADE_MAX
+				level, max
 			));
 			}
 		}
@@ -730,8 +738,18 @@ public final class GardenSnapshot {
 		);
 	}
 
-	private static int clampUpgrade(int level) {
-		return Math.max(0, Math.min(COMPOSTER_UPGRADE_MAX, level));
+	private static int upgradeMax(String key) {
+		if (key == null || key.isBlank()) {
+			return COMPOSTER_ATTRIBUTE_MAX;
+		}
+		return switch (key.toLowerCase(Locale.ROOT)) {
+			case "speed", "multi_drop", "fuel_cap", "organic_matter_cap", "cost_reduction" -> COMPOSTER_UPGRADE_MAX;
+			default -> COMPOSTER_ATTRIBUTE_MAX;
+		};
+	}
+
+	private static int clampUpgrade(int level, int max) {
+		return Math.max(0, Math.min(max, level));
 	}
 
 	private static MedalCounts parseMedals(JsonObject jacobs) {
@@ -1093,7 +1111,37 @@ public final class GardenSnapshot {
 	public String farmingHover() { return farmingHover; }
 	public long copper() { return copper; }
 	public long larvaConsumed() { return larvaConsumed; }
-	public int plotsUnlocked() { return plotsUnlocked; }
+	public int plotsUnlocked() { return unlockedPlotIds.size(); }
+	public List<String> unlockedPlotIds() { return unlockedPlotIds; }
+
+	/** Static plot layout with this profile's unlock state; locked plots carry their tier's next price. */
+	public List<PlotCell> plotCells() {
+		Set<String> unlocked = new LinkedHashSet<>();
+		for (String id : unlockedPlotIds) {
+			unlocked.add(id.toLowerCase(Locale.ROOT));
+		}
+		Map<String, Integer> unlockedPerTier = new LinkedHashMap<>();
+		for (GardenCosts.Plot plot : GardenCosts.plots()) {
+			if (unlocked.contains(plot.id())) {
+				unlockedPerTier.merge(plot.tier(), 1, Integer::sum);
+			}
+		}
+		List<PlotCell> cells = new ArrayList<>();
+		for (GardenCosts.Plot plot : GardenCosts.plots()) {
+			boolean open = unlocked.contains(plot.id());
+			GardenCosts.Cost cost = open ? null : GardenCosts.nextPlotCost(plot.tier(), unlockedPerTier.getOrDefault(plot.tier(), 0));
+			cells.add(new PlotCell(plot, open, cost));
+		}
+		return cells;
+	}
+
+	public GardenCosts.ComposterRemaining composterCostToMax() {
+		Map<String, Integer> levels = new LinkedHashMap<>();
+		for (ComposterUpgrade upgrade : composter.upgrades()) {
+			levels.put(upgrade.id(), upgrade.level());
+		}
+		return GardenCosts.composterRemaining(levels);
+	}
 	public int plotsMax() { return plotsMax; }
 	public long visitorsCompleted() { return visitorsCompleted; }
 	public long uniqueVisitors() { return uniqueVisitors; }

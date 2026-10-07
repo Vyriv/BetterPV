@@ -276,6 +276,15 @@ public final class BestiaryData {
 		if (el.isJsonObject()) {
 			JsonObject obj = el.getAsJsonObject();
 			String texture = str(obj, "texture");
+			// A few NEU mobs (e.g. Cow) list several textures; the first is the mob's own.
+			if (texture.isBlank() && obj.has("texture") && obj.get("texture").isJsonArray()) {
+				for (JsonElement t : obj.getAsJsonArray("texture")) {
+					if (t != null && t.isJsonPrimitive() && !t.getAsString().isBlank()) {
+						texture = t.getAsString();
+						break;
+					}
+				}
+			}
 			String item = str(obj, "item");
 			if (item.isBlank()) {
 				item = str(obj, "vanilla");

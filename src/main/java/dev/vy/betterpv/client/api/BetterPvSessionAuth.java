@@ -12,9 +12,10 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.security.SecureRandom;
+import java.security.MessageDigest;
 import java.time.Duration;
-import java.util.HexFormat;
+import java.time.Instant;
+import java.util.Base64;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -25,6 +26,7 @@ import java.util.concurrent.TimeUnit;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.User;
+import net.minecraft.client.gui.screens.ConnectScreen;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
@@ -38,11 +40,12 @@ import net.minecraft.network.chat.Style;
  * api.vyriv.dev / Vyriv / Cloudflare / logging.
  */
 public final class BetterPvSessionAuth {
-	private static final URI AUTH_URI = URI.create("https://api.vyriv.dev/hypixel/auth");
+	private static final URI AUTH_CHALLENGE_URI = URI.create("https://api.vyriv.dev/hypixel/auth/v2/challenge");
+	private static final URI AUTH_URI = URI.create("https://api.vyriv.dev/hypixel/auth/v2");
 	private static final Duration TIMEOUT = Duration.ofSeconds(12);
 	private static final long REFRESH_SKEW_MILLIS = 60_000L;
 	private static final HttpClient HTTP = HypixelApiClient.http();
-	private static final SecureRandom RANDOM = new SecureRandom();
+	private static final java.security.SecureRandom RANDOM = new java.security.SecureRandom();
 	private static final Object LOCK = new Object();
 	private static final ExecutorService AUTH_EXECUTOR = Executors.newSingleThreadExecutor(r -> {
 		Thread t = new Thread(r, "BetterPV-SessionAuth");
@@ -116,12 +119,30 @@ public final class BetterPvSessionAuth {
 		return Optional.of(failure.userMessage());
 	}
 
-	/** Applies {@code Authorization: Bearer} JWT. Returns false when JWT cannot be obtained. */
-	public static boolean applyAuthHeaders(HttpRequest.Builder builder) {
+	/** Applies the v2 bearer token and proof of possession. */
+	public static boolean applyAuthHeaders(HttpRequest.Builder builder, URI uri) {
 		Optional<String> bearer = ensureBearerToken();
 		if (bearer.isPresent()) {
-			builder.header("Authorization", "Bearer " + bearer.get());
-			return true;
+			try {
+				String token = bearer.get();
+				String timestamp = Long.toString(Instant.now().getEpochSecond());
+				byte[] nonceBytes = new byte[18];
+				RANDOM.nextBytes(nonceBytes);
+				String nonce = Base64.getUrlEncoder().withoutPadding().encodeToString(nonceBytes);
+				String path = uri.getRawPath();
+				if (uri.getRawQuery() != null && !uri.getRawQuery().isBlank()) path += "?" + uri.getRawQuery();
+				String transcript = requestTranscript("GET", path, timestamp, nonce, token);
+				String signature = BetterPvInstallKey.load().sign(transcript);
+				builder.header("Authorization", "Bearer " + token)
+					.header("X-BetterPV-Timestamp", timestamp)
+					.header("X-BetterPV-Nonce", nonce)
+					.header("X-BetterPV-Signature", signature);
+				return true;
+			} catch (Exception exception) {
+				BetterPV.LOGGER.warn("BetterPV request proof failed", exception);
+				setFailure(Failure.AUTH_HTTP, "request proof failed");
+				return false;
+			}
 		}
 		if (lastFailure == Failure.NONE) {
 			lastFailure = Failure.MISSING_JWT;
@@ -310,29 +331,47 @@ public final class BetterPvSessionAuth {
 			return Optional.empty();
 		}
 
-		String serverId = randomServerId();
-		Optional<String> joinError = joinMinecraftSession(mc, profileId, accessToken, serverId, username);
-		if (joinError.isPresent()) {
-			// One quick retry for transient Mojang blips; expired tokens stay failed.
-			if (!joinError.get().startsWith("InvalidCredentials")) {
-				try {
-					Thread.sleep(400L);
-				} catch (InterruptedException interrupted) {
-					Thread.currentThread().interrupt();
-					setFailure(Failure.JOIN_SERVER_FAILED, joinError.get());
-					return Optional.empty();
-				}
-				serverId = randomServerId();
+		waitWhileConnecting(mc);
+		try {
+			BetterPvInstallKey installKey = BetterPvInstallKey.load();
+			String publicKey = installKey.publicKey();
+			String challengeBody = "{\"username\":\"" + escapeJson(username)
+				+ "\",\"publicKey\":\"" + publicKey + "\",\"protocol\":2}";
+			HttpRequest challengeRequest = HttpRequest.newBuilder(AUTH_CHALLENGE_URI)
+				.timeout(TIMEOUT)
+				.header("Content-Type", "application/json")
+				.header("Accept", "application/json")
+				.POST(HttpRequest.BodyPublishers.ofString(challengeBody, StandardCharsets.UTF_8))
+				.build();
+			HttpResponse<String> challengeResponse = HTTP.send(challengeRequest, HttpResponse.BodyHandlers.ofString());
+			if (challengeResponse.statusCode() < 200 || challengeResponse.statusCode() >= 300
+				|| challengeResponse.body() == null || challengeResponse.body().isBlank()) {
+				setFailure(Failure.AUTH_HTTP, "challenge status=" + challengeResponse.statusCode());
+				return Optional.empty();
+			}
+			JsonObject challenge = JsonParser.parseString(challengeResponse.body()).getAsJsonObject();
+			String challengeId = requiredString(challenge, "challengeId");
+			String serverId = requiredString(challenge, "serverId");
+
+			Optional<String> joinError = joinMinecraftSession(mc, profileId, accessToken, serverId, username);
+			if (joinError.isPresent() && !joinError.get().startsWith("InvalidCredentials")) {
+				Thread.sleep(400L);
 				joinError = joinMinecraftSession(mc, profileId, accessToken, serverId, username);
 			}
 			if (joinError.isPresent()) {
 				setFailure(Failure.JOIN_SERVER_FAILED, joinError.get());
 				return Optional.empty();
 			}
-		}
 
-		try {
-			String body = "{\"username\":\"" + escapeJson(username) + "\",\"serverId\":\"" + serverId + "\"}";
+			String challengeTranscript = String.join("\n",
+				"betterpv-auth-v2", challengeId, username, serverId, publicKey);
+			String signature = installKey.sign(challengeTranscript);
+			String body = "{\"challengeId\":\"" + challengeId
+				+ "\",\"username\":\"" + escapeJson(username)
+				+ "\",\"serverId\":\"" + serverId
+				+ "\",\"publicKey\":\"" + publicKey
+				+ "\",\"signature\":\"" + signature
+				+ "\",\"protocol\":2}";
 			HttpRequest request = HttpRequest.newBuilder(AUTH_URI)
 				.timeout(TIMEOUT)
 				.header("Content-Type", "application/json")
@@ -343,12 +382,12 @@ public final class BetterPvSessionAuth {
 			int status = response.statusCode();
 			String responseBody = response.body() == null ? "" : response.body();
 			if (status == 503 || causeEquals(responseBody, "session_auth_unavailable")) {
-				BetterPV.LOGGER.warn("BetterPV /hypixel/auth unavailable status={} (signing secret missing?)", status);
+				BetterPV.LOGGER.warn("BetterPV v2 auth unavailable status={}", status);
 				setFailure(Failure.SERVER_AUTH_UNAVAILABLE, "status=" + status);
 				return Optional.empty();
 			}
 			if (status < 200 || status >= 300 || responseBody.isBlank()) {
-				BetterPV.LOGGER.warn("BetterPV /hypixel/auth failed status={}", status);
+				BetterPV.LOGGER.warn("BetterPV v2 auth failed status={}", status);
 				setFailure(
 					status == 401 || status == 403 ? Failure.AUTH_REJECTED : Failure.AUTH_HTTP,
 					"status=" + status
@@ -369,7 +408,7 @@ public final class BetterPvSessionAuth {
 			String token = root.get("token").getAsString();
 			long expiresInSeconds = root.has("expiresIn") && root.get("expiresIn").isJsonPrimitive()
 				? Math.max(60L, root.get("expiresIn").getAsLong())
-				: 900L;
+				: 300L;
 			synchronized (LOCK) {
 				cachedJwt = token;
 				expiresAtMillis = System.currentTimeMillis() + (expiresInSeconds * 1000L);
@@ -377,15 +416,11 @@ public final class BetterPvSessionAuth {
 			scheduleRefresh(expiresInSeconds);
 			setFailure(Failure.NONE, "");
 			return Optional.of(token);
-		} catch (IOException | InterruptedException exception) {
-			BetterPV.LOGGER.warn("BetterPV /hypixel/auth request failed", exception);
+		} catch (Exception exception) {
+			BetterPV.LOGGER.warn("BetterPV v2 auth request failed", exception);
 			if (exception instanceof InterruptedException) {
 				Thread.currentThread().interrupt();
 			}
-			setFailure(Failure.AUTH_HTTP, exception.toString());
-			return Optional.empty();
-		} catch (RuntimeException exception) {
-			BetterPV.LOGGER.warn("BetterPV /hypixel/auth parse failed", exception);
 			setFailure(Failure.AUTH_HTTP, exception.toString());
 			return Optional.empty();
 		}
@@ -422,6 +457,20 @@ public final class BetterPvSessionAuth {
 		}
 	}
 
+	// Mojang keeps only the latest joinServer per account, so joining mid-login makes the server's
+	// hasJoined check fail. Hold off while a connection is being established.
+	private static void waitWhileConnecting(Minecraft client) {
+		long deadline = System.currentTimeMillis() + 30_000L;
+		while (client.screen instanceof ConnectScreen && System.currentTimeMillis() < deadline) {
+			try {
+				Thread.sleep(250L);
+			} catch (InterruptedException interrupted) {
+				Thread.currentThread().interrupt();
+				return;
+			}
+		}
+	}
+
 	/** Loom {@code runClient} default token. Real Microsoft sessions must still attempt joinServer. */
 	static boolean looksLikeOfflineDevSession(String accessToken) {
 		if (accessToken == null || accessToken.isBlank()) {
@@ -444,10 +493,23 @@ public final class BetterPvSessionAuth {
 		}
 	}
 
-	private static String randomServerId() {
-		byte[] bytes = new byte[20];
-		RANDOM.nextBytes(bytes);
-		return HexFormat.of().formatHex(bytes);
+	private static String requiredString(JsonObject object, String key) {
+		if (!object.has(key) || !object.get(key).isJsonPrimitive()) {
+			throw new IllegalArgumentException("Missing auth response field: " + key);
+		}
+		String value = object.get(key).getAsString();
+		if (value == null || value.isBlank()) {
+			throw new IllegalArgumentException("Blank auth response field: " + key);
+		}
+		return value;
+	}
+
+	private static String requestTranscript(String method, String path, String timestamp, String nonce, String token)
+		throws Exception {
+		MessageDigest digest = MessageDigest.getInstance("SHA-256");
+		byte[] tokenHash = digest.digest(token.getBytes(StandardCharsets.UTF_8));
+		String tokenHashHex = java.util.HexFormat.of().formatHex(tokenHash);
+		return String.join("\n", "betterpv-request-v2", method, path, timestamp, nonce, tokenHashHex);
 	}
 
 	private static String escapeJson(String value) {

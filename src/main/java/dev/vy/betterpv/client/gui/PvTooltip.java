@@ -6,6 +6,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.network.chat.TextColor;
+import net.minecraft.world.item.ItemStack;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -22,6 +23,18 @@ public final class PvTooltip {
 	private static final int ROW_GAP = 10;
 	private static final int META_GAP = 4;
 	private static final int DIVIDER_H = 7;
+	private static final int ICON_SIZE = 10;
+	private static final int ICON_W = ICON_SIZE + 2;
+	private static final int PAN_STEP = 20;
+	private static final long PAN_ACTIVE_MS = 250L;
+
+	// Tips bigger than the screen can be panned with the wheel; reset whenever a different tip shows.
+	private static List<Line> panLines;
+	private static int panX;
+	private static int panY;
+	private static int panMaxX;
+	private static int panMaxY;
+	private static long panDrawnAt;
 
 	public enum Kind {
 		TEXT,
@@ -71,12 +84,22 @@ public final class PvTooltip {
 		}
 	}
 
-	public record Line(Kind kind, List<Span> left, List<Span> value, List<Span> meta) {
+	public record Line(Kind kind, List<Span> left, List<Span> value, List<Span> meta, ItemStack icon) {
 		public Line {
 			kind = kind == null ? Kind.TEXT : kind;
 			left = left == null ? List.of() : List.copyOf(left);
 			value = value == null ? List.of() : List.copyOf(value);
 			meta = meta == null ? List.of() : List.copyOf(meta);
+			icon = icon == null || icon.isEmpty() ? null : icon;
+		}
+
+		public Line(Kind kind, List<Span> left, List<Span> value, List<Span> meta) {
+			this(kind, left, value, meta, null);
+		}
+
+		/** Small item icon drawn before the label (ROW / TEXT lines). */
+		public Line withIcon(ItemStack stack) {
+			return new Line(this.kind, this.left, this.value, this.meta, stack);
 		}
 
 		public Line(List<Span> spans) {
@@ -315,6 +338,18 @@ public final class PvTooltip {
 		if (y < 4) {
 			y = 4;
 		}
+		if (!sameTip(lines, panLines)) {
+			panLines = lines;
+			panX = 0;
+			panY = 0;
+		}
+		panMaxX = Math.max(0, boxW - (screenW - 8));
+		panMaxY = Math.max(0, boxH - (screenH - 8));
+		panX = Math.min(panX, panMaxX);
+		panY = Math.min(panY, panMaxY);
+		panDrawnAt = System.currentTimeMillis();
+		x -= panX;
+		y -= panY;
 
 		PvDraw.fill(g, x, y, boxW, boxH, 0xF0101018);
 		g.outline(x, y, boxW, boxH, PvDraw.COLOR_BORDER);
@@ -343,6 +378,61 @@ public final class PvTooltip {
 			}
 		}
 		return maxScroll;
+	}
+
+	/**
+	 * Pans the tooltip drawn last frame when it doesn't fit on screen. Returns false (so the page
+	 * scrolls as usual) when no tooltip is showing or it already fits along that axis.
+	 */
+	public static boolean panOverflow(double scrollY, boolean horizontal) {
+		if (scrollY == 0D || panLines == null || System.currentTimeMillis() - panDrawnAt > PAN_ACTIVE_MS) {
+			return false;
+		}
+		int delta = (int) Math.round(-scrollY * PAN_STEP);
+		if (horizontal) {
+			if (panMaxX <= 0) {
+				return false;
+			}
+			panX = Math.max(0, Math.min(panMaxX, panX + delta));
+		} else {
+			if (panMaxY <= 0) {
+				return false;
+			}
+			panY = Math.max(0, Math.min(panMaxY, panY + delta));
+		}
+		return true;
+	}
+
+	// Pages rebuild their tips every frame and rainbow lore recolours per frame, so compare text only.
+	private static boolean sameTip(List<Line> a, List<Line> b) {
+		if (a == b) {
+			return true;
+		}
+		if (a == null || b == null || a.size() != b.size()) {
+			return false;
+		}
+		for (int i = 0; i < a.size(); i++) {
+			Line x = a.get(i);
+			Line y = b.get(i);
+			if (x.kind() != y.kind()
+				|| !plain(x.left()).equals(plain(y.left()))
+				|| !plain(x.value()).equals(plain(y.value()))
+				|| !plain(x.meta()).equals(plain(y.meta()))) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private static String plain(List<Span> spans) {
+		if (spans.size() == 1) {
+			return spans.get(0).text();
+		}
+		StringBuilder sb = new StringBuilder();
+		for (Span span : spans) {
+			sb.append(span.text());
+		}
+		return sb.toString();
 	}
 
 	public static void drawCenteredAbove(
@@ -410,13 +500,13 @@ public final class PvTooltip {
 				case BLANK -> heights.add(blankH);
 				case ROW -> {
 					heights.add(lineH);
-					maxLabel = Math.max(maxLabel, widthOf(font, line.left()));
+					maxLabel = Math.max(maxLabel, iconOffset(line) + widthOf(font, line.left()));
 					maxValue = Math.max(maxValue, widthOf(font, line.value()));
 					maxMeta = Math.max(maxMeta, widthOf(font, line.meta()));
 				}
 				case TEXT, META, ACTION -> {
 					heights.add(line.isBlank() ? blankH : lineH);
-					maxText = Math.max(maxText, widthOf(font, line.left()));
+					maxText = Math.max(maxText, iconOffset(line) + widthOf(font, line.left()));
 				}
 			}
 		}
@@ -445,7 +535,8 @@ public final class PvTooltip {
 			case BLANK -> {
 			}
 			case ROW -> {
-				drawSpans(g, font, line.left(), innerLeft, ty);
+				drawIcon(g, font, line, innerLeft, ty);
+				drawSpans(g, font, line.left(), innerLeft + iconOffset(line), ty);
 				int valueW = widthOf(font, line.value());
 				int valueColRight = innerRight
 					- (metrics.maxMeta > 0 ? META_GAP + metrics.maxMeta : 0);
@@ -459,8 +550,28 @@ public final class PvTooltip {
 				// Slight indent so instructions don't read as data rows.
 				drawSpans(g, font, line.left(), innerLeft + 4, ty);
 			}
-			case TEXT, META -> drawSpans(g, font, line.left(), innerLeft, ty);
+			case TEXT, META -> {
+				drawIcon(g, font, line, innerLeft, ty);
+				drawSpans(g, font, line.left(), innerLeft + iconOffset(line), ty);
+			}
 		}
+	}
+
+	private static int iconOffset(Line line) {
+		return line.icon() == null ? 0 : ICON_W;
+	}
+
+	private static void drawIcon(GuiGraphicsExtractor g, Font font, Line line, int x, int ty) {
+		if (line.icon() == null) {
+			return;
+		}
+		float scale = ICON_SIZE / 16F;
+		int iy = ty + (font.lineHeight - ICON_SIZE) / 2 - 1;
+		g.pose().pushMatrix();
+		g.pose().translate(x, iy);
+		g.pose().scale(scale, scale);
+		g.item(line.icon(), 0, 0);
+		g.pose().popMatrix();
 	}
 
 	private static void drawSpans(GuiGraphicsExtractor g, Font font, List<Span> spans, int x, int y) {

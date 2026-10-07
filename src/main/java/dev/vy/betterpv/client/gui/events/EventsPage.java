@@ -86,6 +86,11 @@ public final class EventsPage {
 		return false;
 	}
 
+	public boolean mouseClicked(double mouseX, double mouseY, PvSubTab sub) {
+		PvSubTab mode = sub == null ? PvSubTab.EVENTS_BINGO : sub;
+		return mode == PvSubTab.EVENTS_CHOCOLATE && this.chocolate.mouseClicked(mouseX, mouseY);
+	}
+
 	public void render(
 		GuiGraphicsExtractor g,
 		Font font,

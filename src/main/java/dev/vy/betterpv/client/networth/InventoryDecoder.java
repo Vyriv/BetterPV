@@ -93,15 +93,7 @@ public final class InventoryDecoder {
 				out.add(stack);
 			}
 		}
-		JsonObject inventory = InventoryDecodeSupport.obj(member.get("inventory"));
-		if (inventory == null) {
-			inventory = InventoryDecodeSupport.obj(member.get("inventories"));
-		}
-		for (Stack stack : InventoryDecodeCache.decodeField(inventory, "inv_contents")) {
-			if (looksLikeAccessory(stack)) {
-				out.add(stack);
-			}
-		}
+		// Inventory accessories don't count: Hypixel's Magical Power only reads the bag.
 		return out;
 	}
 

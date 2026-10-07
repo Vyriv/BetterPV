@@ -99,6 +99,7 @@ public final class DungeonSnapshot {
 	private final int dailyRuns;
 	private final int journalsUnlocked;
 	private final HubRace hubRace;
+	private final DungeonChestHistory chestHistory;
 
 	public record HubRace(String selectedRace, String selectedSetting, Boolean runback) {
 		public HubRace {
@@ -144,7 +145,8 @@ public final class DungeonSnapshot {
 		EssenceShop dragonShop,
 		int dailyRuns,
 		int journalsUnlocked,
-		HubRace hubRace
+		HubRace hubRace,
+		DungeonChestHistory chestHistory
 	) {
 		this.cataLevel = cataLevel;
 		this.cataXp = cataXp;
@@ -177,6 +179,7 @@ public final class DungeonSnapshot {
 		this.dailyRuns = Math.max(0, dailyRuns);
 		this.journalsUnlocked = Math.max(0, journalsUnlocked);
 		this.hubRace = hubRace == null ? HubRace.empty() : hubRace;
+		this.chestHistory = chestHistory == null ? DungeonChestHistory.empty() : chestHistory;
 	}
 
 	public int cataLevel() {
@@ -304,6 +307,10 @@ public final class DungeonSnapshot {
 		return this.hubRace;
 	}
 
+	public DungeonChestHistory chestHistory() {
+		return this.chestHistory;
+	}
+
 	public static HubRace parseHubRace(com.google.gson.JsonElement raw) {
 		com.google.gson.JsonObject root = raw != null && raw.isJsonObject() ? raw.getAsJsonObject() : null;
 		if (root == null || root.entrySet().isEmpty()) {
@@ -358,7 +365,8 @@ public final class DungeonSnapshot {
 			EssenceShop.empty("spider", "Spider"),
 			EssenceShop.empty("dragon", "Dragon"),
 			0, 0,
-			HubRace.empty()
+			HubRace.empty(),
+			DungeonChestHistory.empty()
 		);
 	}
 }

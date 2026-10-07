@@ -13,22 +13,22 @@ import java.util.Locale;
 public final class Leveling {
 	public record Progress(
 		float level,
-		float maxXpForLevel,
+		double maxXpForLevel,
 		boolean maxed,
 		int maxLevel,
-		float totalXp,
-		float xpIntoLevel,
-		float overflowXp,
+		double totalXp,
+		double xpIntoLevel,
+		double overflowXp,
 		float overflowLevel
 	) {
 		public Progress(
 			float level,
-			float maxXpForLevel,
+			double maxXpForLevel,
 			boolean maxed,
 			int maxLevel,
-			float totalXp,
-			float xpIntoLevel,
-			float overflowXp
+			double totalXp,
+			double xpIntoLevel,
+			double overflowXp
 		) {
 			this(
 				level,
@@ -43,10 +43,10 @@ public final class Leveling {
 		}
 
 		public float fill() {
-			if (maxed || maxXpForLevel <= 0F) {
+			if (maxed || maxXpForLevel <= 0D) {
 				return 1.0f;
 			}
-			return Math.max(0F, Math.min(1F, xpIntoLevel / maxXpForLevel));
+			return (float) Math.max(0D, Math.min(1D, xpIntoLevel / maxXpForLevel));
 		}
 
 		/** Uncapped skill level including overflow (SkyHanni / in-game Skills menu). */
@@ -93,50 +93,48 @@ public final class Leveling {
 
 		public List<PvTooltip.Line> skillHoverLines(String name) {
 			// Match Hypixel Skills menu: title is the soft cap, overflow is listed separately.
-			int lvl = cappedLevel();
-			String title = (name == null ? "?" : name) + " " + lvl;
 			List<PvTooltip.Line> lines = new ArrayList<>(6);
-			lines.add(PvTooltip.Line.of(title, PvDraw.COLOR_ACCENT));
-			lines.add(PvTooltip.Line.row(
-				"Total XP",
-				PvDraw.COLOR_MUTED,
-				FormatUtil.commas(Math.round(Math.max(0F, totalXp))),
-				PvDraw.COLOR_GOLD
-			));
-			if (overflowXp > 0.5F) {
-				lines.add(PvTooltip.Line.row(
-					"Overflow XP",
-					PvDraw.COLOR_MUTED,
-					FormatUtil.commas(Math.round(overflowXp)),
-					PvDraw.COLOR_GOLD
-				));
-			}
-			if (maxed) {
-				lines.add(PvTooltip.Line.of(
-					"Overflow Level: " + FormatUtil.oneDecimal(overflowLevel),
-					PvDraw.COLOR_MUTED
-				));
-				if (maxXpForLevel > 0F) {
-					int next = maxLevel + 1;
-					long into = Math.round(xpIntoLevel);
-					long need = Math.round(maxXpForLevel);
-					double pct = need > 0L ? (into * 100.0) / need : 100.0;
-					lines.add(PvTooltip.Line.of(
-						FormatUtil.commas(into) + " / " + FormatUtil.commas(need)
-							+ " (" + FormatUtil.oneDecimal(pct) + "%) to Level " + next,
-						PvDraw.COLOR_GOLD
-					));
-				}
-			} else {
-				int next = Math.min(maxLevel, lvl + 1);
-				long into = Math.round(xpIntoLevel);
-				long need = Math.round(maxXpForLevel);
-				lines.add(PvTooltip.Line.of(
-					FormatUtil.shortXp(into) + " / " + FormatUtil.shortXp(need) + " to Level " + next,
-					PvDraw.COLOR_GOLD
-				));
+			lines.add(PvTooltip.Line.of(skillTitle(name), PvDraw.COLOR_ACCENT));
+			for (String[] row : skillHoverRows()) {
+				lines.add(PvTooltip.Line.row(row[0], PvDraw.COLOR_MUTED, row[1], PvDraw.COLOR_GOLD));
 			}
 			return lines;
+		}
+
+		/** {@link #skillHoverLines} flattened for bars that only carry a String; see {@link #hoverTextLines}. */
+		public String skillHoverText(String name) {
+			StringBuilder text = new StringBuilder(skillTitle(name));
+			for (String[] row : skillHoverRows()) {
+				text.append('\n').append(row[0]).append('\t').append(row[1]);
+			}
+			return text.toString();
+		}
+
+		private String skillTitle(String name) {
+			return (name == null ? "?" : name) + " " + cappedLevel();
+		}
+
+		private List<String[]> skillHoverRows() {
+			List<String[]> rows = new ArrayList<>(4);
+			rows.add(new String[] {"Total XP", FormatUtil.commas(Math.round(Math.max(0D, totalXp)))});
+			if (overflowXp > 0.5D) {
+				rows.add(new String[] {"Overflow XP", FormatUtil.commas(Math.round(overflowXp))});
+			}
+			if (maxed) {
+				if (overflowLevel > maxLevel) {
+					int current = (int) Math.floor(overflowLevel);
+					double pct = (overflowLevel - current) * 100.0;
+					rows.add(new String[] {"Overflow Level", FormatUtil.oneDecimal(overflowLevel)});
+					rows.add(new String[] {"Progress to " + (current + 1), FormatUtil.oneDecimal(pct) + "%"});
+				}
+			} else {
+				int next = Math.min(maxLevel, cappedLevel() + 1);
+				long into = Math.round(xpIntoLevel);
+				long need = Math.round(maxXpForLevel);
+				rows.add(new String[] {"Progress to " + next, FormatUtil.shortXp(into) + " / " + FormatUtil.shortXp(need)
+					+ " (" + FormatUtil.oneDecimal(fill() * 100.0) + "%)"});
+			}
+			return rows;
 		}
 
 		private String overflowHoverText() {
@@ -208,7 +206,7 @@ public final class Leveling {
 			}
 			JsonArray bossXp = RepoData.slayerBossXp(slayerId);
 			if (bossXp != null && !bossXp.isEmpty() && !maxed && maxXpForLevel > 0F) {
-				float xpNeeded = Math.max(0F, maxXpForLevel - xpIntoLevel);
+				double xpNeeded = Math.max(0D, maxXpForLevel - xpIntoLevel);
 				int highest = Math.min(bossXp.size(), RepoData.slayerHighestTier(slayerId));
 				int idx = Math.max(0, highest - 1);
 				float perKill = bossXp.get(idx).getAsFloat();
@@ -235,7 +233,7 @@ public final class Leveling {
 			}
 			JsonArray bossXp = RepoData.slayerBossXp(slayerId);
 			if (bossXp != null && !bossXp.isEmpty() && !maxed && maxXpForLevel > 0F) {
-				float xpNeeded = Math.max(0F, maxXpForLevel - xpIntoLevel);
+				double xpNeeded = Math.max(0D, maxXpForLevel - xpIntoLevel);
 				int highest = Math.min(bossXp.size(), RepoData.slayerHighestTier(slayerId));
 				int idx = Math.max(0, highest - 1);
 				float perKill = bossXp.get(idx).getAsFloat();
@@ -254,6 +252,29 @@ public final class Leveling {
 	private Leveling() {
 	}
 
+	/** Single-line hovers stay plain; {@link Progress#skillHoverText} output becomes a title plus label/value rows. */
+	public static List<PvTooltip.Line> hoverTextLines(String hover) {
+		if (hover == null || hover.isBlank()) {
+			return List.of();
+		}
+		if (hover.indexOf('\n') < 0) {
+			return List.of(PvTooltip.Line.of(hover, PvDraw.COLOR_TEXT));
+		}
+		String[] parts = hover.split("\n");
+		List<PvTooltip.Line> lines = new ArrayList<>(parts.length);
+		lines.add(PvTooltip.Line.of(parts[0], PvDraw.COLOR_ACCENT));
+		for (int i = 1; i < parts.length; i++) {
+			int tab = parts[i].indexOf('\t');
+			if (tab < 0) {
+				lines.add(PvTooltip.Line.of(parts[i], PvDraw.COLOR_TEXT));
+			} else {
+				lines.add(PvTooltip.Line.row(parts[i].substring(0, tab), PvDraw.COLOR_MUTED,
+					parts[i].substring(tab + 1), PvDraw.COLOR_GOLD));
+			}
+		}
+		return lines;
+	}
+
 	/**
 	 * SkyHanni {@code SkillUtil.calculateSkillLevel}: after 60 the step starts at 7.6M and
 	 * the slope doubles every tenth level. Matches the in-game Skills menu overflow level.
@@ -268,7 +289,7 @@ public final class Leveling {
 	}
 
 	public static Progress getLevel(JsonArray table, double xp, int levelCap, boolean cumulative) {
-		float xpF = (float) Math.max(0D, xp);
+		double xpF = Math.max(0D, xp);
 		if (table == null || table.isEmpty()) {
 			return new Progress(0, 0, false, levelCap, xpF, 0, 0);
 		}
@@ -298,7 +319,7 @@ public final class Leveling {
 				if (maxed) {
 					float step = overflowStep > 0F ? overflowStep : maxXpForLevel;
 					return new Progress(
-						levelCap, step, true, levelCap, xpF, step, (float) Math.max(0D, xp - xpToCap)
+						levelCap, step, true, levelCap, xpF, step, Math.max(0D, xp - xpToCap)
 					);
 				}
 				return new Progress(resultLevel, maxXpForLevel, false, levelCap, xpF, into, 0);
@@ -309,7 +330,7 @@ public final class Leveling {
 		}
 		int capped = Math.min(table.size(), levelCap);
 		float step = overflowStep > 0F ? overflowStep : 0F;
-		return new Progress(capped, step, true, levelCap, xpF, 0, (float) Math.max(0D, xp - xpToCap));
+		return new Progress(capped, step, true, levelCap, xpF, 0, Math.max(0D, xp - xpToCap));
 	}
 
 	/**
@@ -350,33 +371,33 @@ public final class Leveling {
 		for (int i = 0; i < capSteps; i++) {
 			xpToCap += table.get(i).getAsDouble();
 		}
-		float overflowXp = (float) Math.max(0D, xp - xpToCap);
+		double overflowXp = Math.max(0D, xp - xpToCap);
 		boolean maxed = level >= levelCap || xp + 0.5D >= xpToCap;
 		float overflowLevel = (float) (level + (xpForNext > 0D ? remaining / xpForNext : 0D));
 		float cappedLevel = maxed ? levelCap : overflowLevel;
-		float into;
-		float step;
+		double into;
+		double step;
 		if (maxed) {
 			// Hypixel Skills menu: progress toward (cap+1) can exceed 100% while soft-capped.
 			if (levelCap < table.size()) {
-				step = (float) table.get(levelCap).getAsDouble();
+				step = table.get(levelCap).getAsDouble();
 			} else {
 				step = overflowStepXp(table, levelCap, false);
 			}
-			if (step <= 0F) {
-				step = (float) xpForNext;
+			if (step <= 0D) {
+				step = xpForNext;
 			}
 			into = overflowXp;
 		} else {
-			into = (float) remaining;
-			step = (float) xpForNext;
+			into = remaining;
+			step = xpForNext;
 		}
-		if (maxed && step <= 0F) {
+		if (maxed && step <= 0D) {
 			step = overflowStepXp(table, levelCap, false);
 			into = step;
 		}
 		return new Progress(
-			cappedLevel, step, maxed, levelCap, (float) Math.max(0D, xp), into, overflowXp, overflowLevel
+			cappedLevel, step, maxed, levelCap, Math.max(0D, xp), into, overflowXp, overflowLevel
 		);
 	}
 
@@ -396,16 +417,16 @@ public final class Leveling {
 		boolean maxed,
 		float level,
 		int maxLevel,
-		float overflowXp,
-		float maxXpForLevel
+		double overflowXp,
+		double maxXpForLevel
 	) {
 		if (!maxed) {
 			return level;
 		}
-		if (maxXpForLevel <= 0F || overflowXp <= 0F) {
+		if (maxXpForLevel <= 0D || overflowXp <= 0D) {
 			return maxLevel;
 		}
-		return maxLevel + overflowXp / maxXpForLevel;
+		return (float) (maxLevel + overflowXp / maxXpForLevel);
 	}
 
 	/** XP for one overflow level past the soft cap (repeats the last capped step). */

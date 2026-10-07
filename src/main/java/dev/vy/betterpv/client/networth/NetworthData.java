@@ -19,7 +19,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
 public final class NetworthData {
 	private static JsonObject applicationWorth;
-	private static JsonObject enchantmentsWorth;
 	private static JsonObject pets;
 	private static JsonObject misc;
 	private static Map<String, String> reforges = Map.of();
@@ -34,9 +33,6 @@ public final class NetworthData {
 		JsonObject awRoot = load("data/networth/application_worth.json");
 		applicationWorth = awRoot != null && awRoot.has("APPLICATION_WORTH")
 			? awRoot.getAsJsonObject("APPLICATION_WORTH")
-			: new JsonObject();
-		enchantmentsWorth = awRoot != null && awRoot.has("ENCHANTMENTS_WORTH")
-			? awRoot.getAsJsonObject("ENCHANTMENTS_WORTH")
 			: new JsonObject();
 		pets = load("data/networth/pets.json");
 		if (pets == null) {
@@ -61,12 +57,6 @@ public final class NetworthData {
 	public static double worth(String key, double fallback) {
 		ensureLoaded();
 		JsonElement el = applicationWorth.get(key);
-		return el != null && el.isJsonPrimitive() ? el.getAsDouble() : fallback;
-	}
-
-	public static double enchantWorth(String name, double fallback) {
-		ensureLoaded();
-		JsonElement el = enchantmentsWorth.get(name);
 		return el != null && el.isJsonPrimitive() ? el.getAsDouble() : fallback;
 	}
 

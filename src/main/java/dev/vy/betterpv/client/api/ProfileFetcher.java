@@ -70,12 +70,14 @@ public final class ProfileFetcher {
 	private ProfileFetcher() {
 	}
 
-	public record CoopMemberRef(String uuid, String fallbackName) {
+	// joinedMs is coop_invitation.confirmed_timestamp, 0 for the profile creator.
+	public record CoopMemberRef(String uuid, String fallbackName, long joinedMs) {
 		public CoopMemberRef {
 			uuid = uuid == null ? "" : uuid.replace("-", "").toLowerCase(Locale.ROOT);
 			fallbackName = fallbackName == null || fallbackName.isBlank()
 				? ProfileCoopIndex.shortCoopUuid(uuid)
 				: fallbackName;
+			joinedMs = Math.max(0L, joinedMs);
 		}
 	}
 

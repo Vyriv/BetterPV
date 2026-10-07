@@ -12,6 +12,7 @@ import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import dev.vy.betterpv.client.gui.nav.MuseumSort;
 import dev.vy.betterpv.client.networth.InventoryDecoder;
 import dev.vy.betterpv.client.networth.NbtAttrs;
+import dev.vy.betterpv.client.price.HypixelItemsCache;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -322,7 +323,7 @@ public final class MuseumPage {
 			return null;
 		}
 		if (this.slots.isEmpty()) {
-			PvDraw.textCentered(g, font, "No museum slots",
+			PvDraw.textCentered(g, font, HypixelItemsCache.allItems().isEmpty() ? "Loading item data…" : "No museum slots",
 				x + w / 2, y + h / 2 - font.lineHeight / 2, PvDraw.COLOR_MUTED);
 			this.gridMaxScroll = 0;
 			return null;
@@ -493,7 +494,11 @@ public final class MuseumPage {
 			return;
 		}
 		rebuildCache();
-		this.cacheDirty = false;
+		// The catalog comes from Hypixel item defs; keep retrying until they arrive.
+		this.cacheDirty = HypixelItemsCache.allItems().isEmpty();
+		if (this.cacheDirty) {
+			HypixelItemsCache.requestIfEmpty();
+		}
 	}
 
 	private void rebuildCache() {
@@ -780,9 +785,24 @@ public final class MuseumPage {
 			for (MuseumSort category : MuseumSort.categories()) {
 				out.addAll(buildSlotsForCategory(category, donated));
 			}
-			return out;
+			return missingLast(out);
 		}
-		return buildSlotsForCategory(this.sort, donated);
+		return missingLast(buildSlotsForCategory(this.sort, donated));
+	}
+
+	private static List<Slot> missingLast(List<Slot> slots) {
+		List<Slot> out = new ArrayList<>(slots.size());
+		for (Slot slot : slots) {
+			if (!slot.missing()) {
+				out.add(slot);
+			}
+		}
+		for (Slot slot : slots) {
+			if (slot.missing()) {
+				out.add(slot);
+			}
+		}
+		return out;
 	}
 
 	private List<Slot> buildSlotsForCategory(

@@ -1,6 +1,7 @@
 package dev.vy.betterpv.client.gui;
 
 import com.google.gson.JsonObject;
+import com.mojang.blaze3d.platform.InputConstants;
 import dev.vy.betterpv.BetterPV;
 import dev.vy.betterpv.client.api.BetterPvSessionAuth;
 import dev.vy.betterpv.client.api.HypixelApiClient;
@@ -11,6 +12,7 @@ import dev.vy.betterpv.client.gui.auctions.AuctionPage;
 import dev.vy.betterpv.client.gui.bestiary.BestiaryPage;
 import dev.vy.betterpv.client.gui.collections.CollectionsPage;
 import dev.vy.betterpv.client.gui.crimson.CrimsonPage;
+import dev.vy.betterpv.client.gui.dungeons.DungeonChestsPage;
 import dev.vy.betterpv.client.gui.dungeons.DungeonPage;
 import dev.vy.betterpv.client.gui.events.EventsPage;
 import dev.vy.betterpv.client.gui.fishing.FishingPage;
@@ -18,6 +20,7 @@ import dev.vy.betterpv.client.gui.foraging.ForagingPage;
 import dev.vy.betterpv.client.gui.garden.GardenPage;
 import dev.vy.betterpv.client.gui.home.HomePage;
 import dev.vy.betterpv.client.gui.home.page.MiscStatsPage;
+import dev.vy.betterpv.client.gui.home.page.RecordsPage;
 import dev.vy.betterpv.client.gui.inventories.InventoryPage;
 import dev.vy.betterpv.client.gui.mining.MiningPage;
 import dev.vy.betterpv.client.gui.museum.MuseumPage;
@@ -45,13 +48,16 @@ import net.minecraft.network.chat.Component;
 
 public final class ProfileViewerScreen extends Screen {
 	private static final int PAD = 8;
+	private static final int TARGET_GUI_SCALE = 2;
 	private static final long OPEN_ANIM_MS = 260L;
 	private static final float OPEN_SCALE_START = 0.12F;
 
 	private final String requestedName;
 	private final HomePage homePage;
 	private final MiscStatsPage homeMiscPage = new MiscStatsPage();
+	private final RecordsPage homeRecordsPage = new RecordsPage();
 	private final DungeonPage dungeonPage = new DungeonPage();
+	private final DungeonChestsPage dungeonChestsPage = new DungeonChestsPage();
 	private final InventoryPage inventoryPage = new InventoryPage();
 	private final PetsPage petsPage = new PetsPage();
 	private final AuctionPage auctionPage = new AuctionPage();
@@ -76,6 +82,7 @@ public final class ProfileViewerScreen extends Screen {
 	private final BestiarySplitLayout bestiaryLayout = new BestiarySplitLayout();
 	private float openPivotX;
 	private float openPivotY;
+	private int previousGuiScale = -1;
 
 	private PvTab tab = PvTab.HOME;
 	private MuseumSort museumSort = MuseumSort.ALL;
@@ -119,6 +126,28 @@ public final class ProfileViewerScreen extends Screen {
 				this.subSelection.put(t, subs[0]);
 			}
 		}
+	}
+
+	@Override
+	public void added() {
+		super.added();
+		Minecraft client = Minecraft.getInstance();
+		if (client == null || client.getWindow() == null) {
+			return;
+		}
+		this.previousGuiScale = client.getWindow().getGuiScale();
+		client.getWindow().setGuiScale(TARGET_GUI_SCALE);
+	}
+
+	@Override
+	public void resize(int width, int height) {
+		Minecraft client = Minecraft.getInstance();
+		if (this.previousGuiScale >= 0 && client != null && client.getWindow() != null) {
+			client.getWindow().setGuiScale(TARGET_GUI_SCALE);
+			width = client.getWindow().getGuiScaledWidth();
+			height = client.getWindow().getGuiScaledHeight();
+		}
+		super.resize(width, height);
 	}
 
 	@Override
@@ -237,6 +266,11 @@ public final class ProfileViewerScreen extends Screen {
 	@Override
 	public void removed() {
 		ProfileFetcher.removeNetworthListener(this.networthListener);
+		Minecraft client = Minecraft.getInstance();
+		if (this.previousGuiScale >= 0 && client != null && client.getWindow() != null) {
+			client.getWindow().setGuiScale(this.previousGuiScale);
+			this.previousGuiScale = -1;
+		}
 		super.removed();
 	}
 
@@ -269,7 +303,9 @@ public final class ProfileViewerScreen extends Screen {
 		this.homeMiscPage.reset();
 		this.homeMiscPage.apply(loaded.misc() == null ? MiscStatsSnapshot.empty() : loaded.misc());
 		this.homeMiscPage.setGuildClickHandler(this.dataLoader::ensureGuild);
+		this.homeRecordsPage.apply(loaded.misc());
 		this.dungeonPage.apply(loaded.dungeons());
+		this.dungeonChestsPage.apply(loaded.dungeons());
 		this.inventoryPage.apply(loaded.inventories());
 		this.petsPage.apply(loaded.pets());
 		this.auctionPage.apply(loaded.auctions());
@@ -319,7 +355,7 @@ public final class ProfileViewerScreen extends Screen {
 
 		int panelW = Math.min(520, Math.max(420, this.width - 80 - leftRoom));
 		int contentH = this.homePage.preferredHeight(this.font, panelW - PAD * 2);
-		if (this.tab == PvTab.HOME && activeSub(PvSubTab.HOME_OVERVIEW) == PvSubTab.HOME_MISC) {
+		if (this.tab == PvTab.HOME && activeSub(PvSubTab.HOME_OVERVIEW) != PvSubTab.HOME_OVERVIEW) {
 			contentH = Math.max(contentH, 220);
 		}
 		int maxPanelH = Math.max(200, this.height - topRoom - 24);
@@ -331,7 +367,6 @@ public final class ProfileViewerScreen extends Screen {
 		this.panelYCache = panelY;
 		this.panelWCache = panelW;
 		this.panelHCache = panelH;
-
 		PvDraw.fill(graphics, 0, 0, this.width, this.height, 0x99000000);
 
 		float scale = openScale();
@@ -402,7 +437,9 @@ public final class ProfileViewerScreen extends Screen {
 				this.inventoryBar,
 				this.homePage,
 				this.homeMiscPage,
+				this.homeRecordsPage,
 				this.dungeonPage,
+				this.dungeonChestsPage,
 				this.petsPage,
 				this.auctionPage,
 				this.collectionsPage,
@@ -418,7 +455,7 @@ public final class ProfileViewerScreen extends Screen {
 				this.bestiaryPage
 			);
 
-			if (this.tab == PvTab.DUNGEONS) {
+			if (dungeonOverview()) {
 				this.dungeonPage.renderOverlay(graphics, this.font, this.width, this.height, mouseX, mouseY);
 			} else if (this.tab == PvTab.HOME && activeSub(PvSubTab.HOME_OVERVIEW) == PvSubTab.HOME_OVERVIEW) {
 				this.homePage.renderSlayerOverlay(graphics, this.font, this.width, this.height, mouseX, mouseY);
@@ -601,6 +638,20 @@ public final class ProfileViewerScreen extends Screen {
 		return this.subSelection.getOrDefault(this.tab, fallback);
 	}
 
+	private boolean dungeonOverview() {
+		return this.tab == PvTab.DUNGEONS && activeSub(PvSubTab.DUNGEON_OVERVIEW) == PvSubTab.DUNGEON_OVERVIEW;
+	}
+
+	// Screens don't keep options.keyShift updated; poll GLFW instead.
+	private static boolean shiftDown() {
+		Minecraft mc = Minecraft.getInstance();
+		if (mc == null || mc.getWindow() == null) {
+			return false;
+		}
+		return InputConstants.isKeyDown(mc.getWindow(), InputConstants.KEY_LSHIFT)
+			|| InputConstants.isKeyDown(mc.getWindow(), InputConstants.KEY_RSHIFT);
+	}
+
 	private void renderBody(GuiGraphicsExtractor g, int x, int y, int w, int h, int mouseX, int mouseY, float delta) {
 		switch (this.tab) {
 			case HOME -> {
@@ -610,6 +661,8 @@ public final class ProfileViewerScreen extends Screen {
 					this.homeMiscPage.render(
 						g, this.font, x, y, w, h, mouseX, mouseY, this.width, this.height
 					);
+				} else if (homeSub == PvSubTab.HOME_RECORDS) {
+					this.homeRecordsPage.render(g, this.font, x, y, w, h);
 				} else {
 					this.homePage.render(
 						g, this.font, x, y, w, h, mouseX, mouseY, this.width, this.height,
@@ -619,7 +672,12 @@ public final class ProfileViewerScreen extends Screen {
 			}
 			case DUNGEONS -> {
 				InventorySplitLayout.hideInventorySearch(this.inventorySearch);
-				this.dungeonPage.render(g, this.font, x, y, w, h, mouseX, mouseY, this.width, this.height);
+				if (dungeonOverview()) {
+					this.dungeonPage.render(g, this.font, x, y, w, h, mouseX, mouseY, this.width, this.height);
+				} else {
+					this.dungeonPage.blurField();
+					this.dungeonChestsPage.render(g, this.font, x, y, w, h, mouseX, mouseY);
+				}
 			}
 			case INVENTORIES -> {
 				this.dungeonPage.blurField();
@@ -823,7 +881,7 @@ public final class ProfileViewerScreen extends Screen {
 		return switch (this.tab) {
 			case HOME -> activeSub(PvSubTab.HOME_OVERVIEW) == PvSubTab.HOME_MISC
 				&& this.homeMiscPage.mouseClicked(mx, my);
-			case DUNGEONS -> this.dungeonPage.mouseClicked(mx, my);
+			case DUNGEONS -> dungeonOverview() && this.dungeonPage.mouseClicked(mx, my);
 			case MINING -> this.miningPage.mouseClicked(mx, my);
 			case FORAGING -> this.foragingPage.mouseClicked(mx, my);
 			case FISHING -> this.fishingPage.mouseClicked(mx, my);
@@ -841,6 +899,7 @@ public final class ProfileViewerScreen extends Screen {
 			case AUCTIONS -> this.auctionPage.mouseClicked(mx, my, activeSub(PvSubTab.AUCTION_STATS));
 			case COLLECTIONS -> this.collectionsPage.mouseClicked(mx, my, activeSub(PvSubTab.COLLECTIONS_LIST));
 			case INVENTORIES -> this.inventoryPage.mouseClicked(mx, my);
+			case EVENTS -> this.eventsPage.mouseClicked(mx, my, activeSub(PvSubTab.EVENTS_BINGO));
 			default -> false;
 		};
 	}
@@ -848,6 +907,10 @@ public final class ProfileViewerScreen extends Screen {
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
 		if (!uiInteractive()) {
+			return true;
+		}
+		boolean horizontal = scrollX != 0D || shiftDown();
+		if (PvTooltip.panOverflow(scrollX != 0D ? scrollX : scrollY, horizontal)) {
 			return true;
 		}
 		if (this.profileSelector.mouseScrolled(mouseX, mouseY, scrollY)) {
@@ -865,10 +928,15 @@ public final class ProfileViewerScreen extends Screen {
 				if (activeSub(PvSubTab.HOME_OVERVIEW) == PvSubTab.HOME_MISC) {
 					yield this.homeMiscPage.mouseScrolled(mouseX, mouseY, scrollY);
 				}
+				if (activeSub(PvSubTab.HOME_OVERVIEW) == PvSubTab.HOME_RECORDS) {
+					yield false;
+				}
 				yield this.homePage.mouseScrolled(mouseX, mouseY, scrollY);
 			}
 			case MUSEUM -> this.museumPage.mouseScrolled(mouseX, mouseY, scrollY);
-			case DUNGEONS -> this.dungeonPage.mouseScrolled(scrollY);
+			case DUNGEONS -> dungeonOverview()
+				? this.dungeonPage.mouseScrolled(scrollY)
+				: this.dungeonChestsPage.mouseScrolled(mouseX, mouseY, scrollY);
 			case PETS -> this.petsPage.mouseScrolled(scrollY);
 			case AUCTIONS -> this.auctionPage.mouseScrolled(mouseX, mouseY, scrollY);
 			case COLLECTIONS -> this.collectionsPage.mouseScrolled(
@@ -912,7 +980,7 @@ public final class ProfileViewerScreen extends Screen {
 			boolean directional = isDirectionalKey(event.key());
 			if (directional && !typingInvSearch && !typingPlayerSearch) {
 				MoulberryMode.keyPressed(event.key());
-				if (uiInteractive() && this.tab == PvTab.DUNGEONS && this.dungeonPage.keyPressed(event.key())) {
+				if (uiInteractive() && dungeonOverview() && this.dungeonPage.keyPressed(event.key())) {
 					return true;
 				}
 				// Screen arrow-key focus navigation would otherwise steal these
@@ -937,7 +1005,7 @@ public final class ProfileViewerScreen extends Screen {
 				// ESC / Backspace collapses SB Level overlay without closing PV.
 				return true;
 			}
-			if (uiInteractive() && this.tab == PvTab.DUNGEONS && this.dungeonPage.keyPressed(event.key())) {
+			if (uiInteractive() && dungeonOverview() && this.dungeonPage.keyPressed(event.key())) {
 				return true;
 			}
 			if (uiInteractive() && this.profileSelector.menuOpen() && event.key() == 256) {
@@ -963,7 +1031,7 @@ public final class ProfileViewerScreen extends Screen {
 					return true;
 				}
 			}
-			if (uiInteractive() && this.tab == PvTab.DUNGEONS) {
+			if (uiInteractive() && dungeonOverview()) {
 				String text = event.codepointAsString();
 				if (text != null && !text.isEmpty() && this.dungeonPage.charTyped(text.charAt(0))) {
 					return true;

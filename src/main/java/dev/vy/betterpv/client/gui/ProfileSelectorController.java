@@ -428,6 +428,7 @@ final class ProfileSelectorController {
 		}
 		if (!choice.coop().currentMembers().isEmpty()) {
 			PvDraw.text(g, font, "Current members", innerX, cy, COLOR_COOP_CURRENT);
+			drawJoinedHeader(g, font, choice.coop().currentMembers(), innerX, innerW, cy);
 			cy += font.lineHeight + 4;
 			for (ProfileFetcher.CoopMemberRef member : choice.coop().currentMembers()) {
 				drawCoopFlyoutMember(g, font, member, innerX, innerW, cy, false, mouseX, mouseY, flyoutY, flyoutH);
@@ -437,6 +438,7 @@ final class ProfileSelectorController {
 		}
 		if (!choice.coop().formerMembers().isEmpty()) {
 			PvDraw.text(g, font, "Former members", innerX, cy, COLOR_COOP_FORMER);
+			drawJoinedHeader(g, font, choice.coop().formerMembers(), innerX, innerW, cy);
 			cy += font.lineHeight + 4;
 			for (ProfileFetcher.CoopMemberRef member : choice.coop().formerMembers()) {
 				drawCoopFlyoutMember(g, font, member, innerX, innerW, cy, true, mouseX, mouseY, flyoutY, flyoutH);
@@ -444,6 +446,21 @@ final class ProfileSelectorController {
 			}
 		}
 		g.disableScissor();
+	}
+
+	private static void drawJoinedHeader(
+		GuiGraphicsExtractor g,
+		Font font,
+		List<ProfileFetcher.CoopMemberRef> members,
+		int x,
+		int w,
+		int y
+	) {
+		if (members.stream().noneMatch(m -> m.joinedMs() > 0L)) {
+			return;
+		}
+		String label = "Joined";
+		PvDraw.text(g, font, label, x + w - font.width(label), y, PvDraw.COLOR_MUTED);
 	}
 
 	private void drawFlyoutMetaRow(
@@ -493,6 +510,12 @@ final class ProfileSelectorController {
 		}
 		int nameX = x + PROFILE_COOP_ICON + 4;
 		int maxW = w - PROFILE_COOP_ICON - 4;
+		if (member.joinedMs() > 0L) {
+			String joined = FormatUtil.prettySpan(System.currentTimeMillis() - member.joinedMs());
+			int joinedW = font.width(joined);
+			PvDraw.text(g, font, joined, x + w - joinedW, y, PvDraw.COLOR_MUTED);
+			maxW -= joinedW + 4;
+		}
 		String clipped = font.plainSubstrByWidth(name, maxW);
 		PvDraw.text(g, font, clipped, nameX, y, nameColor);
 		if (visible && resolved) {

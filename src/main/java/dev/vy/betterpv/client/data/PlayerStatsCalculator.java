@@ -27,7 +27,7 @@ import java.util.regex.Pattern;
 
 /**
  * Hypixel does not expose final stats - values are reconstructed from NEU constants,
- * skills/slayers, SkyBlock level, bestiary, essence permanents, Maxwell power, tuning,
+ * skills/slayers, SkyBlock level, bestiary, essence permanents, consumables, Maxwell power, tuning,
  * active pet, and item lore on armor / equipment / accessories.
  */
 public final class PlayerStatsCalculator {
@@ -163,6 +163,7 @@ public final class PlayerStatsCalculator {
 		anySource |= addBestiary(totals, member);
 		anySource |= addCatacombs(totals, member);
 		anySource |= addEssencePermanents(totals, member);
+		anySource |= addConsumables(totals, member);
 		anySource |= addHotm(totals, member);
 		anySource |= addMaxwellAndTuning(totals, member);
 		anySource |= addPetScore(totals, member);
@@ -431,6 +432,28 @@ public final class PlayerStatsCalculator {
 			added = true;
 		}
 		return added;
+	}
+
+	// Each consumable caps at 5 eaten.
+	private static boolean addConsumables(Map<String, Double> totals, JsonObject member) {
+		JsonObject playerData = obj(member.get("player_data"));
+		if (playerData == null) {
+			return false;
+		}
+		int peppers = Math.max(0, Math.min(5, intOr(playerData, "reaper_peppers_eaten")));
+		int saliva = Math.max(0, Math.min(5, intOr(playerData, "bee_saliva_eaten")));
+		int husks = Math.max(0, Math.min(5, intOr(playerData, "isopod_husks_eaten")));
+		if (peppers > 0) {
+			add(totals, "health", peppers);
+			add(totals, "cold_resistance", peppers);
+		}
+		if (saliva > 0) {
+			add(totals, "foraging_fortune", saliva);
+		}
+		if (husks > 0) {
+			add(totals, "respiration", husks);
+		}
+		return peppers + saliva + husks > 0;
 	}
 
 	private static boolean addHotm(Map<String, Double> totals, JsonObject member) {
@@ -846,7 +869,7 @@ public final class PlayerStatsCalculator {
 			"combat", "mining", "farming", "foraging", "fishing", "enchanting", "alchemy", "taming", "carpentry",
 			"runecrafting", "social"
 		)) {
-			float xp = Leveling.readSkillXp(member, skill);
+			double xp = Leveling.readSkillXpDouble(member, skill);
 			if (xp <= 0F) {
 				continue;
 			}

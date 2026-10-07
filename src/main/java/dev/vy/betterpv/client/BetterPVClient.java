@@ -89,6 +89,7 @@ public final class BetterPVClient implements ClientModInitializer {
 		ClientTickEvents.END_CLIENT_TICK.register(LoadingEggFinale::tick);
 		ClientTickEvents.END_CLIENT_TICK.register(BetterPVClient::prefetchSessionAuthOnce);
 		ClientTickEvents.END_CLIENT_TICK.register(BetterPVClient::warnPvShadowedOnce);
+		VyaddonsUpdateChecker.initialize();
 		BetterPV.LOGGER.info("BetterPV client ready - /pv");
 	}
 
@@ -97,7 +98,9 @@ public final class BetterPVClient implements ClientModInitializer {
 	 * so cold {@code /pv} is less likely to pay joinServer + /hypixel/auth on the critical path.
 	 */
 	private static void prefetchSessionAuthOnce(net.minecraft.client.Minecraft client) {
-		if (SESSION_AUTH_PREFETCHED.get() || client == null) {
+		// Wait until in-world: joinServer during server login steals the session and the server kicks with
+		// "Failed to authenticate your connection".
+		if (SESSION_AUTH_PREFETCHED.get() || client == null || client.player == null || client.getConnection() == null) {
 			return;
 		}
 		User user = client.getUser();

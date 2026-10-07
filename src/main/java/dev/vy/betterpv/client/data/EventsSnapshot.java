@@ -6,7 +6,10 @@ import com.google.gson.JsonObject;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -20,6 +23,10 @@ public final class EventsSnapshot {
 		public Rabbit {
 			rarity = rarity == null || rarity.isBlank() ? "COMMON" : rarity.toUpperCase(Locale.ROOT);
 		}
+	}
+
+	/** Years are SkyBlock years. */
+	public record Chocobit(int id, int ownedYear, int expiryYear) {
 	}
 
 	public record BingoGoal(String id, String name, String lore, long progress, long required, boolean community) {
@@ -50,10 +57,28 @@ public final class EventsSnapshot {
 		long missedEggs,
 		int cocoaFortuneUpgrades,
 		long chocolateSpent,
-		List<Rabbit> topRabbits
+		List<Rabbit> topRabbits,
+		Map<String, Integer> rabbitCounts,
+		String selectedFaction,
+		int factionLevel,
+		List<Chocobit> chocobits,
+		int chocobitsFound
 	) {
 		public static Chocolate empty() {
-			return new Chocolate(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0L, List.of(), 0, 0, 0, 0, 0, 0, 0, 0, 0, List.of());
+			return new Chocolate(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0L, List.of(), 0, 0, 0, 0, 0, 0, 0, 0, 0, List.of(),
+				Map.of(), "", 0, List.of(), 0);
+		}
+
+		public Set<String> ownedRabbits() {
+			return rabbitCounts.keySet();
+		}
+
+		public ChocolateFactoryData.Prestige prestige() {
+			return ChocolateFactoryData.prestige(chocolateLevel, chocolateSincePrestige);
+		}
+
+		public ChocolateFactoryData.Hitmen hitmen() {
+			return ChocolateFactoryData.hitmen(hitmenSlots);
 		}
 
 		public boolean present() {
@@ -164,9 +189,12 @@ public final class EventsSnapshot {
 		int unique = 0;
 		int duplicates = 0;
 		List<Rabbit> top = new ArrayList<>();
+		Map<String, Integer> owned = new HashMap<>();
 		long breakfast = 0;
 		long lunch = 0;
 		long dinner = 0;
+		String faction = "";
+		int factionLevel = 0;
 		if (rabbits != null) {
 			JsonObject eggs = Leveling.obj(rabbits.get("collected_eggs"));
 			if (eggs != null) {
@@ -174,9 +202,13 @@ public final class EventsSnapshot {
 				lunch = longOf(eggs, "lunch");
 				dinner = longOf(eggs, "dinner");
 			}
+			faction = str(rabbits, "selected_faction").toLowerCase(Locale.ROOT);
+			factionLevel = intOf(rabbits, "faction_level");
 			for (var entry : rabbits.entrySet()) {
 				String id = entry.getKey();
-				if (id == null || "collected_eggs".equals(id) || "collected_locations".equals(id)) {
+				// Faction fields share the rabbits object with the rabbit counts.
+				if (id == null || "collected_eggs".equals(id) || "collected_locations".equals(id)
+					|| "selected_faction".equals(id) || "faction_level".equals(id)) {
 					continue;
 				}
 				if (!entry.getValue().isJsonPrimitive()) {
@@ -188,6 +220,7 @@ public final class EventsSnapshot {
 				}
 				unique++;
 				duplicates += count;
+				owned.merge(id.toLowerCase(Locale.ROOT), count, Integer::sum);
 				top.add(new Rabbit(id, prettyId(id), count, HoppityRabbitsData.rarityOf(id)));
 			}
 			top.sort(Comparator.comparingInt(Rabbit::count).reversed().thenComparing(Rabbit::name));
@@ -204,12 +237,28 @@ public final class EventsSnapshot {
 		int fortune = shop == null ? 0 : intOf(shop, "cocoa_fortune_upgrades");
 		long spent = shop == null ? 0L : longOf(shop, "chocolate_spent");
 
+		List<Chocobit> chocobits = new ArrayList<>();
+		JsonObject bits = Leveling.obj(easter.get("chocobits"));
+		int bitsFound = bits == null ? 0 : intOf(bits, "total_found");
+		if (bits != null && bits.has("owned") && bits.get("owned").isJsonArray()) {
+			for (JsonElement el : bits.getAsJsonArray("owned")) {
+				JsonObject bit = Leveling.obj(el);
+				int id = bit == null ? 0 : intOf(bit, "id");
+				if (id <= 0) {
+					continue;
+				}
+				chocobits.add(new Chocobit(id, intOf(bit, "owned_year"), intOf(bit, "expiry_year")));
+			}
+			chocobits.sort(Comparator.comparingInt(Chocobit::expiryYear).thenComparingInt(Chocobit::id));
+		}
+
 		return new Chocolate(
 			chocolate, total, sincePrestige, level, click, multi, rarity, barn,
 			towerLevel, towerCharges, towerActive,
 			List.copyOf(employees), unique, duplicates,
 			breakfast, lunch, dinner, hitmenSlots, missed, fortune, spent,
-			List.copyOf(top)
+			List.copyOf(top), Map.copyOf(owned), faction, factionLevel,
+			List.copyOf(chocobits), bitsFound
 		);
 	}
 

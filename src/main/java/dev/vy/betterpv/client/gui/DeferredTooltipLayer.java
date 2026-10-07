@@ -4,6 +4,7 @@ import dev.vy.betterpv.client.gui.auctions.AuctionPage;
 import dev.vy.betterpv.client.gui.bestiary.BestiaryPage;
 import dev.vy.betterpv.client.gui.collections.CollectionsPage;
 import dev.vy.betterpv.client.gui.crimson.CrimsonPage;
+import dev.vy.betterpv.client.gui.dungeons.DungeonChestsPage;
 import dev.vy.betterpv.client.gui.dungeons.DungeonPage;
 import dev.vy.betterpv.client.gui.events.EventsPage;
 import dev.vy.betterpv.client.gui.fishing.FishingPage;
@@ -11,6 +12,7 @@ import dev.vy.betterpv.client.gui.foraging.ForagingPage;
 import dev.vy.betterpv.client.gui.garden.GardenPage;
 import dev.vy.betterpv.client.gui.home.HomePage;
 import dev.vy.betterpv.client.gui.home.page.MiscStatsPage;
+import dev.vy.betterpv.client.gui.home.page.RecordsPage;
 import dev.vy.betterpv.client.gui.inventories.InventoryPage;
 import dev.vy.betterpv.client.gui.mining.MiningPage;
 import dev.vy.betterpv.client.gui.museum.MuseumPage;
@@ -49,7 +51,9 @@ final class DeferredTooltipLayer {
 		IconButtonBar inventoryBar,
 		HomePage homePage,
 		MiscStatsPage homeMiscPage,
+		RecordsPage homeRecordsPage,
 		DungeonPage dungeonPage,
+		DungeonChestsPage dungeonChestsPage,
 		PetsPage petsPage,
 		AuctionPage auctionPage,
 		CollectionsPage collectionsPage,
@@ -82,11 +86,19 @@ final class DeferredTooltipLayer {
 			case HOME -> {
 				if (homeSub == PvSubTab.HOME_MISC) {
 					homeMiscPage.renderTooltip(g, font, mouseX, mouseY, width, height);
+				} else if (homeSub == PvSubTab.HOME_RECORDS) {
+					homeRecordsPage.renderTooltip(g, font, mouseX, mouseY, width, height);
 				} else {
 					homePage.renderTooltip(g, font, mouseX, mouseY, width, height);
 				}
 			}
-			case DUNGEONS -> dungeonPage.renderTooltip(g, font, mouseX, mouseY, width, height);
+			case DUNGEONS -> {
+				if (homeSub == PvSubTab.DUNGEON_CHESTS) {
+					dungeonChestsPage.renderTooltip(g, font, mouseX, mouseY, width, height);
+				} else {
+					dungeonPage.renderTooltip(g, font, mouseX, mouseY, width, height);
+				}
+			}
 			case PETS -> petsPage.renderTooltip(g, font, mouseX, mouseY, width, height);
 			case AUCTIONS -> auctionPage.renderTooltip(g, font, mouseX, mouseY, width, height);
 			case COLLECTIONS -> collectionsPage.renderTooltip(g, font, mouseX, mouseY, width, height);

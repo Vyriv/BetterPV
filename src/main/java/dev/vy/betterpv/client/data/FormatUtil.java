@@ -10,6 +10,7 @@ import java.util.Locale;
 public final class FormatUtil {
 	private static final DecimalFormat COMMAS = new DecimalFormat("#,###", DecimalFormatSymbols.getInstance(Locale.US));
 	private static final DecimalFormat ONE_DEC = new DecimalFormat("0.0", DecimalFormatSymbols.getInstance(Locale.US));
+	private static final DecimalFormat TWO_DEC = new DecimalFormat("#,##0.00", DecimalFormatSymbols.getInstance(Locale.US));
 	private static final DecimalFormat WEIGHT = new DecimalFormat("#,##0.0", DecimalFormatSymbols.getInstance(Locale.US));
 	private static final DateTimeFormatter DATE_UTC = DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US)
 		.withZone(ZoneOffset.UTC);
@@ -39,6 +40,16 @@ public final class FormatUtil {
 
 	public static String oneDecimal(double value) {
 		return ONE_DEC.format(value);
+	}
+
+	public static String twoDecimals(double value) {
+		return TWO_DEC.format(value);
+	}
+
+	/** 0..1 fraction as a percentage (e.g. {@code 41.7%}). */
+	public static String percent(double fraction) {
+		double clamped = Double.isFinite(fraction) ? Math.max(0D, Math.min(1D, fraction)) : 0D;
+		return ONE_DEC.format(clamped * 100D) + "%";
 	}
 
 	public static String weight(double value) {

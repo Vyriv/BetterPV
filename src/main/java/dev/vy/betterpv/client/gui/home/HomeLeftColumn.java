@@ -22,6 +22,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.world.item.ItemStack;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -79,7 +80,9 @@ final class HomeLeftColumn {
 	private static String WEIGHT_LABEL;
 	private static String PURSE_LABEL;
 	private static String BANK_LABEL;
+	private static String SKILL_AVG_LABEL;
 	private static int NW_LABEL_W = -1;
+	private static int SKILL_AVG_LABEL_W = -1;
 	private static int WEIGHT_LABEL_W = -1;
 	private static int PURSE_LABEL_W = -1;
 	private static int BANK_LABEL_W = -1;
@@ -235,7 +238,7 @@ final class HomeLeftColumn {
 		} else {
 			int[] modelBox = drawProfileFace(
 				g, font, x, y, w, h, layout, mouseX, mouseY,
-				snapshot, playerStatus, playerRank, activeNw, senither, lily, weightSystem, loadError
+				snapshot, playerStatus, playerRank, activeNw, senither, lily, weightSystem, loadError, zones
 			);
 			if (modelBox != null) {
 				drawModelAfter = true;
@@ -292,7 +295,8 @@ final class HomeLeftColumn {
 		WeightBreakdown senither,
 		WeightBreakdown lily,
 		WeightSystem weightSystem,
-		String loadError
+		String loadError,
+		List<HomePage.HoverZone> zones
 	) {
 		ensureStaticLabels(font);
 		int ty = y + PAD;
@@ -371,7 +375,10 @@ final class HomeLeftColumn {
 		this.weightHitW = weightLineW;
 		this.weightHitH = font.lineHeight;
 
-		ty += layout.line * 2;
+		ty += layout.line;
+		drawSkillAverage(g, font, x, ty, w, snapshot, zones);
+
+		ty += layout.line;
 		String bankValue = FormatUtil.shortCoins(snapshot.bankCoins());
 		Component bankLine = Component.empty()
 			.append(PvDraw.styled(BANK_LABEL, 0xFF55FF55, false))
@@ -447,6 +454,39 @@ final class HomeLeftColumn {
 		PvDraw.textCentered(g, font, this.cachedStatusDrawn, statusX + statusW / 2,
 			statusY + (statusH - font.lineHeight) / 2, statusColor);
 		return modelBox;
+	}
+
+	private static void drawSkillAverage(
+		GuiGraphicsExtractor g, Font font, int x, int ty, int w, ProfileSnapshot snapshot, List<HomePage.HoverZone> zones
+	) {
+		boolean loaded = snapshot.skillsLoaded();
+		double average = snapshot.skillAverage(true);
+		String value = loaded ? FormatUtil.twoDecimals(average) : "…";
+		Component line = Component.empty()
+			.append(PvDraw.styled(SKILL_AVG_LABEL, 0xFF55FF55, false))
+			.append(PvDraw.styled(value, PvDraw.COLOR_GOLD, true));
+		int lineW = SKILL_AVG_LABEL_W + PvDraw.widthBold(font, value);
+		int lineX = x + (w - lineW) / 2;
+		g.text(font, line, lineX, ty, PvDraw.COLOR_WHITE, false);
+		if (!loaded) {
+			return;
+		}
+		List<PvTooltip.Line> tip = new ArrayList<>();
+		tip.add(PvTooltip.Line.title("Skill Average", 0xFF55FF55));
+		tip.add(PvTooltip.Line.divider());
+		tip.add(PvTooltip.Line.row("Skill Avg", PvDraw.COLOR_MUTED, FormatUtil.twoDecimals(average), PvDraw.COLOR_GOLD));
+		tip.add(PvTooltip.Line.row("Overflow Skill Avg", PvDraw.COLOR_MUTED,
+			FormatUtil.twoDecimals(snapshot.overflowSkillAverage()), PvDraw.COLOR_GOLD));
+		tip.add(PvTooltip.Line.blank());
+		for (ProfileSnapshot.SkillEntry skill : snapshot.skills()) {
+			int overflow = (int) Math.floor(skill.overflowLevel());
+			String level = skill.maxed() && overflow > skill.level()
+				? skill.level() + " (" + overflow + ")"
+				: String.valueOf(skill.level());
+			tip.add(PvTooltip.Line.row(skill.name(), PvDraw.COLOR_MUTED, level,
+				skill.maxed() ? PvDraw.COLOR_GOLD : PvDraw.COLOR_TEXT));
+		}
+		zones.add(new HomePage.HoverZone(lineX, ty, lineW, font.lineHeight, tip));
 	}
 
 	private void drawStatsFace(
@@ -562,9 +602,11 @@ final class HomeLeftColumn {
 			WEIGHT_LABEL = Component.translatable("betterpv.home.weight_label").getString();
 			PURSE_LABEL = Component.translatable("betterpv.home.purse_label").getString();
 			BANK_LABEL = Component.translatable("betterpv.home.bank_label").getString();
+			SKILL_AVG_LABEL = Component.translatable("betterpv.home.skill_avg_label").getString();
 		}
 		if (NW_LABEL_W < 0) {
 			NW_LABEL_W = font.width(NW_LABEL);
+			SKILL_AVG_LABEL_W = font.width(SKILL_AVG_LABEL);
 			WEIGHT_LABEL_W = font.width(WEIGHT_LABEL);
 			PURSE_LABEL_W = font.width(PURSE_LABEL);
 			BANK_LABEL_W = font.width(BANK_LABEL);

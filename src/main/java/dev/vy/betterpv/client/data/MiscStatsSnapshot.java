@@ -60,6 +60,76 @@ public final class MiscStatsSnapshot {
 		}
 	}
 
+	/** {@code player_stats.end_island.dragon_fight} for one dragon type. Fastest kill is in ms. */
+	public record DragonStat(String id, String label, long summoned, long eyes, double mostDamage, long fastestKillMs, int bestRank) {
+	}
+
+	public record DragonStats(
+		List<DragonStat> dragons, long summoned, long eyesPlaced, double bestDamage, long fastestKillMs,
+		long eyesCollected, long specialZealots
+	) {
+		public DragonStats {
+			dragons = List.copyOf(dragons == null ? List.of() : dragons);
+		}
+
+		public static DragonStats empty() {
+			return new DragonStats(List.of(), 0L, 0L, 0D, 0L, 0L, 0L);
+		}
+
+		public boolean present() {
+			return !dragons.isEmpty() || summoned > 0L || eyesCollected > 0L || specialZealots > 0L;
+		}
+	}
+
+	public record RaceTime(String mode, long ms) {
+	}
+
+	/** One race course; Dungeon Hub courses have several modes, the rest have one. */
+	public record RaceGroup(String label, long bestMs, List<RaceTime> modes) {
+		public RaceGroup {
+			modes = List.copyOf(modes == null ? List.of() : modes);
+		}
+	}
+
+	public record BurrowCount(String label, long total, Map<String, Long> byRarity) {
+		public BurrowCount {
+			byRarity = byRarity == null ? Map.of() : java.util.Collections.unmodifiableMap(new LinkedHashMap<>(byRarity));
+		}
+	}
+
+	public record MythosStats(long kills, List<BurrowCount> burrows) {
+		public MythosStats {
+			burrows = List.copyOf(burrows == null ? List.of() : burrows);
+		}
+
+		public static MythosStats empty() {
+			return new MythosStats(0L, List.of());
+		}
+
+		public boolean present() {
+			return kills > 0L || !burrows.isEmpty();
+		}
+	}
+
+	/** Jerry's Workshop bests ({@code player_stats.winter}) and Spooky Festival candy / bats. */
+	public record SeasonalStats(
+		long snowballsHit, long winterDamage, long magmaDamage,
+		long candyTotal, long greenCandy, long purpleCandy,
+		int festivals, long bestFestivalCandy, int bestFestivalYear, long batsSpawned
+	) {
+		public static SeasonalStats empty() {
+			return new SeasonalStats(0L, 0L, 0L, 0L, 0L, 0L, 0, 0L, 0, 0L);
+		}
+
+		public boolean winterPresent() {
+			return snowballsHit > 0L || winterDamage > 0L || magmaDamage > 0L;
+		}
+
+		public boolean spookyPresent() {
+			return candyTotal > 0L || batsSpawned > 0L;
+		}
+	}
+
 	private final List<CountEntry> kills;
 	private final long killsTotal;
 	private final List<CountEntry> deaths;
@@ -84,6 +154,10 @@ public final class MiscStatsSnapshot {
 	private final List<CommunityUpgrade> communityUpgrades;
 	private final List<Section> extraSections;
 	private final ExperimentationStats experimentation;
+	private final DragonStats dragons;
+	private final List<RaceGroup> races;
+	private final MythosStats mythos;
+	private final SeasonalStats seasonal;
 
 	private MiscStatsSnapshot(
 		List<CountEntry> kills,
@@ -109,7 +183,11 @@ public final class MiscStatsSnapshot {
 		List<String> unlockedTemples,
 		List<CommunityUpgrade> communityUpgrades,
 		List<Section> extraSections,
-		ExperimentationStats experimentation
+		ExperimentationStats experimentation,
+		DragonStats dragons,
+		List<RaceGroup> races,
+		MythosStats mythos,
+		SeasonalStats seasonal
 	) {
 		this.kills = List.copyOf(kills == null ? List.of() : kills);
 		this.killsTotal = Math.max(0L, killsTotal);
@@ -135,6 +213,10 @@ public final class MiscStatsSnapshot {
 		this.communityUpgrades = List.copyOf(communityUpgrades == null ? List.of() : communityUpgrades);
 		this.extraSections = List.copyOf(extraSections == null ? List.of() : extraSections);
 		this.experimentation = experimentation == null ? ExperimentationStats.empty() : experimentation;
+		this.dragons = dragons == null ? DragonStats.empty() : dragons;
+		this.races = List.copyOf(races == null ? List.of() : races);
+		this.mythos = mythos == null ? MythosStats.empty() : mythos;
+		this.seasonal = seasonal == null ? SeasonalStats.empty() : seasonal;
 	}
 
 	public static MiscStatsSnapshot empty() {
@@ -142,7 +224,8 @@ public final class MiscStatsSnapshot {
 			List.of(), 0L, List.of(), 0L,
 			0D, 0D, 0L, 0L, 0L, 0L, 0L, 0L,
 			0L, 0, 0, 0, 0, false, 0L, 0, List.of(),
-			List.of(), List.of(), ExperimentationStats.empty()
+			List.of(), List.of(), ExperimentationStats.empty(),
+			DragonStats.empty(), List.of(), MythosStats.empty(), SeasonalStats.empty()
 		);
 	}
 
@@ -176,12 +259,6 @@ public final class MiscStatsSnapshot {
 
 		List<CommunityUpgrade> upgrades = parseCommunity(profileRoot);
 		List<Section> extras = new ArrayList<>();
-		addSection(extras, "mythos", "Mythological", Leveling.obj(stats == null ? null : stats.get("mythos")));
-		addSection(extras, "end_island", "End Island", Leveling.obj(stats == null ? null : stats.get("end_island")));
-		addSection(extras, "races", "Races", Leveling.obj(stats == null ? null : stats.get("races")));
-		addSection(extras, "winter", "Winter", Leveling.obj(stats == null ? null : stats.get("winter")));
-		addSection(extras, "spooky", "Spooky Festival", Leveling.obj(stats == null ? null : stats.get("spooky")));
-		addSection(extras, "candy", "Candy", Leveling.obj(stats == null ? null : stats.get("candy_collected")));
 		addSection(extras, "rift_combat", "Rift Combat", Leveling.obj(stats == null ? null : stats.get("rift")));
 
 		return new MiscStatsSnapshot(
@@ -208,8 +285,202 @@ public final class MiscStatsSnapshot {
 			stringList(temples == null ? null : temples.get("unlocked_temples")),
 			upgrades,
 			extras,
-			parseExperimentation(Leveling.obj(member.get("experimentation")))
+			parseExperimentation(Leveling.obj(member.get("experimentation"))),
+			parseDragons(Leveling.obj(stats == null ? null : stats.get("end_island"))),
+			parseRaces(Leveling.obj(stats == null ? null : stats.get("races"))),
+			parseMythos(Leveling.obj(stats == null ? null : stats.get("mythos"))),
+			parseSeasonal(stats)
 		);
+	}
+
+	private static SeasonalStats parseSeasonal(JsonObject stats) {
+		if (stats == null) {
+			return SeasonalStats.empty();
+		}
+		JsonObject winter = Leveling.obj(stats.get("winter"));
+		JsonObject candy = Leveling.obj(stats.get("candy_collected"));
+		JsonObject spooky = Leveling.obj(stats.get("spooky"));
+		JsonObject bats = Leveling.obj(spooky == null ? null : spooky.get("bats_spawned"));
+		int festivals = 0;
+		long bestCandy = 0L;
+		int bestYear = 0;
+		if (candy != null) {
+			for (var e : candy.entrySet()) {
+				if (!e.getKey().startsWith("spooky_festival_")) {
+					continue;
+				}
+				long total = longOf(Leveling.obj(e.getValue()), "total");
+				if (total <= 0L) {
+					continue;
+				}
+				festivals++;
+				if (total > bestCandy) {
+					bestCandy = total;
+					try {
+						bestYear = Integer.parseInt(e.getKey().substring("spooky_festival_".length()));
+					} catch (NumberFormatException ignored) {
+						bestYear = 0;
+					}
+				}
+			}
+		}
+		return new SeasonalStats(
+			longOf(winter, "most_snowballs_hit"),
+			longOf(winter, "most_damage_dealt"),
+			longOf(winter, "most_magma_damage_dealt"),
+			longOf(candy, "total"),
+			longOf(candy, "green_candy"),
+			longOf(candy, "purple_candy"),
+			festivals,
+			bestCandy,
+			bestYear,
+			longOf(bats, "total")
+		);
+	}
+
+	private static final List<String> DRAGON_ORDER = List.of(
+		"protector", "old", "wise", "unstable", "young", "strong", "superior", "holy"
+	);
+
+	private static DragonStats parseDragons(JsonObject endIsland) {
+		if (endIsland == null) {
+			return DragonStats.empty();
+		}
+		JsonObject fight = Leveling.obj(endIsland.get("dragon_fight"));
+		JsonObject damage = Leveling.obj(fight == null ? null : fight.get("most_damage"));
+		JsonObject fastest = Leveling.obj(fight == null ? null : fight.get("fastest_kill"));
+		JsonObject rank = Leveling.obj(fight == null ? null : fight.get("highest_rank"));
+		JsonObject summoned = Leveling.obj(fight == null ? null : fight.get("amount_summoned"));
+		JsonObject eyes = Leveling.obj(fight == null ? null : fight.get("summoning_eyes_contributed"));
+
+		List<String> ids = new ArrayList<>(DRAGON_ORDER);
+		for (JsonObject src : new JsonObject[] { damage, fastest, rank, summoned, eyes }) {
+			if (src == null) {
+				continue;
+			}
+			for (String key : src.keySet()) {
+				String id = key.toLowerCase(Locale.ROOT);
+				if (!"best".equals(id) && !"total".equals(id) && !ids.contains(id)) {
+					ids.add(id);
+				}
+			}
+		}
+		List<DragonStat> dragons = new ArrayList<>();
+		for (String id : ids) {
+			DragonStat d = new DragonStat(
+				id,
+				InventoryDecoder.prettyWords(id),
+				longOf(summoned, id),
+				longOf(eyes, id),
+				doubleOf(damage, id),
+				longOf(fastest, id),
+				(int) longOf(rank, id)
+			);
+			if (d.summoned() > 0L || d.mostDamage() > 0D || d.fastestKillMs() > 0L) {
+				dragons.add(d);
+			}
+		}
+		return new DragonStats(
+			dragons,
+			longOf(summoned, "total"),
+			longOf(eyes, "total"),
+			doubleOf(damage, "best"),
+			longOf(fastest, "best"),
+			longOf(endIsland, "summoning_eyes_collected"),
+			longOf(endIsland, "special_zealot_loot_collected")
+		);
+	}
+
+	private static List<RaceGroup> parseRaces(JsonObject races) {
+		if (races == null) {
+			return List.of();
+		}
+		List<RaceGroup> out = new ArrayList<>();
+		Map<String, List<RaceTime>> hub = new LinkedHashMap<>();
+		for (Map.Entry<String, JsonElement> e : races.entrySet()) {
+			String key = e.getKey();
+			if (key == null) {
+				continue;
+			}
+			JsonElement val = e.getValue();
+			if (val.isJsonObject()) {
+				// dungeon_hub: <course>_<mode>_<return>_best_time
+				for (Map.Entry<String, JsonElement> sub : val.getAsJsonObject().entrySet()) {
+					long ms = longOf(val.getAsJsonObject(), sub.getKey());
+					String id = sub.getKey().replace("_best_time", "");
+					String course = null;
+					for (String c : List.of("crystal_core", "giant_mushroom", "precursor_ruins")) {
+						if (id.startsWith(c + "_")) {
+							course = c;
+							break;
+						}
+					}
+					if (ms <= 0L || course == null) {
+						continue;
+					}
+					String mode = InventoryDecoder.prettyWords(id.substring(course.length() + 1)
+						.replace("_no_return", ", no return")
+						.replace("_with_return", ", with return"));
+					hub.computeIfAbsent(course, k -> new ArrayList<>()).add(new RaceTime(mode, ms));
+				}
+				continue;
+			}
+			long ms = longOf(races, key);
+			if (ms <= 0L || !key.contains("best_time")) {
+				continue;
+			}
+			String id = key.replaceAll("_best_time(_\\d+)?$", "");
+			String label = InventoryDecoder.prettyWords(id);
+			if (!label.toLowerCase(Locale.ROOT).endsWith("race")) {
+				label = label + " Race";
+			}
+			out.add(new RaceGroup(label, ms, List.of(new RaceTime(label, ms))));
+		}
+		for (Map.Entry<String, List<RaceTime>> e : hub.entrySet()) {
+			List<RaceTime> modes = new ArrayList<>(e.getValue());
+			modes.sort(Comparator.comparingLong(RaceTime::ms));
+			out.add(new RaceGroup(InventoryDecoder.prettyWords(e.getKey()), modes.get(0).ms(), modes));
+		}
+		return out;
+	}
+
+	private static final List<String> RARITY_ORDER = List.of(
+		"none", "COMMON", "UNCOMMON", "RARE", "EPIC", "LEGENDARY", "MYTHIC"
+	);
+
+	private static MythosStats parseMythos(JsonObject mythos) {
+		if (mythos == null) {
+			return MythosStats.empty();
+		}
+		List<BurrowCount> burrows = new ArrayList<>();
+		addBurrows(burrows, mythos, "burrows_dug_treasure", "Treasure");
+		addBurrows(burrows, mythos, "burrows_dug_combat", "Combat");
+		addBurrows(burrows, mythos, "burrows_dug_next", "Start / Next");
+		addBurrows(burrows, mythos, "burrows_chains_complete", "Chains Done");
+		return new MythosStats(longOf(mythos, "kills"), burrows);
+	}
+
+	private static void addBurrows(List<BurrowCount> out, JsonObject mythos, String key, String label) {
+		JsonObject obj = Leveling.obj(mythos.get(key));
+		if (obj == null) {
+			return;
+		}
+		Map<String, Long> byRarity = new LinkedHashMap<>();
+		for (String rarity : RARITY_ORDER) {
+			long n = longOf(obj, rarity);
+			if (n > 0L) {
+				byRarity.put("none".equals(rarity) ? "No Griffin" : InventoryDecoder.prettyWords(rarity.toLowerCase(Locale.ROOT)), n);
+			}
+		}
+		long total = longOf(obj, "total");
+		if (total <= 0L) {
+			for (long n : byRarity.values()) {
+				total += n;
+			}
+		}
+		if (total > 0L) {
+			out.add(new BurrowCount(label, total, byRarity));
+		}
 	}
 
 	private static ExperimentationStats parseExperimentation(JsonObject root) {
@@ -286,7 +557,7 @@ public final class MiscStatsSnapshot {
 			if (n <= 0L) {
 				continue;
 			}
-			String label = InventoryDecoder.prettyWords(key);
+			String label = MobNames.pretty(key);
 			CountEntry existing = merged.get(label);
 			if (existing == null) {
 				merged.put(label, new CountEntry(key, label, n));
@@ -439,6 +710,8 @@ public final class MiscStatsSnapshot {
 	public long killsTotal() { return killsTotal; }
 	public List<CountEntry> deaths() { return deaths; }
 	public long deathsTotal() { return deathsTotal; }
+	// Zero deaths divides by 1 (Hypixel convention), so the ratio equals total kills.
+	public double killDeathRatio() { return killsTotal / (double) Math.max(1L, deathsTotal); }
 	public double highestDamage() { return highestDamage; }
 	public double highestCriticalDamage() { return highestCriticalDamage; }
 	public long giftsGiven() { return giftsGiven; }
@@ -459,4 +732,8 @@ public final class MiscStatsSnapshot {
 	public List<CommunityUpgrade> communityUpgrades() { return communityUpgrades; }
 	public List<Section> extraSections() { return extraSections; }
 	public ExperimentationStats experimentation() { return experimentation; }
+	public DragonStats dragons() { return dragons; }
+	public List<RaceGroup> races() { return races; }
+	public MythosStats mythos() { return mythos; }
+	public SeasonalStats seasonal() { return seasonal; }
 }

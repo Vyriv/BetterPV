@@ -47,17 +47,21 @@ public final class ForagingSnapshot {
 		List<String> discoveredCritters,
 		Map<String, Long> biomeCaptures,
 		Map<String, Long> tickets,
-		Map<String, Integer> milestoneTiers
+		Map<String, Integer> milestoneTiers,
+		List<String> sparklingDiscovered,
+		long sparklingCaptured
 	) {
 		public SafariInfo {
 			discoveredCritters = List.copyOf(discoveredCritters == null ? List.of() : discoveredCritters);
 			biomeCaptures = Map.copyOf(biomeCaptures == null ? Map.of() : biomeCaptures);
 			tickets = Map.copyOf(tickets == null ? Map.of() : tickets);
 			milestoneTiers = Map.copyOf(milestoneTiers == null ? Map.of() : milestoneTiers);
+			sparklingDiscovered = List.copyOf(sparklingDiscovered == null ? List.of() : sparklingDiscovered);
+			sparklingCaptured = Math.max(0L, sparklingCaptured);
 		}
 
 		public static SafariInfo empty() {
-			return new SafariInfo(List.of(), Map.of(), Map.of(), Map.of());
+			return new SafariInfo(List.of(), Map.of(), Map.of(), Map.of(), List.of(), 0L);
 		}
 
 		public boolean present() {
@@ -116,25 +120,25 @@ public final class ForagingSnapshot {
 	public record WhisperPool(
 		String id,
 		String label,
-		long balance,
+		long total,
 		long spent,
 		Map<Integer, Long> spentByPage
 	) {
 		public WhisperPool {
 			id = id == null ? "" : id;
 			label = label == null || label.isBlank() ? prettyWhisperLabel(id) : label;
-			balance = Math.max(0L, balance);
+			total = Math.max(0L, total);
 			spent = Math.max(0L, spent);
 			spentByPage = Map.copyOf(spentByPage == null ? Map.of() : spentByPage);
 		}
 
-		public boolean present() {
-			return balance > 0L || spent > 0L || !spentByPage.isEmpty();
+		// API "total" is lifetime earned; the spendable balance is what's left after tree spending.
+		public long balance() {
+			return Math.max(0L, total - spent);
 		}
 
-		/** Lifetime earned. API {@code total} is the unspent balance, so spent can exceed it. */
-		public long earned() {
-			return balance + spent;
+		public boolean present() {
+			return total > 0L || spent > 0L || !spentByPage.isEmpty();
 		}
 
 		private static String prettyWhisperLabel(String id) {
@@ -299,11 +303,11 @@ public final class ForagingSnapshot {
 		AttributeShardsData.ensureLoaded();
 		RepoData.ensureLoaded();
 
-		float foragingXp = Leveling.readSkillXp(member, "foraging");
+		double foragingXp = Leveling.readSkillXpDouble(member, "foraging");
 		int foragingCap = Leveling.skillCap("foraging", member);
 		Leveling.Progress foraging = Leveling.getLevel(Leveling.skillTable("foraging"), foragingXp, foragingCap, false);
 
-		float huntingXp = Leveling.readSkillXp(member, "hunting");
+		double huntingXp = Leveling.readSkillXpDouble(member, "hunting");
 		int huntingCap = Leveling.skillCap("hunting", member);
 		Leveling.Progress hunting = Leveling.getLevel(Leveling.skillTable("hunting"), huntingXp, huntingCap, false);
 
@@ -406,8 +410,8 @@ public final class ForagingSnapshot {
 		HoneyInfo honey = parseHoney(Leveling.obj(foragingObj == null ? null : foragingObj.get("honey")));
 
 		return new ForagingSnapshot(
-			foraging.cappedLevel(), foraging.fill(), foraging.maxed(), foraging.skillHover("Foraging"),
-			hunting.cappedLevel(), hunting.fill(), hunting.maxed(), hunting.skillHover("Hunting"),
+			foraging.cappedLevel(), foraging.fill(), foraging.maxed(), foraging.skillHoverText("Foraging"),
+			hunting.cappedLevel(), hunting.fill(), hunting.maxed(), hunting.skillHoverText("Hunting"),
 			raceBest, collections, attributes,
 			gifts, starlyn, whisperPools,
 			fish, hinaTier, hinaProgress, hinaCompleted, hinaClaimed,
@@ -456,7 +460,7 @@ public final class ForagingSnapshot {
 			}
 		}
 		if (legacyBalance > 0L || legacySpent > 0L) {
-			return List.of(new WhisperPool("forest", "Forest", legacyBalance, legacySpent, Map.of()));
+			return List.of(new WhisperPool("forest", "Forest", legacyBalance + legacySpent, legacySpent, Map.of()));
 		}
 		return List.of();
 	}
@@ -465,7 +469,7 @@ public final class ForagingSnapshot {
 		if (pool == null || pool.entrySet().isEmpty()) {
 			return null;
 		}
-		long balance = firstLong(pool, "total", "current", "balance");
+		long total = firstLong(pool, "total");
 		long spentField = firstLong(pool, "spent");
 		Map<Integer, Long> byPage = new LinkedHashMap<>();
 		long spentPages = 0L;
@@ -494,10 +498,10 @@ public final class ForagingSnapshot {
 			}
 		}
 		long spent = spentField > 0L ? spentField : spentPages;
-		if (balance <= 0L && spent <= 0L) {
+		if (total <= 0L && spent <= 0L) {
 			return null;
 		}
-		return new WhisperPool(id, WhisperPool.prettyWhisperLabel(id), balance, spent, byPage);
+		return new WhisperPool(id, WhisperPool.prettyWhisperLabel(id), total, spent, byPage);
 	}
 
 	private static boolean isWhisperMetaKey(String key) {
@@ -540,7 +544,9 @@ public final class ForagingSnapshot {
 				}
 			}
 		}
-		return new SafariInfo(critters, captures, tickets, milestones);
+		return new SafariInfo(critters, captures, tickets, milestones,
+			stringList(root.get("discovered_sparkling_critters")),
+			longOf(root, "total_captured_sparkling_critters"));
 	}
 
 	private static HoneyInfo parseHoney(JsonObject root) {

@@ -12,7 +12,6 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.item.component.CustomData;
 
 /**
  * Single draw path for SkyBlock icons.
@@ -94,19 +93,18 @@ public final class SkyBlockIconRenderer {
 		}
 		String model = resolveModelString(skyblockId, itemModelOverride);
 		boolean usePack = model != null && resolvesWithoutMissing(model, skyblockId, stack);
+		ItemStack drawn = stackForPack(stack, skyblockId, usePack ? model : null);
+		boolean paper = drawn.isEmpty() || drawn.is(Items.PAPER);
 
-		if (!usePack) {
+		if (!usePack && paper) {
 			Identifier png = officialTexture(skyblockId, model);
 			if (png != null) {
 				blitOfficial(g, png, model, skyblockId, x, y, size);
 				return;
 			}
-			// Official PNG not ready: vanilla/skull only. Never force a missing hypixel item_model.
-			drawStack(g, stackWithoutHypixelModel(stack), x, y, size);
-			return;
 		}
 
-		drawStack(g, stackForPack(stack, skyblockId, model), x, y, size);
+		drawStack(g, drawn, x, y, size);
 	}
 
 	/**
@@ -224,33 +222,15 @@ public final class SkyBlockIconRenderer {
 		Identifier modelId = model == null || model.isBlank() ? null : Identifier.tryParse(model.trim());
 		if (modelId != null) {
 			applyHypixelModel(drawn, modelId, skyblockId);
+		} else {
+			SkyBlockItemFactory.applySkyBlockIdentity(drawn, skyblockId);
 		}
 		return drawn;
 	}
 
-	private static ItemStack stackWithoutHypixelModel(ItemStack stack) {
-		if (stack == null || stack.isEmpty()) {
-			return ItemStack.EMPTY;
-		}
-		ItemStack copy = stack.copy();
-		Identifier model = copy.get(DataComponents.ITEM_MODEL);
-		if (model != null && "hypixel_skyblock".equals(model.getNamespace())) {
-			copy.remove(DataComponents.ITEM_MODEL);
-		}
-		return copy;
-	}
-
 	private static void applyHypixelModel(ItemStack stack, Identifier modelId, String skyblockId) {
 		stack.set(DataComponents.ITEM_MODEL, modelId);
-		if (skyblockId == null || skyblockId.isBlank()) {
-			return;
-		}
-		String id = skyblockId.toUpperCase(Locale.ROOT);
-		CustomData.update(DataComponents.CUSTOM_DATA, stack, tag -> {
-			if (!tag.contains("id")) {
-				tag.putString("id", id);
-			}
-		});
+		SkyBlockItemFactory.applySkyBlockIdentity(stack, skyblockId);
 	}
 
 	private static void drawStack(GuiGraphicsExtractor g, ItemStack stack, int x, int y, int size) {

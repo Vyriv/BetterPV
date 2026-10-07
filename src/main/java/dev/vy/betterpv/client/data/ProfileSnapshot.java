@@ -13,12 +13,19 @@ public final class ProfileSnapshot {
 		float progress,
 		boolean maxed,
 		String xpHover,
-		List<PvTooltip.Line> hoverLines
+		List<PvTooltip.Line> hoverLines,
+		float overflowLevel
 	) {
 		public SkillEntry {
 			hoverLines = hoverLines == null || hoverLines.isEmpty()
 				? List.of(PvTooltip.Line.of(xpHover == null ? "" : xpHover, PvDraw.COLOR_TEXT))
 				: List.copyOf(hoverLines);
+		}
+
+		public SkillEntry(
+			String id, String name, int level, float progress, boolean maxed, String xpHover, List<PvTooltip.Line> hoverLines
+		) {
+			this(id, name, level, progress, maxed, xpHover, hoverLines, maxed ? level : level + progress);
 		}
 
 		public SkillEntry(String id, String name, int level, float progress, boolean maxed, String xpHover) {
@@ -104,6 +111,8 @@ public final class ProfileSnapshot {
 			return !unlocked.isEmpty() || !selected.isBlank();
 		}
 	}
+
+	private static final String LOADING_HOVER = "Loading…";
 
 	private final String playerName;
 	private final UUID playerUuid;
@@ -301,6 +310,46 @@ public final class ProfileSnapshot {
 		return this.slayers;
 	}
 
+	/** False while {@link #skills()} still holds the loading placeholders. */
+	public boolean skillsLoaded() {
+		for (SkillEntry skill : this.skills) {
+			if (!LOADING_HOVER.equals(skill.xpHover())) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Average over every entry in {@link #skills()}. Runecrafting and Social are cosmetic and live outside
+	 * that list, so they never count; unlevelled skills count as 0 like the in-game Skill Avg.
+	 */
+	public double skillAverage(boolean withProgress) {
+		if (this.skills.isEmpty()) {
+			return 0D;
+		}
+		double sum = 0D;
+		for (SkillEntry skill : this.skills) {
+			sum += skill.level();
+			if (withProgress && !skill.maxed()) {
+				sum += Math.max(0F, Math.min(1F, skill.progress()));
+			}
+		}
+		return sum / this.skills.size();
+	}
+
+	/** Average of uncapped levels with progress, using SkyHanni's overflow curve past the skill cap. */
+	public double overflowSkillAverage() {
+		if (this.skills.isEmpty()) {
+			return 0D;
+		}
+		double sum = 0D;
+		for (SkillEntry skill : this.skills) {
+			sum += Math.max(skill.level(), skill.overflowLevel());
+		}
+		return sum / this.skills.size();
+	}
+
 	public SkillEntry social() {
 		return this.social;
 	}
@@ -360,7 +409,7 @@ public final class ProfileSnapshot {
 	}
 
 	private static SkillEntry entry(String id, String name) {
-		return new SkillEntry(id, name, 0, 0F, false, "Loading…");
+		return new SkillEntry(id, name, 0, 0F, false, LOADING_HOVER);
 	}
 
 	private static SlayerEntry slayer(String id, String name) {

@@ -1,10 +1,20 @@
 package dev.vy.betterpv.client.data;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import dev.vy.betterpv.client.neu.NeuRepoCache;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /** Maps Abiphone contact ids → NEU NPC skull item ids. */
 public final class AbiphoneNpcs {
+	public static final int TOTAL_CONTACTS = 84;
 	private static final Map<String, String> ALIASES = Map.ofEntries(
 		Map.entry("pet_sitter", "KAT_NPC"),
 		Map.entry("community_shop", "ELIZABETH_NPC"),
@@ -49,7 +59,91 @@ public final class AbiphoneNpcs {
 		Map.entry("jacob", "JACOB_NPC")
 	);
 
+	/** NEU contact names whose skull item isn't simply {@code NAME_NPC}. */
+	private static final Map<String, String> CONTACT_ICONS = Map.of(
+		"philip", "PESTHUNTER_PHILLIP_NPC",
+		"scott", "FEAST_BAKER_SCOTT_NPC",
+		"ted", "FEAST_CHEF_TED_NPC",
+		"trinity", "SISTER_TRINITY_NPC"
+	);
+	/** Hypixel contact ids that match neither the NEU name nor its callNames. */
+	private static final Map<String, String> API_TO_CONTACT = Map.of(
+		"pet_sitter", "kat",
+		"arrow_forger", "jax",
+		"queen", "queen_nyx",
+		"forge_foreman", "fred",
+		"plumber", "plumber_joe",
+		"pesthunter_phillip", "philip"
+	);
+
+	public record Undiscovered(String name, String neuId, List<String> requirement) {
+	}
+
 	private AbiphoneNpcs() {
+	}
+
+	/** NEU Abiphone contacts with no matching entry in the player's contact ids. */
+	public static List<Undiscovered> undiscovered(Collection<String> contactIds) {
+		Set<String> ids = new HashSet<>();
+		Set<String> idNeu = new HashSet<>();
+		Set<String> tokens = new HashSet<>();
+		for (String raw : contactIds) {
+			String id = norm(raw);
+			if (id.isEmpty()) {
+				continue;
+			}
+			ids.add(id);
+			ids.add(API_TO_CONTACT.getOrDefault(id, id));
+			idNeu.add(neuId(id));
+			tokens.addAll(List.of(id.split("_")));
+		}
+		List<Undiscovered> out = new ArrayList<>();
+		for (Map.Entry<String, JsonElement> entry : NeuRepoCache.abiphoneContacts().entrySet()) {
+			if (!entry.getValue().isJsonObject()) {
+				continue;
+			}
+			JsonObject def = entry.getValue().getAsJsonObject();
+			String key = norm(entry.getKey());
+			String icon = CONTACT_ICONS.getOrDefault(key, key.toUpperCase(Locale.ROOT) + "_NPC");
+			boolean found = ids.contains(key) || idNeu.contains(icon)
+				// Single-word names show up inside longer ids, e.g. trevor_the_trapper or feast_chef_ted.
+				|| (key.indexOf('_') < 0 && tokens.contains(key));
+			for (String call : strings(def, "callNames")) {
+				found |= ids.contains(norm(call));
+			}
+			if (!found) {
+				List<String> requirement = new ArrayList<>();
+				for (String line : strings(def, "requirement")) {
+					String plain = line.replaceAll("§.", "").replaceFirst("^-\\s*", "").trim();
+					if (!plain.isEmpty()) {
+						requirement.add(plain);
+					}
+				}
+				out.add(new Undiscovered(entry.getKey(), icon, List.copyOf(requirement)));
+			}
+		}
+		out.sort(Comparator.comparing(Undiscovered::name, String.CASE_INSENSITIVE_ORDER));
+		return out;
+	}
+
+	private static String norm(String text) {
+		if (text == null) {
+			return "";
+		}
+		return text.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "_").replaceAll("^_+|_+$", "");
+	}
+
+	private static List<String> strings(JsonObject obj, String key) {
+		if (!obj.has(key) || !obj.get(key).isJsonArray()) {
+			return List.of();
+		}
+		List<String> out = new ArrayList<>();
+		for (JsonElement el : obj.getAsJsonArray(key)) {
+			if (el.isJsonPrimitive()) {
+				out.add(el.getAsString());
+			}
+		}
+		return out;
 	}
 
 	public static String neuId(String contactId) {

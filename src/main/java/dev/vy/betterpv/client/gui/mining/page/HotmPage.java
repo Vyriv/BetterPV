@@ -1,5 +1,6 @@
 package dev.vy.betterpv.client.gui.mining.page;
 
+import dev.vy.betterpv.client.data.FormatUtil;
 import dev.vy.betterpv.client.data.MiningHotmData;
 import dev.vy.betterpv.client.data.MiningSnapshot;
 import dev.vy.betterpv.client.gui.PvDraw;
@@ -339,8 +340,16 @@ public final class HotmPage {
 			String right = MiningUi.trim(font, p.name(), Math.max(24, w - font.width(left) - 8));
 			ly = MiningUi.statLine(g, font, left, right, x, ly, w, PvDraw.COLOR_TEXT) + 1;
 			String ago = forgeAgo(p.startTimeMs());
-			if (!ago.isBlank() && ly + MiningUi.STAT_ROW <= bottom) {
-				ly = MiningUi.statLine(g, font, "", ago, x, ly, w, PvDraw.COLOR_MUTED) + 1;
+			long endMs = snapshot.forgeEndMs(p);
+			String eta = "";
+			int etaColor = PvDraw.COLOR_MUTED;
+			if (endMs > 0L) {
+				long remainingMs = endMs - System.currentTimeMillis();
+				eta = remainingMs <= 0L ? "Ready" : "Remaining: " + FormatUtil.prettySpan(remainingMs);
+				etaColor = remainingMs <= 0L ? MiningUi.PLACED : PvDraw.COLOR_GOLD;
+			}
+			if ((!ago.isBlank() || !eta.isBlank()) && ly + MiningUi.STAT_ROW <= bottom) {
+				ly = MiningUi.coloredLabelStat(g, font, eta, ago, x, ly, w, etaColor, PvDraw.COLOR_MUTED) + 1;
 			}
 		}
 		return ly;

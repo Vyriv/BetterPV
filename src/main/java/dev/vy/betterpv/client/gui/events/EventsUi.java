@@ -24,6 +24,8 @@ public final class EventsUi {
 	public static final int COLOR_CHOCOLATE = 0xFFD4A574;
 	public static final int SLOT_BG = 0xFF101018;
 	public static final int SLOT_BORDER = 0xFF2A2A35;
+	public static final int FLIP_MS = 480;
+	public static final int PANEL_HOVER = 0x0AFFFFFF;
 
 	public final List<HoverZone> zones = new ArrayList<>();
 	public int contentX;
@@ -110,6 +112,10 @@ public final class EventsUi {
 			}
 		}
 		return tip;
+	}
+
+	public static float easeInOutCubic(float t) {
+		return t < 0.5F ? 4F * t * t * t : 1F - (float) Math.pow(-2F * t + 2F, 3) / 2F;
 	}
 
 	public static String formatAgo(long epochMs) {

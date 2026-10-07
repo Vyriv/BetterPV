@@ -2,6 +2,7 @@ package dev.vy.betterpv.client.gui.inventories;
 
 import dev.vy.betterpv.client.data.FormatUtil;
 import dev.vy.betterpv.client.data.InventorySnapshot;
+import dev.vy.betterpv.client.data.MissingAccessories;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
 import dev.vy.betterpv.client.gui.SkyBlockStats;
@@ -9,6 +10,8 @@ import dev.vy.betterpv.client.gui.nav.InventoryPane;
 import dev.vy.betterpv.client.networth.InventoryDecoder;
 import dev.vy.betterpv.client.networth.ItemWorth;
 import dev.vy.betterpv.client.neu.NeuRepoCache;
+import dev.vy.betterpv.client.price.HypixelItemsCache;
+import dev.vy.betterpv.client.price.ItemPricer;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.EnumSet;
@@ -50,6 +53,7 @@ public final class InventoryPage {
 	private static final int PANEL_HOVER = 0x0AFFFFFF;
 	private static final int FLIP_MS = 480;
 	private static final int POWERS_ROW = 12;
+	private static final int MISSING_ROW = 18;
 
 	private InventorySnapshot snapshot = InventorySnapshot.empty();
 	private InventoryPane pane = InventoryPane.INVENTORY;
@@ -88,6 +92,13 @@ public final class InventoryPage {
 	private int accessoryTuningsW;
 	private int accessoryTuningsH;
 	private boolean accessoryTuningsHover;
+	/** Accessory bag panel swapped to the missing accessories list via the top-right toggle. */
+	private boolean accessoryMissingView;
+	private MissingAccessories.Result missingResult;
+	private boolean missingPricedAtCompute;
+	private int missingScroll;
+	private int missingMaxScroll;
+	private List<Component> missingHoverTip;
 	private final ItemValueOverlay valueOverlay = new ItemValueOverlay();
 
 	public void apply(InventorySnapshot snapshot) {
@@ -98,6 +109,7 @@ public final class InventoryPage {
 		this.stackCache.clear();
 		this.valueOverlay.close();
 		resetAccessoryFlip();
+		this.missingResult = null;
 		if (!this.pane.visibleOn(this.snapshot)) {
 			this.pane = InventoryPane.INVENTORY;
 		}
@@ -127,6 +139,10 @@ public final class InventoryPage {
 		this.accessoryTuningsW = 0;
 		this.accessoryTuningsH = 0;
 		this.accessoryTuningsHover = false;
+		this.accessoryMissingView = false;
+		this.missingScroll = 0;
+		this.missingMaxScroll = 0;
+		this.missingHoverTip = null;
 	}
 
 	public InventoryPane pane() {
@@ -175,6 +191,7 @@ public final class InventoryPage {
 		this.hoveredStack = ItemStack.EMPTY;
 		this.gemHoverTip = null;
 		this.accessoryTuningsHover = false;
+		this.missingHoverTip = null;
 
 		if (this.pane == InventoryPane.ACCESSORY_BAG) {
 			renderAccessoryBagPanel(g, font, x, y, w, h, mouseX, mouseY);
@@ -375,6 +392,10 @@ public final class InventoryPage {
 			PvTooltip.drawComponents(g, font, this.gemHoverTip, mouseX, mouseY, screenW, screenH);
 			return;
 		}
+		if (this.missingHoverTip != null && !this.missingHoverTip.isEmpty()) {
+			PvTooltip.drawComponents(g, font, this.missingHoverTip, mouseX, mouseY, screenW, screenH);
+			return;
+		}
 		if (this.accessoryTuningsHover) {
 			List<Component> tip = accessoryTuningsTooltip();
 			if (tip != null && !tip.isEmpty()) {
@@ -410,6 +431,7 @@ public final class InventoryPage {
 		}
 		if (this.pane == InventoryPane.ACCESSORY_BAG
 			&& canFlipAccessoryPowers()
+			&& !this.accessoryMissingView
 			&& this.accessoryFlipW > 0
 			&& mx >= this.accessoryFlipX && mx < this.accessoryFlipX + this.accessoryFlipW
 			&& my >= this.accessoryFlipY && my < this.accessoryFlipY + this.accessoryFlipH
@@ -449,6 +471,17 @@ public final class InventoryPage {
 	public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
 		if (this.valueOverlay.isOpen()) {
 			return this.valueOverlay.mouseScrolled(scrollY);
+		}
+		if (this.pane == InventoryPane.ACCESSORY_BAG && this.accessoryMissingView) {
+			if (this.missingMaxScroll <= 0
+				|| mouseX < this.accessoryFlipX || mouseX >= this.accessoryFlipX + this.accessoryFlipW
+				|| mouseY < this.accessoryFlipY || mouseY >= this.accessoryFlipY + this.accessoryFlipH) {
+				return false;
+			}
+			int before = this.missingScroll;
+			this.missingScroll = Math.max(0, Math.min(this.missingMaxScroll,
+				this.missingScroll + (scrollY > 0 ? -MISSING_ROW : MISSING_ROW)));
+			return this.missingScroll != before;
 		}
 		if (this.pane == InventoryPane.ACCESSORY_BAG && showingAccessoryPowersFace()) {
 			if (this.accessoryPowersMaxScroll <= 0) {
@@ -604,14 +637,14 @@ public final class InventoryPage {
 		List<InventorySnapshot.Page> pages = pagesFor(InventoryPane.ACCESSORY_BAG);
 		int pageCount = Math.max(1, pages.size());
 		int page = clampPage(this.pane, pageCount);
-		boolean multi = pageCount > 1 && !showingAccessoryPowersFace();
+		boolean multi = pageCount > 1 && !showingAccessoryPowersFace() && !this.accessoryMissingView;
 
 		this.accessoryFlipX = x;
 		this.accessoryFlipY = y;
 		this.accessoryFlipW = w;
 		this.accessoryFlipH = h;
 
-		boolean canFlip = canFlipAccessoryPowers();
+		boolean canFlip = canFlipAccessoryPowers() && !this.accessoryMissingView;
 		boolean overTunings = overAccessoryTunings(mouseX, mouseY);
 		boolean hovered = canFlip
 			&& !overTunings
@@ -666,9 +699,16 @@ public final class InventoryPage {
 			this.accessoryTuningsH = 0;
 			this.accessoryTuningsHover = false;
 			drawAccessoryPowersFace(g, font, contentX, contentY, contentW, contentH);
+		} else if (this.accessoryMissingView) {
+			int toggleW = drawAccessoryViewToggle(g, font, contentX + contentW, contentY, mouseX, mouseY, !animating);
+			this.accessoryTuningsW = 0;
+			this.accessoryTuningsH = 0;
+			this.accessoryTuningsHover = false;
+			drawAccessoryMissingFace(g, font, contentX, contentY, contentW, contentH, toggleW, mouseX, mouseY);
 		} else {
+			int toggleW = drawAccessoryViewToggle(g, font, contentX + contentW, contentY, mouseX, mouseY, !animating);
 			String title = titleFor(false, List.of(), pages, page);
-			PvDraw.text(g, font, title, contentX, contentY, PvDraw.COLOR_TEXT);
+			PvDraw.text(g, font, trimToWidth(font, title, contentW - toggleW - 6), contentX, contentY, PvDraw.COLOR_TEXT);
 			int metaTop = contentY + font.lineHeight + 4;
 			drawAccessoryMeta(g, font, contentX, metaTop, contentW, this.snapshot.accessoryInfo(), mouseX, mouseY);
 			int previewTop = metaTop + font.lineHeight + 2 + font.lineHeight + 6;
@@ -678,7 +718,7 @@ public final class InventoryPage {
 				: pages.get(Math.min(page, pages.size() - 1));
 			drawGrid(
 				g, font, contentX, previewTop, contentW, previewH,
-				current.columns(), current.slots(), false, -1, mouseX, mouseY
+				current.columns(), current.slots(), false, -1, mouseX, mouseY, false
 			);
 			if (multi) {
 				Set<Integer> matches = this.searchPages.getOrDefault(this.pane, Set.of());
@@ -736,6 +776,164 @@ public final class InventoryPage {
 		if (powers.isEmpty()) {
 			PvDraw.textCentered(g, font, "None unlocked", x + w / 2, y + h / 2, PvDraw.COLOR_MUTED);
 		}
+	}
+
+	/** Top-right "Missing" / "Accessory Bag" toggle. Returns its width so titles can avoid it. */
+	private int drawAccessoryViewToggle(
+		GuiGraphicsExtractor g, Font font, int rightX, int y, int mouseX, int mouseY, boolean clickable
+	) {
+		String label = this.accessoryMissingView ? "Accessory Bag" : "Missing";
+		int bw = font.width(label) + 10;
+		int bh = font.lineHeight + 4;
+		int bx = rightX - bw;
+		int by = y - 2;
+		boolean hovered = clickable && mouseX >= bx && mouseX < bx + bw && mouseY >= by && mouseY < by + bh;
+		PvDraw.fill(g, bx, by, bw, bh, hovered ? 0xFF2A3A55 : 0xFF16161E);
+		g.outline(bx, by, bw, bh, hovered ? PvDraw.COLOR_ACCENT : PvDraw.COLOR_BORDER);
+		PvDraw.textCentered(g, font, label, bx + bw / 2, by + 2, PvDraw.COLOR_TEXT);
+		if (clickable) {
+			this.pageHits.add(new RunnableHit(bx, by, bw, bh, this::toggleAccessoryMissingView));
+		}
+		return bw;
+	}
+
+	private void toggleAccessoryMissingView() {
+		this.accessoryMissingView = !this.accessoryMissingView;
+		this.missingScroll = 0;
+		this.missingHoverTip = null;
+	}
+
+	private MissingAccessories.Result missingAccessories() {
+		boolean pricesReady = ItemPricer.isReady();
+		if (this.missingResult != null && (this.missingPricedAtCompute || !pricesReady)) {
+			return this.missingResult;
+		}
+		if (HypixelItemsCache.allItems().isEmpty()) {
+			HypixelItemsCache.requestIfEmpty();
+			return null;
+		}
+		List<String> owned = new ArrayList<>();
+		for (InventorySnapshot.Page bagPage : pagesFor(InventoryPane.ACCESSORY_BAG)) {
+			for (InventorySnapshot.Slot slot : bagPage.slots()) {
+				if (slot != null && !slot.isEmpty() && slot.id() != null) {
+					owned.add(slot.id());
+				}
+			}
+		}
+		this.missingResult = MissingAccessories.compute(owned);
+		this.missingPricedAtCompute = pricesReady;
+		List<String> ids = new ArrayList<>(this.missingResult.entries().size());
+		for (MissingAccessories.Entry entry : this.missingResult.entries()) {
+			ids.add(entry.id());
+		}
+		SkyBlockItemFactory.prefetchIds(ids);
+		return this.missingResult;
+	}
+
+	private void drawAccessoryMissingFace(
+		GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, int toggleW, int mouseX, int mouseY
+	) {
+		PvDraw.text(g, font, trimToWidth(font, "Missing Accessories", w - toggleW - 6), x, y, PvDraw.COLOR_TEXT);
+		MissingAccessories.Result result = missingAccessories();
+		if (result == null) {
+			PvDraw.textCentered(g, font, "Loading item data…", x + w / 2, y + h / 2, PvDraw.COLOR_MUTED);
+			return;
+		}
+
+		int metaY = y + font.lineHeight + 4;
+		MutableComponent cost = Component.empty();
+		cost.append(PvDraw.styled("Cost to max ", PvDraw.COLOR_MUTED, false));
+		cost.append(PvDraw.styled(FormatUtil.shortCoins(result.costToMax()), PvDraw.COLOR_GOLD, true));
+		cost.append(PvDraw.styled("  ·  ", PvDraw.COLOR_MUTED, false));
+		cost.append(PvDraw.styled("+" + FormatUtil.commas(result.mpToMax()) + " MP", 0xFF55FFFF, true));
+		PvDraw.text(g, font, trimComponent(font, cost, w), x, metaY);
+
+		int countY = metaY + font.lineHeight + 2;
+		String count = FormatUtil.commas(result.entries().size()) + " missing";
+		if (result.unpricedTop() > 0) {
+			count += "  ·  " + FormatUtil.commas(result.unpricedTop()) + " without a price";
+		}
+		PvDraw.text(g, font, trimToWidth(font, count, w), x, countY, PvDraw.COLOR_MUTED);
+
+		int listTop = countY + font.lineHeight + 6;
+		int listH = Math.max(0, y + h - listTop);
+		List<MissingAccessories.Entry> entries = result.entries();
+		this.missingMaxScroll = Math.max(0, entries.size() * MISSING_ROW - listH);
+		this.missingScroll = Math.min(this.missingScroll, this.missingMaxScroll);
+		if (entries.isEmpty()) {
+			PvDraw.textCentered(g, font, "Nothing missing", x + w / 2, listTop + listH / 2 - font.lineHeight / 2, PvDraw.COLOR_MUTED);
+			return;
+		}
+
+		boolean overList = mouseX >= x && mouseX < x + w && mouseY >= listTop && mouseY < listTop + listH;
+		g.enableScissor(x, listTop, x + w, listTop + listH);
+		for (int i = 0; i < entries.size(); i++) {
+			int rowY = listTop + i * MISSING_ROW - this.missingScroll;
+			if (rowY + MISSING_ROW <= listTop || rowY >= listTop + listH) {
+				continue;
+			}
+			MissingAccessories.Entry entry = entries.get(i);
+			boolean hovered = overList && mouseY >= rowY && mouseY < rowY + MISSING_ROW;
+			if (hovered) {
+				PvDraw.fill(g, x, rowY, w, MISSING_ROW, PANEL_HOVER);
+				this.missingHoverTip = missingTooltip(entry);
+			}
+			PvDraw.IconTextAlign align = PvDraw.IconTextAlign.of(rowY, MISSING_ROW, 16, font.lineHeight);
+			SkyBlockIconRenderer.draw(g, entry.id(), x + 1, align.iconY());
+
+			String perMp = entry.priced()
+				? FormatUtil.shortCoins(entry.coinsPerMp()) + "/MP"
+				: entry.soulbound() ? "Soulbound" : "No price";
+			int perMpW = font.width(perMp);
+			PvDraw.textRight(g, font, perMp, x + w - 2, align.textY(), entry.priced() ? PvDraw.COLOR_GOLD : PvDraw.COLOR_MUTED);
+			String total = entry.priced() ? "(" + FormatUtil.shortCoins(entry.netCost()) + ")" : "+" + entry.mpGain() + " MP";
+			int totalW = font.width(total) + 6;
+			PvDraw.textRight(g, font, total, x + w - 2 - perMpW - 6, align.textY(), PvDraw.COLOR_MUTED);
+			int nameX = x + 20;
+			int nameMax = Math.max(20, x + w - 2 - perMpW - totalW - 6 - nameX);
+			PvDraw.text(g, font, trimToWidth(font, entry.name(), nameMax), nameX, align.textY(),
+				SkyBlockItemFactory.tierArgb(entry.tier()));
+		}
+		g.disableScissor();
+	}
+
+	private static List<Component> missingTooltip(MissingAccessories.Entry entry) {
+		List<Component> lines = new ArrayList<>();
+		lines.add(PvDraw.styled(entry.name(), SkyBlockItemFactory.tierArgb(entry.tier()), true));
+		lines.add(PvDraw.styled(entry.tier().replace('_', ' '), SkyBlockItemFactory.tierArgb(entry.tier()), false));
+		lines.add(Component.empty());
+		MutableComponent price = Component.empty();
+		price.append(PvDraw.styled("Price ", PvDraw.COLOR_MUTED, false));
+		price.append(entry.priced()
+			? PvDraw.styled(FormatUtil.commas(Math.round(entry.price())), PvDraw.COLOR_GOLD, false)
+			: PvDraw.styled(entry.soulbound() ? "Soulbound" : "No price", PvDraw.COLOR_MUTED, false));
+		lines.add(price);
+		if (entry.soldId() != null) {
+			MutableComponent sold = Component.empty();
+			sold.append(PvDraw.styled("After selling ", PvDraw.COLOR_MUTED, false));
+			sold.append(PvDraw.styled(entry.soldName(), PvDraw.COLOR_TEXT, false));
+			if (entry.soldPrice() > 0D) {
+				sold.append(PvDraw.styled(" +" + FormatUtil.shortCoins(entry.soldPrice()), PvDraw.COLOR_GOLD, false));
+			}
+			lines.add(sold);
+			if (entry.priced()) {
+				MutableComponent net = Component.empty();
+				net.append(PvDraw.styled("Net cost ", PvDraw.COLOR_MUTED, false));
+				net.append(PvDraw.styled(FormatUtil.commas(Math.round(entry.netCost())), PvDraw.COLOR_GOLD, false));
+				lines.add(net);
+			}
+		}
+		MutableComponent mp = Component.empty();
+		mp.append(PvDraw.styled("Magical Power ", PvDraw.COLOR_MUTED, false));
+		mp.append(PvDraw.styled("+" + entry.mpGain(), 0xFF55FFFF, false));
+		lines.add(mp);
+		if (entry.priced() && entry.mpGain() > 0) {
+			MutableComponent perMp = Component.empty();
+			perMp.append(PvDraw.styled("Coins per MP ", PvDraw.COLOR_MUTED, false));
+			perMp.append(PvDraw.styled(FormatUtil.shortCoins(entry.coinsPerMp()), PvDraw.COLOR_GOLD, false));
+			lines.add(perMp);
+		}
+		return lines;
 	}
 
 	private boolean canFlipAccessoryPowers() {
@@ -1141,6 +1339,24 @@ public final class InventoryPage {
 		int mouseX,
 		int mouseY
 	) {
+		drawGrid(g, font, x, y, w, h, columns, slots, statusRow, equippedColumn, mouseX, mouseY, true);
+	}
+
+	private void drawGrid(
+		GuiGraphicsExtractor g,
+		Font font,
+		int x,
+		int y,
+		int w,
+		int h,
+		int columns,
+		List<InventorySnapshot.Slot> slots,
+		boolean statusRow,
+		int equippedColumn,
+		int mouseX,
+		int mouseY,
+		boolean emptyLabel
+	) {
 		int cols = Math.max(1, columns);
 		int rows = Math.max(1, (slots.size() + cols - 1) / cols);
 		int statusReserve = statusRow ? SLOT + SLOT_GAP : 0;
@@ -1172,7 +1388,7 @@ public final class InventoryPage {
 			}
 		}
 
-		if (slots.isEmpty() || slots.stream().allMatch(s -> s == null || s.isEmpty())) {
+		if (emptyLabel && (slots.isEmpty() || slots.stream().allMatch(s -> s == null || s.isEmpty()))) {
 			PvDraw.textCentered(g, font, "Empty", x + w / 2, startY + SLOT, PvDraw.COLOR_MUTED);
 		}
 	}

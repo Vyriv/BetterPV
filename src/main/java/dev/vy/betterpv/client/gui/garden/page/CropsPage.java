@@ -1,11 +1,13 @@
 package dev.vy.betterpv.client.gui.garden.page;
 
 import dev.vy.betterpv.client.data.FormatUtil;
+import dev.vy.betterpv.client.data.GardenCosts;
 import dev.vy.betterpv.client.data.GardenData;
 import dev.vy.betterpv.client.data.GardenSnapshot;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
 import dev.vy.betterpv.client.gui.garden.GardenUi;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import net.minecraft.client.gui.Font;
@@ -15,6 +17,11 @@ import static dev.vy.betterpv.client.gui.garden.GardenUi.*;
 
 /** Garden crops + composter subpage. */
 public final class CropsPage {
+	private static final int PLOT_GAP = 2;
+	private static final int PLOT_UNLOCKED = 0xFF1F3A1F;
+	private static final int PLOT_LOCKED = 0xFF101018;
+	private static final int PLOT_BARN = 0xFF3A2C1E;
+
 	private int scroll;
 	private int maxScroll;
 	private int scrollTop;
@@ -113,8 +120,23 @@ public final class CropsPage {
 		PvDraw.fill(g, rx, ry, rw, 1, PvDraw.COLOR_BORDER);
 		ry += 5;
 
+		int mapAvailH = Math.max(0, y + h - PAD - (ry + font.lineHeight + 4));
+		int mapCell = Math.max(10, Math.min(16, (Math.min(mapAvailH, rw * 2 / 5) - PLOT_GAP * 4) / 5));
+		int mapW = mapCell * 5 + PLOT_GAP * 4;
+		boolean showMap = !GardenCosts.plots().isEmpty() && rw - mapW - GAP >= 110 && mapAvailH >= mapW;
+		int listW = showMap ? rw - mapW - GAP : rw;
+		int mapX = rx + listW + GAP;
+
 		PvDraw.text(g, font, "Upgrades", rx, ry, PvDraw.COLOR_MUTED);
+		drawCostToMax(snap, ui, g, font, rx, ry, listW);
+		if (showMap) {
+			PvDraw.text(g, font, "Plots", mapX, ry, PvDraw.COLOR_MUTED);
+			PvDraw.textRight(g, font, snap.plotsUnlocked() + "/" + snap.plotsMax(), mapX + mapW, ry, PvDraw.COLOR_TEXT);
+		}
 		ry += font.lineHeight + 4;
+		if (showMap) {
+			drawPlotMap(snap, ui, g, mapX, ry, mapCell, mx, my, font);
+		}
 
 		List<GardenSnapshot.ComposterUpgrade> upgrades = c.upgrades();
 		int upBarH = 3;
@@ -129,7 +151,7 @@ public final class CropsPage {
 			int by = ry + i * upRowH;
 			GardenSnapshot.ComposterUpgrade u = upgrades.get(i);
 			int textX = rx + ICON + 4;
-			int barW = Math.max(20, rw - ICON - 4);
+			int barW = Math.max(20, listW - ICON - 4);
 			int iconY = by + Math.max(0, (upBlockH - ICON) / 2);
 			GardenUi.drawIcon(g, u.iconId(), rx, iconY, ICON, GardenData.composterUpgradePackModel(u.id()));
 			String name = shortComposterName(u);
@@ -138,12 +160,81 @@ public final class CropsPage {
 			PvDraw.text(g, font, GardenUi.trim(font, name, nameMax), textX, by, PvDraw.COLOR_TEXT);
 			PvDraw.textRight(g, font, lvl, textX + barW, by, u.maxed() ? COMPLETED_C : PvDraw.COLOR_MUTED);
 			PvDraw.progressBar(g, textX, by + font.lineHeight + upLabelGap, barW, upBarH, u.fill(), BAR_COMPOST, u.maxed());
-			ui.zones.add(new GardenUi.HoverZone(rx, by, rw, upBlockH + 1, List.of(
+			List<PvTooltip.Line> tip = new ArrayList<>(List.of(
 				PvTooltip.Line.of(u.name(), PvDraw.COLOR_TEXT),
 				PvTooltip.Line.of("Purchased: " + u.level(), COMPLETED_C),
 				PvTooltip.Line.of("Missing: " + u.missing(), REJECTED_C),
 				PvTooltip.Line.of(u.maxed() ? "MAX" : FormatUtil.oneDecimal(u.fill() * 100) + "%", PvDraw.COLOR_MUTED)
-			)));
+			));
+			if (!u.maxed() && GardenCosts.hasComposterCosts(u.id())) {
+				tip.add(PvTooltip.Line.blank());
+				tip.add(PvTooltip.Line.of("Cost to max", PvDraw.COLOR_TEXT));
+				GardenUi.addComposterRemaining(tip, GardenCosts.composterRemaining(u.id(), u.level()));
+			}
+			ui.zones.add(new GardenUi.HoverZone(rx, by, listW, upBlockH + 1, tip));
+		}
+	}
+
+	private static void drawCostToMax(GardenSnapshot snap, GardenUi ui, GuiGraphicsExtractor g, Font font, int x, int y, int w) {
+		GardenCosts.ComposterRemaining total = snap.composterCostToMax();
+		String label = total.none() ? "Maxed" : "To max: " + FormatUtil.shortCoins(total.copper());
+		if (font.width("Upgrades") + 8 + font.width(label) > w) {
+			label = total.none() ? "Maxed" : FormatUtil.shortCoins(total.copper());
+		}
+		int labelW = font.width(label);
+		PvDraw.textRight(g, font, label, x + w, y, total.none() ? COMPLETED_C : COPPER);
+		List<PvTooltip.Line> tip = new ArrayList<>();
+		tip.add(PvTooltip.Line.title("Composter cost to max", PvDraw.COLOR_TEXT));
+		tip.add(PvTooltip.Line.divider());
+		GardenUi.addComposterRemaining(tip, total);
+		tip.add(PvTooltip.Line.blank());
+		tip.add(PvTooltip.Line.meta("Unpurchased levels only, all upgrades"));
+		ui.zones.add(new GardenUi.HoverZone(x + w - labelW, y, labelW, font.lineHeight, tip));
+	}
+
+	private static void drawPlotMap(
+		GardenSnapshot snap, GardenUi ui, GuiGraphicsExtractor g, int x, int y, int cell, int mx, int my, Font font
+	) {
+		int step = cell + PLOT_GAP;
+		int barnX = x + 2 * step;
+		int barnY = y + 2 * step;
+		PvDraw.fill(g, barnX, barnY, cell, cell, PLOT_BARN);
+		GardenUi.drawCellBorder(g, barnX, barnY, cell, cell);
+		ui.zones.add(new GardenUi.HoverZone(barnX, barnY, cell, cell, List.of(PvTooltip.Line.title("Barn", PvDraw.COLOR_TEXT))));
+
+		for (GardenSnapshot.PlotCell plotCell : snap.plotCells()) {
+			GardenCosts.Plot plot = plotCell.plot();
+			if (plot.x() < 0 || plot.x() > 4 || plot.y() < 0 || plot.y() > 4) {
+				continue;
+			}
+			int cx = x + plot.x() * step;
+			int cy = y + plot.y() * step;
+			PvDraw.fill(g, cx, cy, cell, cell, plotCell.unlocked() ? PLOT_UNLOCKED : PLOT_LOCKED);
+			boolean hovered = mx >= cx && mx < cx + cell && my >= cy && my < cy + cell;
+			if (hovered) {
+				g.outline(cx, cy, cell, cell, PvDraw.COLOR_ACCENT);
+			} else {
+				GardenUi.drawCellBorder(g, cx, cy, cell, cell);
+			}
+			String num = String.valueOf(plot.number());
+			if (font.width(num) <= cell - 2) {
+				PvDraw.text(g, font, num, cx + (cell - font.width(num) + 1) / 2, cy + (cell - font.lineHeight) / 2 + 1,
+					plotCell.unlocked() ? COMPLETED_C : PvDraw.COLOR_MUTED);
+			}
+
+			List<PvTooltip.Line> tip = new ArrayList<>();
+			tip.add(PvTooltip.Line.title("Plot " + plot.number(), plotCell.unlocked() ? COMPLETED_C : PvDraw.COLOR_TEXT));
+			tip.add(PvTooltip.Line.divider());
+			tip.add(PvTooltip.Line.row("Status", PvDraw.COLOR_MUTED,
+				plotCell.unlocked() ? "Unlocked" : "Locked", plotCell.unlocked() ? COMPLETED_C : REJECTED_C));
+			tip.add(PvTooltip.Line.row("Tier", PvDraw.COLOR_MUTED, GardenUi.title(plot.tier()), PvDraw.COLOR_TEXT));
+			GardenCosts.Cost cost = plotCell.unlockCost();
+			if (cost != null) {
+				tip.add(PvTooltip.Line.row("Unlock cost", PvDraw.COLOR_MUTED,
+					FormatUtil.commas(cost.amount()) + "x " + GardenUi.costItemName(cost.itemId()), BAR_COMPOST));
+				tip.add(PvTooltip.Line.meta("Price depends on " + GardenUi.title(plot.tier()) + " plots owned"));
+			}
+			ui.zones.add(new GardenUi.HoverZone(cx, cy, cell, cell, tip));
 		}
 	}
 

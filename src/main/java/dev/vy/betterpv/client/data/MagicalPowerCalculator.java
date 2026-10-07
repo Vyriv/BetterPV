@@ -17,6 +17,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import net.minecraft.client.Minecraft;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.Identifier;
@@ -33,6 +35,7 @@ public final class MagicalPowerCalculator {
 		Map.entry("EPIC", 12),
 		Map.entry("LEGENDARY", 16),
 		Map.entry("MYTHIC", 22),
+		Map.entry("DIVINE", 26),
 		Map.entry("SPECIAL", 3),
 		Map.entry("VERY_SPECIAL", 5)
 	);
@@ -41,6 +44,10 @@ public final class MagicalPowerCalculator {
 	);
 	private static final List<String> RECOMB_LADDER = List.of(
 		"COMMON", "UNCOMMON", "RARE", "EPIC", "LEGENDARY", "MYTHIC"
+	);
+
+	private static final Pattern LORE_RARITY = Pattern.compile(
+		"\\b(VERY SPECIAL|COMMON|UNCOMMON|RARE|EPIC|LEGENDARY|MYTHIC|DIVINE|SPECIAL)\\b"
 	);
 
 	private static volatile boolean loaded;
@@ -71,7 +78,6 @@ public final class MagicalPowerCalculator {
 		Map<String, Candidate> bestByFamily = new LinkedHashMap<>();
 		boolean hasAbicase = false;
 		boolean hasRiftPrismItem = false;
-
 		for (InventoryDecoder.Stack stack : stacks) {
 			if (stack == null || stack.id() == null || stack.id().isBlank()) {
 				continue;
@@ -91,8 +97,8 @@ public final class MagicalPowerCalculator {
 					tier = "RARE";
 				}
 			}
-			if (tier.isBlank() && !"HEGEMONY_ARTIFACT".equals(id)) {
-				continue;
+			if (tier.isBlank()) {
+				tier = "COMMON";
 			}
 
 			String family = familyKey(id);
@@ -147,6 +153,23 @@ public final class MagicalPowerCalculator {
 		return el != null && el.isJsonPrimitive() && el.getAsBoolean();
 	}
 
+	/** Family root from {@code accessory_families.json}, or the id itself when it has no family. */
+	public static String accessoryFamily(String id) {
+		ensureFamilies();
+		return familyKey(id == null ? "" : id.trim().toUpperCase(Locale.ROOT));
+	}
+
+	/** Position inside the accessory's family (0 = lowest tier). */
+	public static int accessoryFamilyRank(String id) {
+		ensureFamilies();
+		return familyRank(id == null ? "" : id.trim().toUpperCase(Locale.ROOT));
+	}
+
+	public static int magicalPower(String id, String tier) {
+		String normalized = SkyBlockItemFactory.normalizeTier(tier);
+		return magicalPowerFor(id, normalized.isBlank() ? "COMMON" : normalized);
+	}
+
 	private static int magicalPowerFor(String id, String tier) {
 		if ("RIFT_PRISM".equals(id)) {
 			return 11;
@@ -159,11 +182,12 @@ public final class MagicalPowerCalculator {
 	}
 
 	private static String effectiveTier(String id, CompoundTag ea, List<String> lore) {
-		String tier = SkyBlockItemFactory.resolveTier(id);
-		if (tier.isBlank()) {
-			tier = tierFromLore(lore);
+		// Lore is the rarity Hypixel actually shows, including recomb and special upgrades.
+		String loreTier = SkyBlockItemFactory.normalizeTier(tierFromLore(lore));
+		if (!loreTier.isBlank()) {
+			return loreTier;
 		}
-		tier = SkyBlockItemFactory.normalizeTier(tier);
+		String tier = SkyBlockItemFactory.normalizeTier(SkyBlockItemFactory.resolveTier(id));
 		if (tier.isBlank()) {
 			return "";
 		}
@@ -194,16 +218,20 @@ public final class MagicalPowerCalculator {
 			if (line == null || line.isBlank()) {
 				continue;
 			}
-			String tier = SkyBlockItemFactory.normalizeTier(line);
-			if (!tier.isBlank()) {
-				return tier;
+			// Rarity line looks like "§d§l§ka§r §d§lMYTHIC ACCESSORY §d§l§ka". Match on the spaced text:
+			// normalizeTier underscores it first, and "MYTHIC_ACCESSORY" never matches a word boundary.
+			String plain = line.replaceAll("§.", "").toUpperCase(Locale.ROOT);
+			if (!plain.contains("ACCESSORY") && !plain.contains("HATCESSORY")) {
+				continue;
 			}
+			Matcher m = LORE_RARITY.matcher(plain);
+			return m.find() ? m.group(1).replace(' ', '_') : "";
 		}
 		return "";
 	}
 
 	private static boolean isAbicase(String id) {
-		return "ABICASE".equals(id) || id.startsWith("ABICASE_");
+		return id != null && id.toUpperCase(Locale.ROOT).contains("ABICASE");
 	}
 
 	private static String familyKey(String id) {

@@ -319,8 +319,7 @@ public final class ItemWorth {
 			if (upgrade != null && value >= upgrade.tier()) {
 				line += ItemPricer.price(upgrade.item()) * NetworthData.worth("enchantmentUpgrades", 0.8);
 			}
-			double mult = NetworthData.enchantWorth(name, NetworthData.worth("enchantments", 0.85));
-			line += ItemPricer.price("ENCHANTMENT_" + name + "_" + value) * mult;
+			line += ItemPricer.price("ENCHANTMENT_" + name + "_" + value);
 			if (line > 0) {
 				children.add(Part.detail(Section.ENCHANTMENTS, enchantLabel(name, displayLevel), line));
 				total += line;
@@ -346,14 +345,11 @@ public final class ItemWorth {
 		if (enchants.isEmpty()) {
 			return 0;
 		}
-		boolean single = enchants.size() == 1;
 		double total = 0;
 		for (var entry : enchants.entrySet()) {
 			String name = entry.getKey().toUpperCase(Locale.ROOT);
 			int value = entry.getValue();
-			double mult = single ? 1.0 : NetworthData.worth("enchantments", 0.85);
-			mult = NetworthData.enchantWorth(name, mult);
-			double line = ItemPricer.price("ENCHANTMENT_" + name + "_" + value) * mult;
+			double line = ItemPricer.price("ENCHANTMENT_" + name + "_" + value);
 			if (line > 0) {
 				parts.add(Part.detail(Section.ENCHANTMENTS, enchantLabel(name, value), line));
 				total += line;
@@ -610,11 +606,7 @@ public final class ItemWorth {
 		if (!(hasEnchants || allows || accessory)) {
 			return 0;
 		}
-		double mult = NetworthData.worth("recombobulator", 0.8);
-		if ("BONE_BOOMERANG".equals(stack.id())) {
-			mult *= 0.5;
-		}
-		return ItemPricer.price("RECOMBOBULATOR_3000") * mult;
+		return ItemPricer.price("RECOMBOBULATOR_3000") * NetworthData.worth("recombobulator", 0.8);
 	}
 
 	private static int upgradeLevel(CompoundTag ea) {

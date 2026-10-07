@@ -1,6 +1,7 @@
 package dev.vy.betterpv.client.gui.garden.page;
 
 import dev.vy.betterpv.client.data.FormatUtil;
+import dev.vy.betterpv.client.data.GardenCosts;
 import dev.vy.betterpv.client.data.GardenData;
 import dev.vy.betterpv.client.data.GardenSnapshot;
 import dev.vy.betterpv.client.data.InventorySnapshot;
@@ -101,9 +102,14 @@ public final class GardenOverviewPage {
 				String lvl = String.valueOf(chip.level());
 				int lvlY = by + Math.min(CHIP_CELL, cellH - font.lineHeight) + 1;
 				PvDraw.text(g, font, lvl, bx + (CHIP_CELL - font.width(lvl)) / 2, lvlY, PvDraw.COLOR_ACCENT);
+				GardenCosts.Progress sowdust = chip.sowdust();
 				ui.zones.add(new GardenUi.HoverZone(bx, by, CHIP_CELL, cellH, List.of(
 					PvTooltip.Line.of(chip.name(), PvDraw.COLOR_TEXT),
-					PvTooltip.Line.of("Level " + chip.level(), PvDraw.COLOR_ACCENT)
+					PvTooltip.Line.of("Level " + chip.level(), PvDraw.COLOR_ACCENT),
+					PvTooltip.Line.row("Sowdust", PvDraw.COLOR_MUTED,
+						FormatUtil.commas(sowdust.spent()) + " / " + FormatUtil.commas(sowdust.total())
+							+ " (" + FormatUtil.percent(sowdust.fraction()) + ")",
+						sowdust.maxed() ? COMPLETED_C : PvDraw.COLOR_TEXT)
 				)));
 			}
 			ly += rowsNeeded * (cellH + CHIP_GAP) + 4;

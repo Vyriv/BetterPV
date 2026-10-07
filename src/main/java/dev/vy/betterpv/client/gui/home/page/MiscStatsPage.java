@@ -252,12 +252,14 @@ public final class MiscStatsPage {
 				PvTooltip.Line.meta(s.firstJoinMs() > 0L ? formatAgo(s.firstJoinMs()) : "Unknown")
 			));
 		cy = stat(g, font, "Fairy Souls",
-			FormatUtil.commas(s.fairyCollected()) + " / " + FormatUtil.commas(s.fairyExchanges()) + "x",
-			x, cy, w, PvDraw.COLOR_ACCENT,
+			FormatUtil.commas(s.fairyCollected()) + " / " + FormatUtil.commas(MAX_FAIRY_SOULS),
+			x, cy, w, s.fairyCollected() >= MAX_FAIRY_SOULS ? ENABLED : PvDraw.COLOR_ACCENT,
 			List.of(
 				PvTooltip.Line.title("Fairy Souls", PvDraw.COLOR_TEXT),
 				PvTooltip.Line.divider(),
 				PvTooltip.Line.row("Collected", PvDraw.COLOR_MUTED, FormatUtil.commas(s.fairyCollected()), PvDraw.COLOR_TEXT),
+				PvTooltip.Line.row("Missing", PvDraw.COLOR_MUTED,
+					FormatUtil.commas(Math.max(0, MAX_FAIRY_SOULS - s.fairyCollected())), PvDraw.COLOR_TEXT),
 				PvTooltip.Line.row("Exchanged", PvDraw.COLOR_MUTED, FormatUtil.commas(s.fairyExchanges()), PvDraw.COLOR_TEXT),
 				PvTooltip.Line.row("Unspent", PvDraw.COLOR_MUTED, FormatUtil.commas(s.fairyUnspent()), PvDraw.COLOR_GOLD)
 			));
@@ -306,7 +308,15 @@ public final class MiscStatsPage {
 			cy = separator(g, x - PAD, cy, w + PAD * 2);
 			PvDraw.text(g, font, "Highlights", x, cy, HEADER_HIGHLIGHTS);
 			cy += font.lineHeight + 4;
-			cy = stat(g, font, "Highest Dmg", FormatUtil.shortXp((long) s.highestDamage()), x, cy, w, PvDraw.COLOR_GOLD, null);
+			cy = stat(g, font, "K/D", FormatUtil.twoDecimals(s.killDeathRatio()), x, cy, w, HEADER_KILLS,
+				List.of(
+					PvTooltip.Line.title("Kill / Death Ratio", HEADER_KILLS),
+					PvTooltip.Line.divider(),
+					PvTooltip.Line.row("Kills", PvDraw.COLOR_MUTED, FormatUtil.commas(s.killsTotal()), HEADER_KILLS),
+					PvTooltip.Line.row("Deaths", PvDraw.COLOR_MUTED, FormatUtil.commas(s.deathsTotal()), HEADER_DEATHS),
+					PvTooltip.Line.row("K/D", PvDraw.COLOR_MUTED, FormatUtil.twoDecimals(s.killDeathRatio()), PvDraw.COLOR_TEXT),
+					PvTooltip.Line.meta(s.deathsTotal() == 0L ? "No deaths recorded" : "Total kills / total deaths")
+				));
 			cy = stat(g, font, "Highest Crit", FormatUtil.shortXp((long) s.highestCriticalDamage()), x, cy, w, PvDraw.COLOR_GOLD, null);
 			cy = stat(g, font, "Gifts",
 				"→ " + FormatUtil.shortXp(s.giftsGiven()) + " / " + FormatUtil.shortXp(s.giftsReceived()) + " ←",
@@ -451,7 +461,7 @@ public final class MiscStatsPage {
 		return ry;
 	}
 
-	/** Prefer SkyBlock / pack texture, then skull stack, then vanilla — never blank paper. */
+	/** Prefer SkyBlock / pack texture, then skull stack, then vanilla, never blank paper. */
 	private static void drawCommunityIcon(GuiGraphicsExtractor g, String upgrade, int x, int y, int size) {
 		String sbId = communitySkyblockId(upgrade);
 		if (sbId != null && !sbId.isBlank()) {
@@ -481,6 +491,9 @@ public final class MiscStatsPage {
 		g.item(icon, 0, 0);
 		g.pose().popMatrix();
 	}
+
+	// Wiki total as of 0.27 (Torrhus Canyon + Safari souls).
+	private static final int MAX_FAIRY_SOULS = 289;
 
 	private static final Map<String, Integer> COMMUNITY_MAX = Map.ofEntries(
 		Map.entry("island_size", 10),
@@ -717,8 +730,7 @@ public final class MiscStatsPage {
 				this.zones.add(new HoverZone(lx, Math.max(rowY, listTop), lw, STAT_ROW, List.of(
 					PvTooltip.Line.title(entry.label(), titleColor),
 					PvTooltip.Line.divider(),
-					PvTooltip.Line.row(title, PvDraw.COLOR_MUTED, FormatUtil.commas(entry.count()), titleColor),
-					PvTooltip.Line.meta(entry.id())
+					PvTooltip.Line.row(title, PvDraw.COLOR_MUTED, FormatUtil.commas(entry.count()), titleColor)
 				)));
 			}
 			rowY += STAT_ROW;

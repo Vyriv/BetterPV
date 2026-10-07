@@ -20,6 +20,7 @@ import dev.vy.betterpv.client.gui.PvTooltip;
 import dev.vy.betterpv.client.gui.crimson.CrimsonUi.HoverZone;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockIconRenderer;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
+import dev.vy.betterpv.client.neu.NeuRepoCache;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.gui.Font;
@@ -85,7 +86,7 @@ public final class AbiphonePage {
 
 		PvDraw.text(g, font, "Abiphone", lx, ly, PvDraw.COLOR_MUTED);
 		PvDraw.textRight(g, font,
-			snapshot.abiphoneActive() + " / " + snapshot.abiphoneContacts().size(),
+			snapshot.abiphoneActive() + " / " + AbiphoneNpcs.TOTAL_CONTACTS,
 			lx + lw, ly, PvDraw.COLOR_ACCENT);
 		ly += font.lineHeight + 4;
 		ly = sectionSeparator(g, font, x, ly, w);
@@ -103,7 +104,7 @@ public final class AbiphonePage {
 				lx, ly, lw, PvDraw.COLOR_ACCENT);
 		}
 		ly = statLine(g, font, "Quests done",
-			snapshot.abiphoneQuestsDone() + "/" + snapshot.abiphoneContacts().size(),
+			snapshot.abiphoneQuestsDone() + "/" + AbiphoneNpcs.TOTAL_CONTACTS,
 			lx, ly, lw, ENABLED);
 		if (snapshot.abiphoneDndCount() > 0) {
 			ly = statLine(g, font, "DND contacts", String.valueOf(snapshot.abiphoneDndCount()),
@@ -136,7 +137,8 @@ public final class AbiphonePage {
 		ly += font.lineHeight + 4;
 
 		List<CrimsonSnapshot.AbiphoneContact> contacts = snapshot.abiphoneContacts();
-		if (contacts.isEmpty()) {
+		List<AbiphoneNpcs.Undiscovered> undiscovered = undiscovered(snapshot);
+		if (contacts.isEmpty() && undiscovered.isEmpty()) {
 			PvDraw.textCentered(g, font, "No contacts",
 				x + w / 2, y + h / 2 - font.lineHeight / 2, PvDraw.COLOR_MUTED);
 			this.abiphoneMaxScroll = 0;
@@ -146,30 +148,27 @@ public final class AbiphonePage {
 		}
 
 		int gridH = Math.max(1, bottom - ly);
-		// Expand slot size to fill the left panel and reduce empty space.
-		int maxCols = Math.max(5, Math.min(10, contacts.size()));
+		// Largest slot that fits every contact without scrolling; undiscovered start on a fresh row.
 		int slot = 18;
-		int gap = 3;
+		int gap = 2;
+		int cols = 1;
 		for (int trySlot = 28; trySlot >= 18; trySlot--) {
-			int tryGap = trySlot >= 24 ? 4 : 3;
-			int cols = Math.max(1, (lw + tryGap) / (trySlot + tryGap));
-			cols = Math.min(cols, maxCols);
-			int rows = (contacts.size() + cols - 1) / cols;
-			int needH = rows * (trySlot + tryGap) - tryGap;
-			if (needH <= gridH || trySlot == 18) {
-				slot = trySlot;
-				gap = tryGap;
+			int tryGap = trySlot >= 24 ? 4 : trySlot >= 21 ? 3 : 2;
+			int tryCols = Math.max(1, (lw + tryGap) / (trySlot + tryGap));
+			int needH = gridRows(contacts.size(), undiscovered.size(), tryCols) * (trySlot + tryGap) - tryGap;
+			slot = trySlot;
+			gap = tryGap;
+			cols = tryCols;
+			if (needH <= gridH) {
 				break;
 			}
 		}
-		int cols = Math.max(1, Math.min(maxCols, (lw + gap) / (slot + gap)));
 		// Stretch gaps so the grid uses the full width.
 		int usedW = cols * slot;
 		int freeW = Math.max(0, lw - usedW);
 		int gapX = cols > 1 ? freeW / (cols - 1) : 0;
 		gapX = Math.max(gap, gapX);
-		int gridRows = (contacts.size() + cols - 1) / cols;
-		int contentH = gridRows * (slot + gap) - gap;
+		int contentH = gridRows(contacts.size(), undiscovered.size(), cols) * (slot + gap) - gap;
 		this.abiphoneX = x;
 		this.abiphoneY = ly;
 		this.abiphoneW = w;
@@ -218,12 +217,66 @@ public final class AbiphonePage {
 				this.zones.add(HoverZone.of(bx, y0, slot, y1 - y0, tip));
 			}
 		}
+		int firstRow = (contacts.size() + cols - 1) / cols;
+		for (int i = 0; i < undiscovered.size(); i++) {
+			AbiphoneNpcs.Undiscovered contact = undiscovered.get(i);
+			int bx = lx + (i % cols) * (slot + gapX);
+			int by = ly + (firstRow + i / cols) * (slot + gap) - this.abiphoneScroll;
+			boolean hovered = mx >= bx && mx < bx + slot && my >= by && my < by + slot
+				&& my >= this.abiphoneY && my < this.abiphoneY + this.abiphoneH;
+			PvDraw.fill(g, bx, by, slot, slot, UNDISCOVERED_BG);
+			g.outline(bx, by, slot, slot, hovered ? PvDraw.COLOR_ACCENT : UNDISCOVERED_BORDER);
+			int iconPad = Math.max(0, (slot - 16) / 2);
+			drawNpcIcon(g, contact.neuId(), bx + iconPad, by + iconPad);
+			PvDraw.fill(g, bx + 1, by + 1, slot - 2, slot - 2, 0x66000000);
+
+			int y0 = Math.max(by, this.abiphoneY);
+			int y1 = Math.min(by + slot, this.abiphoneY + this.abiphoneH);
+			if (y1 > y0) {
+				List<PvTooltip.Line> tip = new ArrayList<>();
+				tip.add(PvTooltip.Line.of(contact.name(), PvDraw.COLOR_TEXT));
+				tip.add(PvTooltip.Line.of("Undiscovered", UNDISCOVERED_TEXT));
+				for (String req : contact.requirement()) {
+					tip.add(PvTooltip.Line.of(req, PvDraw.COLOR_GOLD));
+				}
+				this.zones.add(HoverZone.of(bx, y0, slot, y1 - y0, tip));
+			}
+		}
 		g.disableScissor();
+	}
+
+	private static final int UNDISCOVERED_BG = 0xFF3A1010;
+	private static final int UNDISCOVERED_BORDER = 0xFFCC3333;
+	private static final int UNDISCOVERED_TEXT = 0xFFFF5555;
+
+	private CrimsonSnapshot undiscoveredFor;
+	private boolean undiscoveredFinal;
+	private List<AbiphoneNpcs.Undiscovered> undiscoveredCache = List.of();
+
+	private List<AbiphoneNpcs.Undiscovered> undiscovered(CrimsonSnapshot snapshot) {
+		// Keep recomputing until the NEU repo is ready; it may still be downloading on first draw.
+		if (this.undiscoveredFor != snapshot || !this.undiscoveredFinal) {
+			List<String> ids = new ArrayList<>();
+			for (CrimsonSnapshot.AbiphoneContact contact : snapshot.abiphoneContacts()) {
+				ids.add(contact.id());
+			}
+			this.undiscoveredCache = AbiphoneNpcs.undiscovered(ids);
+			this.undiscoveredFinal = NeuRepoCache.isReady();
+			this.undiscoveredFor = snapshot;
+		}
+		return this.undiscoveredCache;
+	}
+
+	private static int gridRows(int discovered, int undiscovered, int cols) {
+		return (discovered + cols - 1) / cols + (undiscovered + cols - 1) / cols;
 	}
 
 	/** Prefer the custom NEU skin texture, then a vanilla stack; never show blank paper. */
 	private static void drawContactIcon(GuiGraphicsExtractor g, String contactId, int x, int y) {
-		String neuId = AbiphoneNpcs.neuId(contactId);
+		drawNpcIcon(g, AbiphoneNpcs.neuId(contactId), x, y);
+	}
+
+	private static void drawNpcIcon(GuiGraphicsExtractor g, String neuId, int x, int y) {
 		ItemStack icon = neuId.isBlank() ? ItemStack.EMPTY : SkyBlockItemFactory.iconStack(neuId);
 		if (!neuId.isBlank() && SkyBlockIconRenderer.hasKnownIcon(neuId)) {
 			SkyBlockIconRenderer.draw(g, icon, neuId, x, y, 16);

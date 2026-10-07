@@ -228,7 +228,8 @@ final class ProfileHomeParser {
 				progress.fill(),
 				progress.maxed(),
 				progress.skillHover(ProfileParseSupport.title(skill)),
-				progress.skillHoverLines(ProfileParseSupport.title(skill))
+				progress.skillHoverLines(ProfileParseSupport.title(skill)),
+				progress.overflowLevel()
 			));
 		}
 		return skills;
@@ -408,7 +409,7 @@ final class ProfileHomeParser {
 				(int) Math.floor(progress.level()),
 				progress.fill(),
 				progress.maxed(),
-				progress.totalXp(),
+				(float) progress.totalXp(),
 				progress.slayerHoverWithKills(pair[1], pair[0], kills),
 				killList,
 				progress.slayerHoverLinesWithKills(pair[1], pair[0], kills)

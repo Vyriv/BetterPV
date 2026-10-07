@@ -95,8 +95,8 @@ public final class HotfPage {
 					FormatUtil.commas(pool.balance()), poolColor));
 				tip.add(PvTooltip.Line.row("Spent", PvDraw.COLOR_MUTED,
 					FormatUtil.commas(pool.spent()), PvDraw.COLOR_TEXT));
-				tip.add(PvTooltip.Line.row("Lifetime earned", PvDraw.COLOR_MUTED,
-					FormatUtil.commas(pool.earned()), PvDraw.COLOR_MUTED));
+				tip.add(PvTooltip.Line.row("Total earned", PvDraw.COLOR_MUTED,
+					FormatUtil.commas(pool.total()), PvDraw.COLOR_MUTED));
 				this.zones.add(HoverZone.of(rx, balanceY - font.lineHeight - 1, rw, STAT_ROW + font.lineHeight + 1, tip));
 			}
 		}

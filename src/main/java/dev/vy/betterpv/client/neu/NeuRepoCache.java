@@ -155,6 +155,86 @@ public final class NeuRepoCache {
 		return MINIONS;
 	}
 
+	/** Accessory id → every higher tier it upgrades into (NEU {@code misc.json} {@code talisman_upgrades}). */
+	public static Map<String, List<String>> talismanUpgrades() {
+		ensureTalismansLoaded();
+		return TALISMAN_UPGRADES;
+	}
+
+	/** Accessories NEU excludes from missing-accessory lists ({@code misc.json} {@code ignored_talisman}). */
+	public static Set<String> ignoredTalismans() {
+		ensureTalismansLoaded();
+		return IGNORED_TALISMANS;
+	}
+
+	private static volatile JsonObject abiphoneContacts;
+
+	/** Contact display name → {@code requirement} / {@code callNames} (NEU {@code constants/abiphone.json}). */
+	public static JsonObject abiphoneContacts() {
+		JsonObject cached = abiphoneContacts;
+		if (cached != null) {
+			return cached;
+		}
+		Path path = constantsPath("abiphone.json");
+		if (path == null) {
+			return new JsonObject();
+		}
+		try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+			cached = JsonParser.parseReader(reader).getAsJsonObject();
+			abiphoneContacts = cached;
+			return cached;
+		} catch (Exception exception) {
+			BetterPV.LOGGER.debug("Failed loading NEU abiphone.json", exception);
+			return new JsonObject();
+		}
+	}
+
+	private static final Map<String, List<String>> TALISMAN_UPGRADES = new java.util.concurrent.ConcurrentHashMap<>();
+	private static final Set<String> IGNORED_TALISMANS = java.util.concurrent.ConcurrentHashMap.newKeySet();
+	private static volatile boolean talismansLoaded;
+
+	private static void ensureTalismansLoaded() {
+		if (talismansLoaded) {
+			return;
+		}
+		synchronized (TALISMAN_UPGRADES) {
+			if (talismansLoaded) {
+				return;
+			}
+			Path path = constantsPath("misc.json");
+			if (path == null) {
+				return;
+			}
+			try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+				JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
+				if (root.has("talisman_upgrades") && root.get("talisman_upgrades").isJsonObject()) {
+					for (var entry : root.getAsJsonObject("talisman_upgrades").entrySet()) {
+						if (!entry.getValue().isJsonArray()) {
+							continue;
+						}
+						List<String> upgrades = new java.util.ArrayList<>();
+						for (var el : entry.getValue().getAsJsonArray()) {
+							if (el.isJsonPrimitive()) {
+								upgrades.add(el.getAsString().toUpperCase(Locale.ROOT));
+							}
+						}
+						TALISMAN_UPGRADES.put(entry.getKey().toUpperCase(Locale.ROOT), List.copyOf(upgrades));
+					}
+				}
+				if (root.has("ignored_talisman") && root.get("ignored_talisman").isJsonArray()) {
+					for (var el : root.getAsJsonArray("ignored_talisman")) {
+						if (el.isJsonPrimitive()) {
+							IGNORED_TALISMANS.add(el.getAsString().toUpperCase(Locale.ROOT));
+						}
+					}
+				}
+				talismansLoaded = true;
+			} catch (Exception exception) {
+				BetterPV.LOGGER.debug("Failed loading NEU misc.json talismans", exception);
+			}
+		}
+	}
+
 	private static final Map<String, List<String>> SACKS = new java.util.LinkedHashMap<>();
 	/** Sack display name → NEU item id (player-head sack skins). */
 	private static final Map<String, String> SACK_ITEMS = new java.util.LinkedHashMap<>();

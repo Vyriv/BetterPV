@@ -50,7 +50,10 @@ final class SkullTextureApplier {
 		if (stack == null || value == null || value.isBlank()) {
 			return;
 		}
-		String padded = padBase64(value.replaceAll("\\s+", ""));
+		String padded = padBase64(cleanValue(value));
+		if (padded == null || padded.isEmpty()) {
+			return;
+		}
 		// Prefer unsigned textures first: NEU/Hypixel signatures are often rejected by the client
 		// skin pipeline, which leaves a bare Steve head even when PROFILE is set incorrectly.
 		if (tryApplyProfile(stack, padded, null)) {
@@ -119,6 +122,20 @@ final class SkullTextureApplier {
 		} catch (Exception ignored) {
 		}
 		return false;
+	}
+
+	// Some NEU values carry a stray '=' after complete base64 or a `", "signature` tail.
+	private static String cleanValue(String value) {
+		String v = value.replaceAll("\\s+", "");
+		int quote = v.indexOf('"');
+		if (quote >= 0) {
+			v = v.substring(0, quote);
+		}
+		int end = v.length();
+		while (end > 0 && v.charAt(end - 1) == '=') {
+			end--;
+		}
+		return v.substring(0, end);
 	}
 
 	static String padBase64(String value) {

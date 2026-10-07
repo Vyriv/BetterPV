@@ -29,7 +29,11 @@ public final class PetsPage {
 	private static final int SELECTED_BORDER = PvDraw.COLOR_ACCENT;
 	private static final int ACTIVE_BORDER = 0xFF55FF55;
 
+	private static final int MISSING_BG = 0xFF3A1010;
+	private static final int MISSING_BORDER = 0xFFCC3333;
+
 	private PetSnapshot snapshot = PetSnapshot.empty();
+	private List<PetLoreResolver.PetType> missingPets = List.of();
 	private int selected = -1;
 	private int scroll;
 	private int gridY;
@@ -80,6 +84,17 @@ public final class PetsPage {
 		this.scroll = 0;
 		this.selected = this.snapshot.isEmpty() ? -1 : 0;
 		SkyBlockItemFactory.prefetchPets(this.snapshot);
+		java.util.Set<String> owned = new java.util.HashSet<>();
+		for (PetSnapshot.Entry pet : this.snapshot.pets()) {
+			owned.add(pet.type().toUpperCase(Locale.ROOT));
+		}
+		List<PetLoreResolver.PetType> missing = new ArrayList<>();
+		for (PetLoreResolver.PetType type : PetLoreResolver.petTypes()) {
+			if (!owned.contains(type.type())) {
+				missing.add(type);
+			}
+		}
+		this.missingPets = missing;
 	}
 
 	public void render(
@@ -241,13 +256,14 @@ public final class PetsPage {
 
 		this.slotSize = SLOT_SIZE;
 		this.cols = Math.max(1, (gridW + SLOT_GAP) / (this.slotSize + SLOT_GAP));
-		int rows = (pets.size() + this.cols - 1) / this.cols;
+		int total = pets.size() + this.missingPets.size();
+		int rows = (total + this.cols - 1) / this.cols;
 		int contentH = rows * this.slotSize + Math.max(0, rows - 1) * SLOT_GAP;
 		this.maxScroll = Math.max(0, contentH - this.gridH);
 		this.scroll = Math.max(0, Math.min(this.scroll, this.maxScroll));
 
 		g.enableScissor(gridX, this.gridY, gridX + gridW, this.gridY + this.gridH);
-		for (int i = 0; i < pets.size(); i++) {
+		for (int i = 0; i < total; i++) {
 			int col = i % this.cols;
 			int row = i / this.cols;
 			int sx = gridX + col * (this.slotSize + SLOT_GAP);
@@ -255,7 +271,11 @@ public final class PetsPage {
 			if (sy + this.slotSize < this.gridY || sy > this.gridY + this.gridH) {
 				continue;
 			}
-			drawSlot(g, font, pets.get(i), i, sx, sy, mouseX, mouseY);
+			if (i < pets.size()) {
+				drawSlot(g, font, pets.get(i), i, sx, sy, mouseX, mouseY);
+			} else {
+				drawMissingSlot(g, this.missingPets.get(i - pets.size()), sx, sy, mouseX, mouseY);
+			}
 		}
 		g.disableScissor();
 	}
@@ -327,6 +347,24 @@ public final class PetsPage {
 			);
 			ItemStack petStack = SkyBlockItemFactory.toStack(petSlot);
 			this.hoverPetTip = SkyBlockItemFactory.tooltipLines(petSlot, petStack);
+		}
+	}
+
+	private void drawMissingSlot(GuiGraphicsExtractor g, PetLoreResolver.PetType pet, int sx, int sy, int mouseX, int mouseY) {
+		int slot = this.slotSize;
+		boolean hovered = mouseY >= this.gridY && mouseY < this.gridY + this.gridH
+			&& mouseX >= sx && mouseX < sx + slot && mouseY >= sy && mouseY < sy + slot;
+		PvDraw.fill(g, sx, sy, slot, slot, MISSING_BG);
+		g.outline(sx, sy, slot, slot, MISSING_BORDER);
+		int ix = sx + (slot - ITEM_ICON) / 2;
+		int iy = sy + (slot - ITEM_ICON) / 2;
+		SkyBlockIconRenderer.draw(g, SkyBlockItemFactory.iconStack(pet.neuId()), pet.neuId(), ix, iy, ITEM_ICON);
+		if (hovered) {
+			int rarity = SkyBlockItemFactory.tierArgb(pet.tier()) & 0xFFFFFF;
+			this.hoverPetTip = List.of(
+				Component.literal(pet.name()).withColor(rarity),
+				Component.literal("Missing").withColor(0xFF5555)
+			);
 		}
 	}
 

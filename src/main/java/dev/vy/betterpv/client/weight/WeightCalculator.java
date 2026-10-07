@@ -145,7 +145,7 @@ public final class WeightCalculator {
 		Map<String, Leveling.Progress> out = new LinkedHashMap<>();
 		JsonArray table = RepoData.levelingXp();
 		for (String skill : SKILL_NAMES) {
-			float xp = Leveling.readSkillXp(member, skill);
+			double xp = Leveling.readSkillXpDouble(member, skill);
 			out.put(skill, Leveling.getLevel(table, xp, 60, false));
 		}
 		return out;
@@ -426,7 +426,7 @@ public final class WeightCalculator {
 			return out;
 		}
 		for (String skill : SKILL_NAMES) {
-			float xp = Leveling.readSkillXp(member, skill);
+			double xp = Leveling.readSkillXpDouble(member, skill);
 			int cap = Leveling.skillCap(skill, member);
 			out.put(skill, Leveling.getLevel(Leveling.skillTable(skill), xp, cap, false));
 		}

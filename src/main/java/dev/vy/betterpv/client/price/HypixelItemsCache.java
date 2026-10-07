@@ -30,7 +30,10 @@ public final class HypixelItemsCache {
 		return t;
 	});
 
+	private static final long RETRY_SECONDS = 30L;
+	private static final java.util.concurrent.atomic.AtomicBoolean IN_FLIGHT = new java.util.concurrent.atomic.AtomicBoolean();
 	private static volatile Map<String, JsonObject> items = Map.of();
+	private static volatile long lastRequestMs;
 
 	private HypixelItemsCache() {
 	}
@@ -38,6 +41,15 @@ public final class HypixelItemsCache {
 	public static void start() {
 		EXECUTOR.execute(HypixelItemsCache::refreshSafely);
 		EXECUTOR.scheduleAtFixedRate(HypixelItemsCache::refreshSafely, REFRESH_HOURS, REFRESH_HOURS, TimeUnit.HOURS);
+	}
+
+	/** Kick a fetch now if nothing is loaded yet (the startup fetch fails before session auth exists). */
+	public static void requestIfEmpty() {
+		long now = System.currentTimeMillis();
+		if (items.isEmpty() && !IN_FLIGHT.get() && now - lastRequestMs > 5_000L) {
+			lastRequestMs = now;
+			EXECUTOR.execute(HypixelItemsCache::refreshSafely);
+		}
 	}
 
 	public static JsonObject get(String itemId) {
@@ -56,16 +68,24 @@ public final class HypixelItemsCache {
 	}
 
 	private static void refreshSafely() {
+		if (!IN_FLIGHT.compareAndSet(false, true)) {
+			return;
+		}
 		try {
 			refresh(true);
 		} catch (Exception exception) {
-			BetterPV.LOGGER.warn("Failed to refresh Hypixel items", exception);
+			BetterPV.LOGGER.warn("Failed to refresh Hypixel items: {}", exception.getMessage());
+			if (items.isEmpty()) {
+				EXECUTOR.schedule(HypixelItemsCache::refreshSafely, RETRY_SECONDS, TimeUnit.SECONDS);
+			}
+		} finally {
+			IN_FLIGHT.set(false);
 		}
 	}
 
 	private static void refresh(boolean allowReauth) throws IOException, InterruptedException {
 		HttpRequest.Builder builder = HttpRequest.newBuilder(ITEMS_URI).timeout(TIMEOUT).GET();
-		if (!BetterPvSessionAuth.applyAuthHeaders(builder)) {
+		if (!BetterPvSessionAuth.applyAuthHeaders(builder, ITEMS_URI)) {
 			throw new IOException(BetterPvSessionAuth.userFacingFailure()
 				.orElse("Missing BetterPV credentials for Hypixel items"));
 		}

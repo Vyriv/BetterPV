@@ -577,7 +577,7 @@ public final class FishingPage {
 			shown, fill, x, y, w, color, maxed);
 		int bottom = y + font.lineHeight + BAR_LABEL_GAP + PvDraw.BAR_HEIGHT;
 		if (hover != null && !hover.isBlank()) {
-			this.zones.add(HoverZone.of(x, y, w, bottom - y, List.of(PvTooltip.Line.of(hover, PvDraw.COLOR_TEXT))));
+			this.zones.add(HoverZone.of(x, y, w, bottom - y, dev.vy.betterpv.client.data.Leveling.hoverTextLines(hover)));
 		}
 		return bottom;
 	}

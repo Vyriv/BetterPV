@@ -349,7 +349,7 @@ public final class GardenData {
 			return "?";
 		}
 		return switch (id.toLowerCase(Locale.ROOT)) {
-			case "speed" -> "Speed";
+			case "speed" -> "Composter Speed";
 			case "multi_drop" -> "Multi Drop";
 			case "fuel_cap" -> "Fuel Cap";
 			case "organic_matter_cap" -> "Organic Matter Cap";

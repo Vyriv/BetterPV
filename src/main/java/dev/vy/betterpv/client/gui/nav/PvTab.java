@@ -90,8 +90,8 @@ public enum PvTab {
 
 	public PvSubTab[] subTabs() {
 		return switch (this) {
-			case HOME -> new PvSubTab[] { PvSubTab.HOME_OVERVIEW, PvSubTab.HOME_MISC };
-			case DUNGEONS -> PvSubTab.NONE;
+			case HOME -> new PvSubTab[] { PvSubTab.HOME_OVERVIEW, PvSubTab.HOME_MISC, PvSubTab.HOME_RECORDS };
+			case DUNGEONS -> new PvSubTab[] { PvSubTab.DUNGEON_OVERVIEW, PvSubTab.DUNGEON_CHESTS };
 			case AUCTIONS -> new PvSubTab[] { PvSubTab.AUCTION_STATS, PvSubTab.AUCTION_SOLD, PvSubTab.AUCTION_BOUGHT };
 			case COLLECTIONS -> new PvSubTab[] { PvSubTab.COLLECTIONS_LIST, PvSubTab.COLLECTIONS_MINIONS };
 			case GARDEN -> new PvSubTab[] {

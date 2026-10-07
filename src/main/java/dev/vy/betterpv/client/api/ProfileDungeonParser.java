@@ -2,6 +2,7 @@ package dev.vy.betterpv.client.api;
 
 import com.google.gson.JsonObject;
 import dev.vy.betterpv.BetterPV;
+import dev.vy.betterpv.client.data.DungeonChestHistory;
 import dev.vy.betterpv.client.data.DungeonSnapshot;
 import dev.vy.betterpv.client.data.FormatUtil;
 import dev.vy.betterpv.client.data.Leveling;
@@ -148,7 +149,8 @@ final class ProfileDungeonParser {
 			EssenceShopData.dragon(member),
 			dailyCount,
 			journals,
-			race
+			race,
+			DungeonChestHistory.from(member)
 		);
 	}
 

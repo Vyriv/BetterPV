@@ -1,5 +1,6 @@
 package dev.vy.betterpv.client.gui.foraging.page;
 
+import static dev.vy.betterpv.client.gui.foraging.ForagingUi.DISABLED;
 import static dev.vy.betterpv.client.gui.foraging.ForagingUi.ENABLED;
 import static dev.vy.betterpv.client.gui.foraging.ForagingUi.GAP;
 import static dev.vy.betterpv.client.gui.foraging.ForagingUi.ITEM_SLOT_BG;
@@ -10,6 +11,7 @@ import static dev.vy.betterpv.client.gui.foraging.ForagingUi.SLOT_GAP;
 import static dev.vy.betterpv.client.gui.foraging.ForagingUi.STAT_ROW;
 
 import dev.vy.betterpv.client.data.AttributeShardsData;
+import dev.vy.betterpv.client.data.BestiaryData;
 import dev.vy.betterpv.client.data.DungeonSnapshot;
 import dev.vy.betterpv.client.data.FormatUtil;
 import dev.vy.betterpv.client.data.ForagingSnapshot;
@@ -35,6 +37,9 @@ import net.minecraft.world.item.Items;
 public final class SafariPage {
 	private static final String[] TICKET_ORDER = { "basic", "economy", "premium", "first_class" };
 	private static final String[] BIOME_ORDER = { "forest", "cavern", "haunted", "icy", "desert" };
+	// Hypixel writes SPARKLING in bold gold (§6§l).
+	private static final int SPARKLING = 0xFFFFAA00;
+	private static final int SPARKLING_BORDER = 0x99FFAA00;
 
 	private final List<HoverZone> zones = new ArrayList<>();
 	private int gridScroll;
@@ -108,31 +113,10 @@ public final class SafariPage {
 			lx, ly, lw, PvDraw.COLOR_ACCENT) + 1;
 		ly = ForagingUi.statLine(g, font, "Captures", FormatUtil.commas(safari.totalCaptures()),
 			lx, ly, lw, PvDraw.COLOR_TEXT) + 1;
-		ly = ForagingUi.statLine(g, font, "Tickets", FormatUtil.commas(safari.totalTickets()),
-			lx, ly, lw, PvDraw.COLOR_GOLD) + 2;
+		ly = drawSparkling(g, font, safari, lx, ly, lw);
+		ly = drawTickets(g, font, safari, lx, ly, lw) + 2;
 
 		ly = drawSafariEssenceShop(g, font, snapshot.safariShop(), lx, ly, lw, bottom);
-		if (ly + font.lineHeight + STAT_ROW > bottom) {
-			return;
-		}
-
-		ly = ForagingUi.sectionSeparator(g, font, x, ly, w);
-		PvDraw.text(g, font, "Tickets", lx, ly, PvDraw.COLOR_MUTED);
-		ly += font.lineHeight + 3;
-		Map<String, Long> tickets = orderedLongMap(safari.tickets(), TICKET_ORDER);
-		if (tickets.isEmpty()) {
-			ly = ForagingUi.statLine(g, font, "None", "-", lx, ly, lw, PvDraw.COLOR_MUTED) + 2;
-		} else {
-			for (var e : tickets.entrySet()) {
-				if (ly + STAT_ROW > bottom) {
-					return;
-				}
-				ly = ForagingUi.statLine(g, font, ForagingUi.pretty(e.getKey()), FormatUtil.commas(e.getValue()),
-					lx, ly, lw, ticketColor(e.getKey())) + 1;
-			}
-			ly += 2;
-		}
-
 		if (ly + font.lineHeight + STAT_ROW > bottom) {
 			return;
 		}
@@ -181,11 +165,16 @@ public final class SafariPage {
 		int ry = y + PAD;
 		int rw = w - PAD * 2;
 
-		PvDraw.text(g, font, "Discovered critters", rx, ry, PvDraw.COLOR_MUTED);
+		List<Critter> critters = critterRoster(safari);
+		int discovered = 0;
+		for (Critter critter : critters) {
+			if (critter.discovered()) {
+				discovered++;
+			}
+		}
+		PvDraw.text(g, font, "Critters", rx, ry, PvDraw.COLOR_MUTED);
+		PvDraw.textRight(g, font, discovered + " / " + critters.size(), rx + rw, ry, PvDraw.COLOR_ACCENT);
 		ry += font.lineHeight + 4;
-
-		List<String> critters = new ArrayList<>(safari.discoveredCritters());
-		critters.sort(Comparator.comparing(s -> ForagingUi.pretty(s).toLowerCase(Locale.ROOT)));
 
 		this.gridX = rx;
 		this.gridY = ry;
@@ -217,19 +206,72 @@ public final class SafariPage {
 			}
 			boolean hovered = mx >= bx && mx < bx + SLOT && my >= by && my < by + SLOT
 				&& my >= this.gridY && my < this.gridY + this.gridH;
+			Critter critter = critters.get(i);
 			PvDraw.fill(g, bx, by, SLOT, SLOT, ITEM_SLOT_BG);
-			g.outline(bx, by, SLOT, SLOT, hovered ? PvDraw.COLOR_ACCENT : ITEM_SLOT_BORDER);
-			String id = critters.get(i);
-			drawCritterIcon(g, id, bx + 1, by + 1, fallback);
+			g.outline(bx, by, SLOT, SLOT, hovered ? PvDraw.COLOR_ACCENT : critter.sparkling() ? SPARKLING_BORDER : ITEM_SLOT_BORDER);
+			if (!critter.discovered()) {
+				g.item(UNDISCOVERED_ICON, bx + 1, by + 1);
+			} else if (!critter.texture().isBlank()) {
+				g.item(this.critterHeads.computeIfAbsent(critter.texture(), SkyBlockItemFactory::texturedHead), bx + 1, by + 1);
+			} else {
+				drawCritterIcon(g, critter.id(), bx + 1, by + 1, fallback);
+			}
+			List<PvTooltip.Line> tip = new ArrayList<>();
+			tip.add(PvTooltip.Line.title(critter.name(), critter.discovered() ? PvDraw.COLOR_TEXT : PvDraw.COLOR_MUTED));
+			tip.add(PvTooltip.Line.divider());
+			tip.add(PvTooltip.Line.row("Status", PvDraw.COLOR_MUTED,
+				critter.discovered() ? "Discovered" : "Undiscovered", critter.discovered() ? ENABLED : DISABLED));
+			if (critter.discovered() || critter.sparkling()) {
+				tip.add(PvTooltip.Line.row("Sparkling", PvDraw.COLOR_MUTED,
+					critter.sparkling() ? "Discovered" : "Undiscovered", critter.sparkling() ? SPARKLING : PvDraw.COLOR_MUTED));
+			}
 			this.zones.add(HoverZone.of(bx, Math.max(by, this.gridY), SLOT,
-				Math.min(by + SLOT, this.gridY + this.gridH) - Math.max(by, this.gridY),
-				List.of(
-					PvTooltip.Line.title(ForagingUi.pretty(id), PvDraw.COLOR_TEXT),
-					PvTooltip.Line.divider(),
-					PvTooltip.Line.row("Status", PvDraw.COLOR_MUTED, "Discovered", ENABLED)
-				)));
+				Math.min(by + SLOT, this.gridY + this.gridH) - Math.max(by, this.gridY), tip));
 		}
 		g.disableScissor();
+	}
+
+	private static final ItemStack UNDISCOVERED_ICON = new ItemStack(Items.GRAY_DYE);
+	private final Map<String, ItemStack> critterHeads = new java.util.HashMap<>();
+
+	private record Critter(String id, String name, String texture, boolean discovered, boolean sparkling) {
+	}
+
+	/** Every NEU bestiary safari critter in biome order, plus any discovered id NEU doesn't list yet. */
+	private static List<Critter> critterRoster(ForagingSnapshot.SafariInfo safari) {
+		java.util.Set<String> found = new java.util.HashSet<>();
+		for (String id : safari.discoveredCritters()) {
+			found.add(critterKey(id));
+		}
+		java.util.Set<String> sparkling = new java.util.HashSet<>();
+		for (String id : safari.sparklingDiscovered()) {
+			sparkling.add(critterKey(id));
+		}
+		List<Critter> out = new ArrayList<>();
+		java.util.Set<String> listed = new java.util.HashSet<>();
+		BestiaryData.Category category = BestiaryData.category("safari");
+		if (category != null) {
+			for (BestiaryData.Family family : category.families()) {
+				String key = critterKey(family.name());
+				listed.add(key);
+				out.add(new Critter(key, family.name(), family.textureValue(), found.contains(key), sparkling.contains(key)));
+			}
+		}
+		List<String> extra = new ArrayList<>();
+		for (String id : safari.discoveredCritters()) {
+			if (!listed.contains(critterKey(id))) {
+				extra.add(id);
+			}
+		}
+		extra.sort(Comparator.comparing(s -> ForagingUi.pretty(s).toLowerCase(Locale.ROOT)));
+		for (String id : extra) {
+			out.add(new Critter(id, ForagingUi.pretty(id), "", true, sparkling.contains(critterKey(id))));
+		}
+		return out;
+	}
+
+	private static String critterKey(String raw) {
+		return raw == null ? "" : raw.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
 	}
 
 	private static final int SAFARI_COLOR = 0xFF7CFF9A;
@@ -367,14 +409,57 @@ public final class SafariPage {
 		return true;
 	}
 
+	private int drawSparkling(GuiGraphicsExtractor g, Font font, ForagingSnapshot.SafariInfo safari, int x, int y, int w) {
+		List<String> found = safari.sparklingDiscovered();
+		List<PvTooltip.Line> tip = new ArrayList<>();
+		tip.add(PvTooltip.Line.title("Sparkling Critters", SPARKLING));
+		tip.add(PvTooltip.Line.divider());
+		tip.add(PvTooltip.Line.row("Discovered", PvDraw.COLOR_MUTED, FormatUtil.commas(found.size()), SPARKLING));
+		tip.add(PvTooltip.Line.row("Captured", PvDraw.COLOR_MUTED, FormatUtil.commas(safari.sparklingCaptured()), PvDraw.COLOR_TEXT));
+		if (!found.isEmpty()) {
+			tip.add(PvTooltip.Line.blank());
+			for (String id : found) {
+				tip.add(PvTooltip.Line.of(ForagingUi.pretty(id), SPARKLING));
+			}
+		}
+		String value = FormatUtil.commas(found.size()) + " / " + FormatUtil.commas(safari.sparklingCaptured());
+		PvDraw.text(g, font, "Sparkling", x, y, PvDraw.COLOR_MUTED);
+		PvDraw.textRight(g, font, value, x + w, y, found.isEmpty() ? PvDraw.COLOR_MUTED : SPARKLING);
+		this.zones.add(HoverZone.of(x, y, w, STAT_ROW, tip));
+		return y + STAT_ROW + 1;
+	}
+
+	/** One row: {@code Tickets  basic/economy/premium/first_class}, each count in its tier colour. */
+	private int drawTickets(GuiGraphicsExtractor g, Font font, ForagingSnapshot.SafariInfo safari, int x, int y, int w) {
+		Map<String, Long> tickets = safari.tickets();
+		net.minecraft.network.chat.MutableComponent value = net.minecraft.network.chat.Component.empty();
+		List<PvTooltip.Line> tip = new ArrayList<>();
+		tip.add(PvTooltip.Line.title("Tickets", PvDraw.COLOR_GOLD));
+		tip.add(PvTooltip.Line.divider());
+		for (int i = 0; i < TICKET_ORDER.length; i++) {
+			String id = TICKET_ORDER[i];
+			long count = tickets == null ? 0L : tickets.getOrDefault(id, 0L);
+			if (i > 0) {
+				value.append(PvDraw.styled("/", PvDraw.COLOR_MUTED, false));
+			}
+			value.append(PvDraw.styled(FormatUtil.commas(count), ticketColor(id), false));
+			tip.add(PvTooltip.Line.row(ForagingUi.pretty(id), PvDraw.COLOR_MUTED, FormatUtil.commas(count), ticketColor(id)));
+		}
+		PvDraw.text(g, font, "Tickets", x, y, PvDraw.COLOR_MUTED);
+		g.text(font, value, x + w - font.width(value), y, PvDraw.COLOR_WHITE, false);
+		this.zones.add(HoverZone.of(x, y, w, STAT_ROW, tip));
+		return y + STAT_ROW;
+	}
+
 	private static int ticketColor(String id) {
 		if (id == null) {
 			return PvDraw.COLOR_TEXT;
 		}
 		return switch (id.toLowerCase(Locale.ROOT)) {
-			case "premium", "first_class" -> PvDraw.COLOR_GOLD;
-			case "economy" -> PvDraw.COLOR_ACCENT;
-			default -> PvDraw.COLOR_TEXT;
+			case "economy" -> 0xFF55FF55;
+			case "premium" -> 0xFF6699FF;
+			case "first_class" -> PvDraw.COLOR_GOLD;
+			default -> 0xFFFFFFFF;
 		};
 	}
 

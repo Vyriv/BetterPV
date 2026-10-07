@@ -1,6 +1,7 @@
 package dev.vy.betterpv.client.gui.garden;
 
 import dev.vy.betterpv.client.data.FormatUtil;
+import dev.vy.betterpv.client.data.GardenCosts;
 import dev.vy.betterpv.client.data.GardenData;
 import dev.vy.betterpv.client.data.GardenSnapshot;
 import dev.vy.betterpv.client.gui.PvDraw;
@@ -8,8 +9,10 @@ import dev.vy.betterpv.client.gui.PvTooltip;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockIconRenderer;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -84,7 +87,7 @@ public final class GardenUi {
 			shown, fill, x, y, w, color, maxed);
 		int bottom = y + font.lineHeight + BAR_LABEL_GAP + PvDraw.BAR_HEIGHT;
 		if (hover != null && !hover.isBlank()) {
-			this.zones.add(new HoverZone(x, y, w, bottom - y, List.of(PvTooltip.Line.of(hover, PvDraw.COLOR_TEXT))));
+			this.zones.add(new HoverZone(x, y, w, bottom - y, dev.vy.betterpv.client.data.Leveling.hoverTextLines(hover)));
 		}
 		return bottom;
 	}
@@ -206,6 +209,12 @@ public final class GardenUi {
 			));
 		}
 		tip.add(PvTooltip.Line.of("Upgrade: +" + crop.upgradeLevel(), PvDraw.COLOR_MUTED));
+		GardenCosts.Progress copper = crop.upgradeCopper();
+		tip.add(PvTooltip.Line.of(
+			"Copper: " + FormatUtil.commas(copper.spent()) + " / " + FormatUtil.commas(copper.total())
+				+ " (" + FormatUtil.percent(copper.fraction()) + ")",
+			copper.maxed() ? COMPLETED_C : COPPER
+		));
 		if (snapshot.hasUniqueGold(crop.id())) {
 			tip.add(PvTooltip.Line.of("Unique gold", GOLD));
 		}
@@ -258,6 +267,72 @@ public final class GardenUi {
 			}
 		}
 		return out.toString();
+	}
+
+	public static void addComposterRemaining(List<PvTooltip.Line> tip, GardenCosts.ComposterRemaining remaining) {
+		if (remaining.none()) {
+			tip.add(PvTooltip.Line.of("Nothing left to buy", COMPLETED_C));
+			return;
+		}
+		tip.add(PvTooltip.Line.row("Copper", PvDraw.COLOR_MUTED, FormatUtil.commas(remaining.copper()), COPPER));
+		if (!remaining.crops().isEmpty()) {
+			tip.add(PvTooltip.Line.of("Crops", PvDraw.COLOR_ACCENT));
+			for (var e : remaining.crops().entrySet()) {
+				tip.add(costRow(e.getKey(), e.getValue(), PvDraw.COLOR_TEXT));
+			}
+		}
+		if (!remaining.rare().isEmpty()) {
+			tip.add(PvTooltip.Line.of("Rare crops", PvDraw.COLOR_GOLD));
+			for (var e : remaining.rare().entrySet()) {
+				tip.add(costRow(e.getKey(), e.getValue(), PvDraw.COLOR_GOLD));
+			}
+		}
+		if (!remaining.crops().isEmpty() || !remaining.rare().isEmpty()) {
+			double coins = remaining.coins();
+			tip.add(PvTooltip.Line.divider());
+			tip.add(PvTooltip.Line.row("Coin cost", PvDraw.COLOR_MUTED,
+				coins > 0D ? FormatUtil.shortCoins(coins) : "-", PvDraw.COLOR_GOLD));
+			if (coins > 0D && !remaining.fullyPriced()) {
+				tip.add(PvTooltip.Line.meta("Some items have no bazaar price"));
+			}
+		}
+	}
+
+	private static PvTooltip.Line costRow(String itemId, long amount, int amountColor) {
+		double coins = GardenCosts.itemCoins(itemId, amount);
+		return PvTooltip.Line.row(
+			List.of(PvTooltip.Span.of(costItemName(itemId), PvDraw.COLOR_MUTED)),
+			List.of(PvTooltip.Span.of(FormatUtil.commas(amount), amountColor)),
+			List.of(PvTooltip.Span.of(coins > 0D ? FormatUtil.shortCoins(coins) : "-", coins > 0D ? PvDraw.COLOR_GOLD : PvDraw.COLOR_MUTED))
+		).withIcon(costIcon(itemId));
+	}
+
+	private static final Map<String, ItemStack> COST_ICONS = new HashMap<>();
+
+	private static ItemStack costIcon(String itemId) {
+		String key = itemId == null ? "" : itemId.toUpperCase(Locale.ROOT);
+		ItemStack cached = COST_ICONS.get(key);
+		if (cached != null) {
+			return cached;
+		}
+		ItemStack icon = SkyBlockItemFactory.iconStack(key);
+		// Don't pin the paper placeholder while NEU is still loading.
+		if (!icon.isEmpty() && !icon.is(Items.PAPER)) {
+			COST_ICONS.put(key, icon);
+		}
+		return icon;
+	}
+
+	public static String costItemName(String id) {
+		if (id == null || id.isBlank()) {
+			return "?";
+		}
+		return switch (id.toUpperCase(Locale.ROOT)) {
+			case "ENCHANTED_HUGE_MUSHROOM_1" -> "Enchanted Brown Mushroom Block";
+			case "ENCHANTED_HUGE_MUSHROOM_2" -> "Enchanted Red Mushroom Block";
+			case "MUTANT_NETHER_STALK" -> "Mutant Nether Wart";
+			default -> title(id);
+		};
 	}
 
 	public record HoverZone(int x, int y, int w, int h, List<PvTooltip.Line> lines) {

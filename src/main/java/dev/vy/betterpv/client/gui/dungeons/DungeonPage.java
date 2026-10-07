@@ -30,6 +30,7 @@ public final class DungeonPage {
 	private static final int BAR_AFTER = 4;
 	private static final int GAP = 6;
 	private static final int CALC_H = 78;
+	private static final int FLOOR_GAP_MAX = 6;
 	private static final int FIELD_H = 14;
 	private static final int BTN_W = 36;
 	private static final int HELP_GAP = 3;
@@ -401,7 +402,7 @@ public final class DungeonPage {
 			totalGap = 2;
 			totalY = firstFloorY + floorBlock + 6 * gap + totalGap;
 		} else {
-			gap = Math.max(2, stretch / 7);
+			gap = Math.max(2, Math.min(FLOOR_GAP_MAX, stretch / 7));
 			int usedGaps = gap * 6;
 			totalGap = Math.max(gap, stretch - usedGaps);
 			totalY = firstFloorY + floorBlock + usedGaps + totalGap;

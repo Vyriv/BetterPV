@@ -78,6 +78,12 @@ java {
 	targetCompatibility = javaVersion
 }
 
+tasks.withType(Jar).configureEach {
+	from(rootProject.file("LICENSE")) {
+		into("META-INF")
+	}
+}
+
 tasks.register("buildAndCollect", Copy) {
 	group = "build"
 	description = "Builds this version and copies jars to dist."

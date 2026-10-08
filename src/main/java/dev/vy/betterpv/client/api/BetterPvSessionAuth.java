@@ -6,7 +6,6 @@ import com.mojang.authlib.exceptions.AuthenticationException;
 import com.mojang.authlib.exceptions.InvalidCredentialsException;
 import com.mojang.authlib.minecraft.MinecraftSessionService;
 import dev.vy.betterpv.BetterPV;
-import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -16,12 +15,14 @@ import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
@@ -44,6 +45,8 @@ public final class BetterPvSessionAuth {
 	private static final URI AUTH_URI = URI.create("https://api.vyriv.dev/hypixel/auth/v2");
 	private static final Duration TIMEOUT = Duration.ofSeconds(12);
 	private static final long REFRESH_SKEW_MILLIS = 60_000L;
+	private static final long MOJANG_COOLDOWN_MILLIS = 60_000L;
+	private static final SessionAuthConnectionGate CONNECTION_GATE = new SessionAuthConnectionGate(System::nanoTime);
 	private static final HttpClient HTTP = HypixelApiClient.http();
 	private static final java.security.SecureRandom RANDOM = new java.security.SecureRandom();
 	private static final Object LOCK = new Object();
@@ -62,6 +65,12 @@ public final class BetterPvSessionAuth {
 
 	private static volatile String cachedJwt;
 	private static volatile long expiresAtMillis;
+	private static volatile long usableUntilMillis;
+	private static volatile long nextMojangAuthAttemptAtMillis;
+	private static Failure cooldownFailure = Failure.NONE;
+	private static String cooldownDetail = "";
+	private static ScheduledFuture<?> pendingRefresh;
+	private static long refreshGeneration;
 	private static volatile long lastUsedAtMillis;
 	private static CompletableFuture<Optional<String>> inFlight;
 	private static volatile Failure lastFailure = Failure.NONE;
@@ -73,8 +82,12 @@ public final class BetterPvSessionAuth {
 		NONE(""),
 		MISSING_SESSION("BetterPV could not authenticate /pv (missing Minecraft session)"),
 		OFFLINE_SESSION("BetterPV could not authenticate /pv (offline / Fabric session)"),
-		JOIN_SERVER_FAILED("BetterPV could not authenticate /pv (Minecraft session rejected). Fully quit Minecraft, reopen Prism, and re-login to Microsoft if it keeps failing."),
+		JOIN_SERVER_FAILED("BetterPV could not authenticate /pv (Minecraft session service failed). Wait a minute before retrying."),
+		INVALID_CREDENTIALS("BetterPV could not authenticate /pv (Minecraft session expired). Re-login to Microsoft in your launcher."),
+		MOJANG_RATE_LIMITED("BetterPV authentication is temporarily rate-limited by Minecraft. Wait a minute before retrying /pv. BetterPV will not retry authentication until the cooldown expires."),
+		SERVER_CONNECTING("BetterPV authentication deferred until your Minecraft server connection is ready."),
 		SERVER_AUTH_UNAVAILABLE("BetterPV could not authenticate /pv (auth service unavailable)"),
+		AUTH_COOLDOWN("BetterPV authentication is temporarily paused. Wait a minute before retrying /pv."),
 		AUTH_REJECTED("BetterPV could not authenticate /pv (session proof rejected)"),
 		AUTH_HTTP("BetterPV could not authenticate /pv (auth HTTP error)"),
 		MISSING_JWT("BetterPV could not authenticate /pv (missing JWT)");
@@ -97,7 +110,56 @@ public final class BetterPvSessionAuth {
 		synchronized (LOCK) {
 			cachedJwt = null;
 			expiresAtMillis = 0L;
-			inFlight = null;
+			// Never detach an active attempt or clear its cooldown.
+			cancelRefreshLocked();
+		}
+	}
+
+	/** Ignore late 401s for an older JWT; preserve the shared authentication attempt. */
+	public static void invalidate(HttpRequest rejectedRequest) {
+		synchronized (LOCK) {
+			String authorization = rejectedRequest.headers().firstValue("Authorization").orElse("");
+			if (cachedJwt != null && authorization.equals("Bearer " + cachedJwt)) {
+				invalidate();
+			}
+		}
+	}
+
+	public static long remainingAuthCooldownMillis() {
+		return Math.max(0L, nextMojangAuthAttemptAtMillis - System.currentTimeMillis());
+	}
+
+	private static boolean cooldownActive() {
+		synchronized (LOCK) {
+			long remaining = remainingAuthCooldownMillis();
+			if (remaining > 0L) {
+				// Keep a more useful exchange failure visible while still blocking another
+				// Mojang proof. A successful joinServer followed by a backend 502 used to
+				// be replaced with AUTH_COOLDOWN on the next caller.
+				if (lastFailure == Failure.NONE || lastFailure == Failure.AUTH_COOLDOWN
+					|| lastFailure == cooldownFailure) {
+					setFailure(cooldownFailure, cooldownDetail);
+				}
+				BetterPV.LOGGER.debug("BetterPV session auth skipped; cooldown active for {}ms", remaining);
+				return true;
+			}
+			if (nextMojangAuthAttemptAtMillis != 0L) {
+				BetterPV.LOGGER.info("BetterPV session auth cooldown expired; authentication may resume");
+				nextMojangAuthAttemptAtMillis = 0L;
+			}
+			return false;
+		}
+	}
+
+	private static void pauseAuth(Failure failure, String detail) {
+		synchronized (LOCK) {
+			nextMojangAuthAttemptAtMillis = System.currentTimeMillis() + MOJANG_COOLDOWN_MILLIS;
+			cooldownFailure = failure;
+			cooldownDetail = detail;
+			setFailure(failure, detail);
+		}
+		if (failure == Failure.MOJANG_RATE_LIMITED) {
+			BetterPV.LOGGER.warn("BetterPV Minecraft session auth rate-limited; pausing Mojang auth for 60s");
 		}
 	}
 
@@ -172,11 +234,11 @@ public final class BetterPvSessionAuth {
 			if (mc.gui == null) {
 				return;
 			}
-			mc.gui.getChat().addClientSystemMessage(authFailChat(report));
+			mc.gui.getChat().addClientSystemMessage(authFailChat(report, failure));
 		});
 	}
 
-	private static Component authFailChat(String report) {
+	private static Component authFailChat(String report, Failure failure) {
 		Component copyHint = Component.literal("Click to copy a report to DM Vyriv")
 			.setStyle(Style.EMPTY
 				.withColor(0xFFD36A)
@@ -185,7 +247,7 @@ public final class BetterPvSessionAuth {
 				.withHoverEvent(new HoverEvent.ShowText(
 					Component.literal("Click to copy, then paste it to Vyriv on Discord")
 				)));
-		return Component.literal("BetterPV: /pv could not authenticate. ")
+		return Component.literal(failure.userMessage() + " ")
 			.setStyle(Style.EMPTY.withColor(0xFFAAAAAA))
 			.append(copyHint);
 	}
@@ -214,93 +276,67 @@ public final class BetterPvSessionAuth {
 	 * Reuses in-flight auth; no-ops when a usable JWT is already cached.
 	 */
 	public static void prefetchAsync() {
-		if (isUsable()) {
-			lastFailure = Failure.NONE;
-			return;
-		}
-		synchronized (LOCK) {
-			if (isUsable()) {
-				lastFailure = Failure.NONE;
-				return;
-			}
-			if (inFlight == null || inFlight.isDone()) {
-				inFlight = CompletableFuture.supplyAsync(BetterPvSessionAuth::authenticateOnce, AUTH_EXECUTOR);
-			}
-		}
+		requestToken(false);
 	}
 
-	/** Non-blocking; starts auth if needed so it can overlap other /pv requests. */
+	/** Non-blocking; concurrent consumers share one attempt. */
 	public static CompletableFuture<Optional<String>> bearerTokenAsync() {
 		lastUsedAtMillis = System.currentTimeMillis();
-		if (isUsable()) {
-			lastFailure = Failure.NONE;
-			return CompletableFuture.completedFuture(Optional.of(cachedJwt));
-		}
+		return requestToken(false);
+	}
+
+	private static CompletableFuture<Optional<String>> requestToken(boolean refresh) {
 		synchronized (LOCK) {
-			if (isUsable()) {
-				lastFailure = Failure.NONE;
+			if (!refresh && isUsable()) {
+				setFailure(Failure.NONE, "");
 				return CompletableFuture.completedFuture(Optional.of(cachedJwt));
 			}
-			if (inFlight == null || inFlight.isDone()) {
-				inFlight = CompletableFuture.supplyAsync(BetterPvSessionAuth::authenticateOnce, AUTH_EXECUTOR);
-			}
-			return inFlight.exceptionally(error -> Optional.empty());
+			if (inFlight != null && !inFlight.isDone()) return inFlight;
+			if (cooldownActive()) return CompletableFuture.completedFuture(Optional.empty());
+			inFlight = CompletableFuture.supplyAsync(BetterPvSessionAuth::authenticateOnce, AUTH_EXECUTOR)
+				.exceptionally(error -> {
+					BetterPV.LOGGER.warn("BetterPV session auth failed", error);
+					setFailure(Failure.AUTH_HTTP, "Unexpected session authentication failure");
+					return Optional.empty();
+				});
+			return inFlight;
 		}
 	}
 
 	/** Blocking; call only from worker threads, never the render thread. */
 	public static Optional<String> ensureBearerToken() {
-		lastUsedAtMillis = System.currentTimeMillis();
-		if (isUsable()) {
-			lastFailure = Failure.NONE;
-			return Optional.of(cachedJwt);
-		}
-
-		CompletableFuture<Optional<String>> future;
-		synchronized (LOCK) {
-			if (isUsable()) {
-				lastFailure = Failure.NONE;
-				return Optional.of(cachedJwt);
-			}
-			if (inFlight == null || inFlight.isDone()) {
-				inFlight = CompletableFuture.supplyAsync(BetterPvSessionAuth::authenticateOnce, AUTH_EXECUTOR);
-			}
-			future = inFlight;
-		}
-
-		try {
-			Optional<String> token = future.join();
-			return token == null ? Optional.empty() : token;
-		} catch (java.util.concurrent.CompletionException exception) {
-			BetterPV.LOGGER.warn("BetterPV session auth failed", exception);
-			invalidate();
-			lastFailure = Failure.AUTH_HTTP;
-			return Optional.empty();
-		}
+		return bearerTokenAsync().join();
 	}
 
-	// Renew shortly before the token goes stale so the next /pv doesn't wait on joinServer,
-	// but only while /pv is actually in use; idle clients shouldn't keep hitting Mojang.
-	private static void scheduleRefresh(long expiresInSeconds) {
-		long delayMillis = Math.max(30_000L, expiresInSeconds * 1000L - REFRESH_SKEW_MILLIS - 30_000L);
-		REFRESH_SCHEDULER.schedule(() -> {
-			if (System.currentTimeMillis() - lastUsedAtMillis > REFRESH_WHILE_USED_MILLIS) {
-				return;
-			}
-			synchronized (LOCK) {
-				if (inFlight == null || inFlight.isDone()) {
-					inFlight = CompletableFuture.supplyAsync(BetterPvSessionAuth::authenticateOnce, AUTH_EXECUTOR);
+	private static void cancelRefreshLocked() {
+		refreshGeneration++;
+		if (pendingRefresh != null) pendingRefresh.cancel(false);
+		pendingRefresh = null;
+	}
+
+	// Only one pending refresh, and only while BetterPV is in use.
+	private static void scheduleRefresh() {
+		synchronized (LOCK) {
+			cancelRefreshLocked();
+			long generation = refreshGeneration;
+			long delayMillis = Math.max(30_000L, usableUntilMillis - System.currentTimeMillis() - 30_000L);
+			pendingRefresh = REFRESH_SCHEDULER.schedule(() -> {
+				synchronized (LOCK) {
+					if (generation != refreshGeneration) return;
+					pendingRefresh = null;
+					if (System.currentTimeMillis() - lastUsedAtMillis > REFRESH_WHILE_USED_MILLIS) return;
+					requestToken(true);
 				}
-			}
-		}, delayMillis, TimeUnit.MILLISECONDS);
+			}, delayMillis, TimeUnit.MILLISECONDS);
+		}
 	}
 
 	private static boolean isUsable() {
-		String token = cachedJwt;
-		return token != null && !token.isBlank() && System.currentTimeMillis() < (expiresAtMillis - REFRESH_SKEW_MILLIS);
+		return cachedJwt != null && !cachedJwt.isBlank() && System.currentTimeMillis() < usableUntilMillis;
 	}
 
 	private static Optional<String> authenticateOnce() {
+		if (cooldownActive()) return Optional.empty();
 		Minecraft mc = Minecraft.getInstance();
 		if (mc == null) {
 			setFailure(Failure.MISSING_SESSION, "minecraft instance null");
@@ -331,7 +367,10 @@ public final class BetterPvSessionAuth {
 			return Optional.empty();
 		}
 
-		waitWhileConnecting(mc);
+		long connectionGeneration = waitWhileConnecting(mc);
+		if (connectionGeneration < 0L) return Optional.empty();
+		String correlationId = UUID.randomUUID().toString();
+		long authStartedAtMillis = System.currentTimeMillis();
 		try {
 			BetterPvInstallKey installKey = BetterPvInstallKey.load();
 			String publicKey = installKey.publicKey();
@@ -341,25 +380,60 @@ public final class BetterPvSessionAuth {
 				.timeout(TIMEOUT)
 				.header("Content-Type", "application/json")
 				.header("Accept", "application/json")
+				.header("X-BetterPV-Correlation-ID", correlationId)
 				.POST(HttpRequest.BodyPublishers.ofString(challengeBody, StandardCharsets.UTF_8))
 				.build();
+			logAuthStage(correlationId, "challenge_request_started", authStartedAtMillis, null);
 			HttpResponse<String> challengeResponse = HTTP.send(challengeRequest, HttpResponse.BodyHandlers.ofString());
+			logAuthStage(
+				correlationId,
+				"challenge_response",
+				authStartedAtMillis,
+				challengeResponse.statusCode(),
+				responseOrigin(challengeResponse)
+			);
 			if (challengeResponse.statusCode() < 200 || challengeResponse.statusCode() >= 300
 				|| challengeResponse.body() == null || challengeResponse.body().isBlank()) {
-				setFailure(Failure.AUTH_HTTP, "challenge status=" + challengeResponse.statusCode());
+				setFailure(
+					Failure.AUTH_HTTP,
+					"challenge status=" + challengeResponse.statusCode()
+						+ " origin=" + responseOrigin(challengeResponse)
+						+ " correlationId=" + correlationId
+				);
 				return Optional.empty();
 			}
 			JsonObject challenge = JsonParser.parseString(challengeResponse.body()).getAsJsonObject();
 			String challengeId = requiredString(challenge, "challengeId");
 			String serverId = requiredString(challenge, "serverId");
 
-			Optional<String> joinError = joinMinecraftSession(mc, profileId, accessToken, serverId, username);
-			if (joinError.isPresent() && !joinError.get().startsWith("InvalidCredentials")) {
-				Thread.sleep(400L);
-				joinError = joinMinecraftSession(mc, profileId, accessToken, serverId, username);
+			// Check on the client thread again after the challenge round trip. No network I/O
+			// holds the lifecycle monitor, and vanilla never waits for our proof.
+			if (cooldownActive()) return Optional.empty();
+			if (waitWhileConnecting(mc) != connectionGeneration || !CONNECTION_GATE.beginProof(connectionGeneration)) {
+				setFailure(Failure.SERVER_CONNECTING, "Minecraft connection changed before session proof");
+				return Optional.empty();
 			}
+			Optional<String> joinError;
+			boolean sameConnection;
+			try {
+				// A reconnect after admission can still overlap an already-issued Mojang request.
+				// Authlib offers no reliable cancellation; do not stall vanilla to serialize it.
+				logAuthStage(correlationId, "mojang_join_started", authStartedAtMillis, null);
+				joinError = joinMinecraftSession(mc, profileId, accessToken, serverId, username);
+			} finally {
+				sameConnection = CONNECTION_GATE.finishProof(connectionGeneration);
+			}
+
 			if (joinError.isPresent()) {
-				setFailure(Failure.JOIN_SERVER_FAILED, joinError.get());
+				logAuthStage(correlationId, "mojang_join_failed", authStartedAtMillis, null);
+				pauseAuth(classifyJoinFailure(joinError.get()), joinError.get());
+				return Optional.empty();
+			}
+			logAuthStage(correlationId, "mojang_join_succeeded", authStartedAtMillis, null);
+			// Also space successful proofs, including repeated backend 401 re-authentication.
+			pauseAuth(Failure.AUTH_COOLDOWN, "Waiting before another Minecraft session proof");
+			if (!sameConnection) {
+				setFailure(Failure.SERVER_CONNECTING, "Minecraft connection changed during session proof");
 				return Optional.empty();
 			}
 
@@ -376,10 +450,27 @@ public final class BetterPvSessionAuth {
 				.timeout(TIMEOUT)
 				.header("Content-Type", "application/json")
 				.header("Accept", "application/json")
+				.header("X-BetterPV-Correlation-ID", correlationId)
 				.POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
 				.build();
+			logAuthStage(correlationId, "exchange_request_started", authStartedAtMillis, null);
 			HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
 			int status = response.statusCode();
+			logAuthStage(correlationId, "exchange_response", authStartedAtMillis, status, responseOrigin(response));
+			if (status == 502 || status == 504) {
+				// The API keeps the signed challenge available after transient Mojang
+				// failures. Retry this exact exchange once without another joinServer call.
+				logAuthStage(correlationId, "exchange_retry_started", authStartedAtMillis, status);
+				response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
+				status = response.statusCode();
+				logAuthStage(
+					correlationId,
+					"exchange_retry_response",
+					authStartedAtMillis,
+					status,
+					responseOrigin(response)
+				);
+			}
 			String responseBody = response.body() == null ? "" : response.body();
 			if (status == 503 || causeEquals(responseBody, "session_auth_unavailable")) {
 				BetterPV.LOGGER.warn("BetterPV v2 auth unavailable status={}", status);
@@ -390,7 +481,8 @@ public final class BetterPvSessionAuth {
 				BetterPV.LOGGER.warn("BetterPV v2 auth failed status={}", status);
 				setFailure(
 					status == 401 || status == 403 ? Failure.AUTH_REJECTED : Failure.AUTH_HTTP,
-					"status=" + status
+					"status=" + status + " origin=" + responseOrigin(response)
+						+ " correlationId=" + correlationId
 				);
 				return Optional.empty();
 			}
@@ -407,14 +499,16 @@ public final class BetterPvSessionAuth {
 
 			String token = root.get("token").getAsString();
 			long expiresInSeconds = root.has("expiresIn") && root.get("expiresIn").isJsonPrimitive()
-				? Math.max(60L, root.get("expiresIn").getAsLong())
+				? Math.max(1L, root.get("expiresIn").getAsLong())
 				: 300L;
 			synchronized (LOCK) {
 				cachedJwt = token;
 				expiresAtMillis = System.currentTimeMillis() + (expiresInSeconds * 1000L);
+				usableUntilMillis = expiresAtMillis - Math.min(REFRESH_SKEW_MILLIS, expiresInSeconds * 1000L / 2L);
+				scheduleRefresh();
 			}
-			scheduleRefresh(expiresInSeconds);
 			setFailure(Failure.NONE, "");
+			logAuthStage(correlationId, "authentication_succeeded", authStartedAtMillis, status);
 			return Optional.of(token);
 		} catch (Exception exception) {
 			BetterPV.LOGGER.warn("BetterPV v2 auth request failed", exception);
@@ -424,6 +518,39 @@ public final class BetterPvSessionAuth {
 			setFailure(Failure.AUTH_HTTP, exception.toString());
 			return Optional.empty();
 		}
+	}
+
+	private static void logAuthStage(
+		String correlationId,
+		String stage,
+		long startedAtMillis,
+		Integer httpStatus
+	) {
+		logAuthStage(correlationId, stage, startedAtMillis, httpStatus, "none");
+	}
+
+	private static void logAuthStage(
+		String correlationId,
+		String stage,
+		long startedAtMillis,
+		Integer httpStatus,
+		String origin
+	) {
+		BetterPV.LOGGER.info(
+			"BetterPV auth correlationId={} stage={} elapsedMs={} httpStatus={} origin={}",
+			correlationId,
+			stage,
+			Math.max(0L, System.currentTimeMillis() - startedAtMillis),
+			httpStatus == null ? "none" : httpStatus,
+			origin
+		);
+	}
+
+	private static String responseOrigin(HttpResponse<?> response) {
+		return response.headers().firstValue("X-BetterPV-Auth-Origin")
+			.filter("application"::equalsIgnoreCase)
+			.map(ignored -> "application")
+			.orElse("proxy_or_edge");
 	}
 
 	/**
@@ -450,25 +577,72 @@ public final class BetterPvSessionAuth {
 			return Optional.of("InvalidCredentials: " + exception.toString());
 		} catch (AuthenticationException exception) {
 			BetterPV.LOGGER.warn("Minecraft joinServer failed for BetterPV auth: {}", exception.toString());
-			return Optional.of(exception.getClass().getSimpleName() + ": " + exception.toString());
+			return Optional.of(joinFailureDetail(exception));
 		} catch (RuntimeException exception) {
 			BetterPV.LOGGER.warn("Minecraft joinServer failed for BetterPV auth: {}", exception.toString());
-			return Optional.of(exception.getClass().getSimpleName() + ": " + exception.toString());
+			return Optional.of(joinFailureDetail(exception));
 		}
 	}
 
-	// Mojang keeps only the latest joinServer per account, so joining mid-login makes the server's
-	// hasJoined check fail. Hold off while a connection is being established.
-	private static void waitWhileConnecting(Minecraft client) {
-		long deadline = System.currentTimeMillis() + 30_000L;
-		while (client.screen instanceof ConnectScreen && System.currentTimeMillis() < deadline) {
-			try {
-				Thread.sleep(250L);
-			} catch (InterruptedException interrupted) {
-				Thread.currentThread().interrupt();
-				return;
-			}
+	private static String joinFailureDetail(Throwable failure) {
+		StringBuilder detail = new StringBuilder();
+		for (int depth = 0; failure != null && depth < 8; depth++, failure = failure.getCause()) {
+			if (!detail.isEmpty()) detail.append("; caused by: ");
+			detail.append(failure);
 		}
+		return detail.toString();
+	}
+
+	static Failure classifyJoinFailure(String detail) {
+		String lower = detail.toLowerCase(Locale.ROOT);
+		if (lower.contains("invalidcredentials")) return Failure.INVALID_CREDENTIALS;
+		if (lower.contains("ratelimiter disallowed request") || lower.contains("rate limit")
+			|| lower.contains("too many requests")) return Failure.MOJANG_RATE_LIMITED;
+		return Failure.JOIN_SERVER_FAILED;
+	}
+
+	/** Called at connection start, before vanilla schedules authentication. Never waits for I/O. */
+	public static void onConnectionStarting() {
+		if (CONNECTION_GATE.connecting()) {
+			BetterPV.LOGGER.debug("Minecraft connection started with a BetterPV proof already in flight; abandoning its result");
+		}
+	}
+
+	public static void onPlayInit(Object listener) {
+		CONNECTION_GATE.expectPlay(listener);
+	}
+
+	public static void onPlayReady(Object listener) {
+		CONNECTION_GATE.playReady(listener);
+	}
+
+	public static void onPlayDisconnect(Object listener) {
+		CONNECTION_GATE.disconnected(listener);
+	}
+
+	/** Client-thread snapshot, also used by prefetch so it does not consume its one shot too early. */
+	public static boolean isReadyForSessionAuth(Minecraft client) {
+		return connectionGeneration(client) >= 0L;
+	}
+
+	private static long connectionGeneration(Minecraft client) {
+		if (client.screen instanceof ConnectScreen || client.player == null || client.level == null
+			|| client.getConnection() == null || !client.getConnection().isAcceptingMessages()) return -1L;
+		return CONNECTION_GATE.permit(client.getConnection());
+	}
+
+	// Read client-owned state on the client thread. Only BetterPV's worker waits, at most 2s.
+	private static long waitWhileConnecting(Minecraft client) {
+		try {
+			long generation = client.submit(() -> connectionGeneration(client)).get(2L, TimeUnit.SECONDS);
+			if (generation >= 0L) return generation;
+		} catch (InterruptedException exception) {
+			Thread.currentThread().interrupt();
+		} catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException exception) {
+			BetterPV.LOGGER.debug("BetterPV session proof deferred: client connection state unavailable");
+		}
+		setFailure(Failure.SERVER_CONNECTING, "Minecraft play connection is not ready or is settling");
+		return -1L;
 	}
 
 	/** Loom {@code runClient} default token. Real Microsoft sessions must still attempt joinServer. */

@@ -492,6 +492,8 @@ final class ProfileSelectorController {
 		int flyoutH
 	) {
 		boolean visible = y + PROFILE_COOP_FLYOUT_ROW > flyoutY && y < flyoutY + flyoutH;
+		// Scissoring hides pixels, but still extracting a head can resolve its profile online.
+		if (!visible) return;
 		boolean resolved = ProfileFetcher.coopNameResolved(member);
 		boolean hover = visible && resolved
 			&& mouseX >= x && mouseX < x + w

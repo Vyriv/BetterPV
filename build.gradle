@@ -26,6 +26,7 @@ configurations {
 }
 
 dependencies {
+	testImplementation "junit:junit:4.13.2"
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
@@ -76,6 +77,10 @@ java {
 	def javaVersion = JavaVersion.toVersion(javaVersionNumber)
 	sourceCompatibility = javaVersion
 	targetCompatibility = javaVersion
+}
+
+tasks.withType(Test).configureEach {
+	workingDir = layout.buildDirectory.get().asFile
 }
 
 tasks.withType(Jar).configureEach {

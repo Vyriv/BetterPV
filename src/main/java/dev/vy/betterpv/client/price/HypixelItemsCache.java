@@ -32,6 +32,7 @@ public final class HypixelItemsCache {
 
 	private static final long RETRY_SECONDS = 30L;
 	private static final java.util.concurrent.atomic.AtomicBoolean IN_FLIGHT = new java.util.concurrent.atomic.AtomicBoolean();
+	private static final java.util.concurrent.atomic.AtomicBoolean RETRY_PENDING = new java.util.concurrent.atomic.AtomicBoolean();
 	private static volatile Map<String, JsonObject> items = Map.of();
 	private static volatile long lastRequestMs;
 
@@ -46,7 +47,7 @@ public final class HypixelItemsCache {
 	/** Kick a fetch now if nothing is loaded yet (the startup fetch fails before session auth exists). */
 	public static void requestIfEmpty() {
 		long now = System.currentTimeMillis();
-		if (items.isEmpty() && !IN_FLIGHT.get() && now - lastRequestMs > 5_000L) {
+		if (items.isEmpty() && BetterPvSessionAuth.remainingAuthCooldownMillis() == 0L && !IN_FLIGHT.get() && now - lastRequestMs > 5_000L) {
 			lastRequestMs = now;
 			EXECUTOR.execute(HypixelItemsCache::refreshSafely);
 		}
@@ -75,8 +76,11 @@ public final class HypixelItemsCache {
 			refresh(true);
 		} catch (Exception exception) {
 			BetterPV.LOGGER.warn("Failed to refresh Hypixel items: {}", exception.getMessage());
-			if (items.isEmpty()) {
-				EXECUTOR.schedule(HypixelItemsCache::refreshSafely, RETRY_SECONDS, TimeUnit.SECONDS);
+			if (items.isEmpty() && RETRY_PENDING.compareAndSet(false, true)) {
+				EXECUTOR.schedule(() -> {
+					RETRY_PENDING.set(false);
+					refreshSafely();
+				}, Math.max(RETRY_SECONDS * 1000L, BetterPvSessionAuth.remainingAuthCooldownMillis()), TimeUnit.MILLISECONDS);
 			}
 		} finally {
 			IN_FLIGHT.set(false);
@@ -91,7 +95,7 @@ public final class HypixelItemsCache {
 		}
 		HttpResponse<String> response = HTTP.send(builder.build(), HttpResponse.BodyHandlers.ofString());
 		if (response.statusCode() == 401) {
-			BetterPvSessionAuth.invalidate();
+			BetterPvSessionAuth.invalidate(response.request());
 			if (allowReauth) {
 				refresh(false);
 				return;

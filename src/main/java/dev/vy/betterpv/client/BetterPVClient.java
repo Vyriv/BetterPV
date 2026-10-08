@@ -23,6 +23,8 @@ import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientConfigurationConnectionEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.event.Event;
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
 import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
@@ -41,6 +43,10 @@ public final class BetterPVClient implements ClientModInitializer {
 
 	@Override
 	public void onInitializeClient() {
+		ClientConfigurationConnectionEvents.INIT.register((listener, client) -> BetterPvSessionAuth.onConnectionStarting());
+		ClientPlayConnectionEvents.INIT.register((listener, client) -> BetterPvSessionAuth.onPlayInit(listener));
+		ClientPlayConnectionEvents.JOIN.register((listener, sender, client) -> BetterPvSessionAuth.onPlayReady(listener));
+		ClientPlayConnectionEvents.DISCONNECT.register((listener, client) -> BetterPvSessionAuth.onPlayDisconnect(listener));
 		BetterPVConfig.load();
 		ItemPricer.start();
 		NeuRepoCache.start();
@@ -100,7 +106,8 @@ public final class BetterPVClient implements ClientModInitializer {
 	private static void prefetchSessionAuthOnce(net.minecraft.client.Minecraft client) {
 		// Wait until in-world: joinServer during server login steals the session and the server kicks with
 		// "Failed to authenticate your connection".
-		if (SESSION_AUTH_PREFETCHED.get() || client == null || client.player == null || client.getConnection() == null) {
+		if (SESSION_AUTH_PREFETCHED.get() || client == null || client.player == null || client.getConnection() == null
+			|| !BetterPvSessionAuth.isReadyForSessionAuth(client)) {
 			return;
 		}
 		User user = client.getUser();

@@ -586,7 +586,7 @@ public final class HypixelApiClient {
 			}
 			logTiming(url, response, bytes.length, startedNanos, headersNanos);
 			if (response.statusCode() == 401 && needsProxyAuth) {
-				BetterPvSessionAuth.invalidate();
+				BetterPvSessionAuth.invalidate(response.request());
 				if (allowReauth) {
 					return getJson(url, false, allowStreamRetry);
 				}

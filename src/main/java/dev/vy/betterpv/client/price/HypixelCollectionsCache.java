@@ -182,7 +182,7 @@ public final class HypixelCollectionsCache {
 				EXECUTOR.schedule(() -> {
 					RETRY_PENDING.set(false);
 					requestRefresh();
-				}, RETRY_SECONDS, TimeUnit.SECONDS);
+				}, Math.max(RETRY_SECONDS * 1000L, BetterPvSessionAuth.remainingAuthCooldownMillis()), TimeUnit.MILLISECONDS);
 			}
 		}
 	}
@@ -195,7 +195,7 @@ public final class HypixelCollectionsCache {
 		}
 		HttpResponse<String> response = HTTP.send(builder.build(), HttpResponse.BodyHandlers.ofString());
 		if (response.statusCode() == 401) {
-			BetterPvSessionAuth.invalidate();
+			BetterPvSessionAuth.invalidate(response.request());
 			if (allowReauth) {
 				refresh(false);
 				return;

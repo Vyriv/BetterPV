@@ -4,6 +4,8 @@
 	"compatibilityLevel": "JAVA_21",
 	"client": [
 		"ChatScreenClickMixin",
+		"ClientHandshakeSessionAuthMixin",
+		"ConnectScreenSessionAuthMixin",
 		"EntityCosmeticsMixin",
 		"EntityRendererCosmeticsMixin",
 		"FontCosmeticsMixin",

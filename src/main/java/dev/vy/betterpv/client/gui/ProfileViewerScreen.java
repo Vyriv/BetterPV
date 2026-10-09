@@ -3,6 +3,7 @@ package dev.vy.betterpv.client.gui;
 import com.google.gson.JsonObject;
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.vy.betterpv.BetterPV;
+import dev.vy.betterpv.client.api.BetterPVConfig;
 import dev.vy.betterpv.client.api.BetterPvSessionAuth;
 import dev.vy.betterpv.client.api.HypixelApiClient;
 import dev.vy.betterpv.client.api.ProfileFetcher;
@@ -50,6 +51,7 @@ import net.minecraft.network.chat.Component;
 public final class ProfileViewerScreen extends Screen {
 	private static final int PAD = 8;
 	private static final int TARGET_GUI_SCALE = 2;
+	private static final int BOTTOM_FIT_ROOM = 39;
 	private static final long OPEN_ANIM_MS = 260L;
 	private static final float OPEN_SCALE_START = 0.12F;
 
@@ -83,12 +85,17 @@ public final class ProfileViewerScreen extends Screen {
 	private final BestiarySplitLayout bestiaryLayout = new BestiarySplitLayout();
 	private float openPivotX;
 	private float openPivotY;
-	private int previousGuiScale = -1;
+	private final ProfileScaleSlider scaleSlider = new ProfileScaleSlider();
+	private ProfileViewerScale.Viewport scaleViewport;
+	private ProfileViewerScale.Viewport sliderViewport;
 
 	private PvTab tab = PvTab.HOME;
 	private MuseumSort museumSort = MuseumSort.ALL;
 	private boolean fetchStarted;
 	private boolean dataReady;
+	private String loadCorrelationId;
+	private long loadStartedNanos;
+	private boolean firstVisibleLogged;
 	/** Set when fetch fails (e.g. unknown IGN). Shown instead of infinite loading. */
 	private String loadError;
 	/** Bumps on each fetch/switch so stale async results cannot overwrite newer state. */
@@ -127,28 +134,6 @@ public final class ProfileViewerScreen extends Screen {
 				this.subSelection.put(t, subs[0]);
 			}
 		}
-	}
-
-	@Override
-	public void added() {
-		super.added();
-		Minecraft client = Minecraft.getInstance();
-		if (client == null || client.getWindow() == null) {
-			return;
-		}
-		this.previousGuiScale = client.getWindow().getGuiScale();
-		client.getWindow().setGuiScale(TARGET_GUI_SCALE);
-	}
-
-	@Override
-	public void resize(int width, int height) {
-		Minecraft client = Minecraft.getInstance();
-		if (this.previousGuiScale >= 0 && client != null && client.getWindow() != null) {
-			client.getWindow().setGuiScale(TARGET_GUI_SCALE);
-			width = client.getWindow().getGuiScaledWidth();
-			height = client.getWindow().getGuiScaledHeight();
-		}
-		super.resize(width, height);
 	}
 
 	@Override
@@ -196,6 +181,9 @@ public final class ProfileViewerScreen extends Screen {
 			return;
 		}
 		this.fetchStarted = true;
+		this.loadCorrelationId = UUID.randomUUID().toString();
+		this.loadStartedNanos = System.nanoTime();
+		this.firstVisibleLogged = false;
 		int generation = ++this.loadGeneration;
 		ProfileFetcher.prioritizeTab(this.tab);
 		ProfileFetcher.addNetworthListener(this.networthListener);
@@ -213,7 +201,7 @@ public final class ProfileViewerScreen extends Screen {
 				}
 				applyLoadedProfile(updated);
 			});
-		}).whenComplete((loaded, error) -> {
+		}, this.loadCorrelationId, this.loadStartedNanos).whenComplete((loaded, error) -> {
 			Minecraft client = Minecraft.getInstance();
 			if (client == null) {
 				return;
@@ -244,6 +232,12 @@ public final class ProfileViewerScreen extends Screen {
 				PvProfileImcPublisher.publish(displayed);
 				applyLoadedProfile(displayed);
 				this.dataReady = true;
+				BetterPV.LOGGER.info(
+					"[PV timing] event=render_thread_applied correlation_id={} player={} elapsed_ms={}",
+					this.loadCorrelationId,
+					this.requestedName,
+					(System.nanoTime() - this.loadStartedNanos) / 1_000_000L
+				);
 			});
 		});
 	}
@@ -268,11 +262,6 @@ public final class ProfileViewerScreen extends Screen {
 	@Override
 	public void removed() {
 		ProfileFetcher.removeNetworthListener(this.networthListener);
-		Minecraft client = Minecraft.getInstance();
-		if (this.previousGuiScale >= 0 && client != null && client.getWindow() != null) {
-			client.getWindow().setGuiScale(this.previousGuiScale);
-			this.previousGuiScale = -1;
-		}
 		super.removed();
 	}
 
@@ -346,31 +335,113 @@ public final class ProfileViewerScreen extends Screen {
 
 	@Override
 	public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
-		super.extractRenderState(graphics, mouseX, mouseY, delta);
-
-		this.topBar.clearHits();
-		this.sideBar.clearHits();
-		this.inventoryBar.clearHits();
+		int screenWidth = this.width;
+		int screenHeight = this.height;
+		Minecraft client = Minecraft.getInstance();
+		int framebufferWidth = client != null && client.getWindow() != null
+			? client.getWindow().getWidth()
+			: screenWidth * TARGET_GUI_SCALE;
+		int framebufferHeight = client != null && client.getWindow() != null
+			? client.getWindow().getHeight()
+			: screenHeight * TARGET_GUI_SCALE;
+		int guiScale = client != null && client.getWindow() != null
+			? client.getWindow().getGuiScale()
+			: TARGET_GUI_SCALE;
+		this.sliderViewport = ProfileViewerScale.viewport(
+			screenWidth, screenHeight, framebufferWidth, framebufferHeight, guiScale, 100, null
+		);
+		int virtualWidth = this.sliderViewport.virtualWidth();
+		int virtualHeight = this.sliderViewport.virtualHeight();
+		this.scaleSlider.layoutViewport(virtualWidth, virtualHeight);
 
 		int topRoom = IconButtonBar.TAB + 4;
 		int leftRoom = IconButtonBar.TAB + 4;
-
-		int panelW = Math.min(520, Math.max(420, this.width - 80 - leftRoom));
+		int panelW = Math.min(520, Math.max(420, virtualWidth - 80 - leftRoom));
 		int contentH = this.homePage.preferredHeight(this.font, panelW - PAD * 2);
 		if (this.tab == PvTab.HOME && activeSub(PvSubTab.HOME_OVERVIEW) != PvSubTab.HOME_OVERVIEW) {
 			contentH = Math.max(contentH, 220);
 		}
-		int maxPanelH = Math.max(200, this.height - topRoom - 24);
+		int maxPanelH = Math.max(200, virtualHeight - topRoom - 24);
 		int panelH = Math.min(maxPanelH, Math.max(200, contentH + PAD * 2));
+		int panelX = (virtualWidth - panelW) / 2 + leftRoom / 2;
+		int panelY = (virtualHeight - panelH - topRoom) / 2 + topRoom;
 
-		int panelX = (this.width - panelW) / 2 + leftRoom / 2;
-		int panelY = (this.height - panelH - topRoom) / 2 + topRoom;
+		ProfileViewerScale.Bounds bounds = new ProfileViewerScale.Bounds(
+			panelX - leftRoom - 2,
+			panelY - topRoom - 2,
+			panelX + panelW + 2,
+			panelY + panelH + BOTTOM_FIT_ROOM
+		);
+		int selectedPercent = BetterPVConfig.profileViewerScalePercent();
+		this.scaleViewport = ProfileViewerScale.viewport(
+			screenWidth, screenHeight, framebufferWidth, framebufferHeight, guiScale, selectedPercent, bounds
+		);
+		int virtualMouseX = (int) Math.round(this.scaleViewport.toVirtualX(mouseX));
+		int virtualMouseY = (int) Math.round(this.scaleViewport.toVirtualY(mouseY));
+
+		graphics.pose().pushMatrix();
+		graphics.pose().translate(this.scaleViewport.offsetX(), this.scaleViewport.offsetY());
+		graphics.pose().scale(this.scaleViewport.renderScale(), this.scaleViewport.renderScale());
+		int previousWidth = this.width;
+		int previousHeight = this.height;
+		this.width = virtualWidth;
+		this.height = virtualHeight;
+		try {
+			super.extractRenderState(graphics, virtualMouseX, virtualMouseY, delta);
+			int dimLeft = (int) Math.floor(this.scaleViewport.toVirtualX(0));
+			int dimTop = (int) Math.floor(this.scaleViewport.toVirtualY(0));
+			int dimRight = (int) Math.ceil(this.scaleViewport.toVirtualX(screenWidth));
+			int dimBottom = (int) Math.ceil(this.scaleViewport.toVirtualY(screenHeight));
+			PvDraw.fill(graphics, dimLeft, dimTop, dimRight - dimLeft, dimBottom - dimTop, 0x99000000);
+			extractProfileRenderState(
+				graphics, virtualMouseX, virtualMouseY, delta,
+				panelX, panelY, panelW, panelH
+			);
+		} finally {
+			this.width = previousWidth;
+			this.height = previousHeight;
+			graphics.pose().popMatrix();
+		}
+
+		int sliderMouseX = (int) Math.round(this.sliderViewport.toVirtualX(mouseX));
+		int sliderMouseY = (int) Math.round(this.sliderViewport.toVirtualY(mouseY));
+		graphics.nextStratum();
+		graphics.pose().pushMatrix();
+		graphics.pose().translate(this.sliderViewport.offsetX(), this.sliderViewport.offsetY());
+		graphics.pose().scale(this.sliderViewport.renderScale(), this.sliderViewport.renderScale());
+		try {
+			String tip = Component.translatable("betterpv.screen.flip_tip").getString();
+			ProfileViewerScale.Point tipPosition = ProfileViewerScale.bottomLeftPosition(
+				virtualWidth,
+				virtualHeight,
+				this.font.width(tip),
+				this.font.lineHeight,
+				ProfileScaleSlider.SCREEN_MARGIN
+			);
+			PvDraw.text(graphics, this.font, tip, tipPosition.x(), tipPosition.y(), 0xFFFFFF55);
+			this.scaleSlider.render(graphics, this.font, sliderMouseX, sliderMouseY);
+		} finally {
+			graphics.pose().popMatrix();
+		}
+	}
+
+	private void extractProfileRenderState(
+		GuiGraphicsExtractor graphics,
+		int mouseX,
+		int mouseY,
+		float delta,
+		int panelX,
+		int panelY,
+		int panelW,
+		int panelH
+	) {
+		this.topBar.clearHits();
+		this.sideBar.clearHits();
+		this.inventoryBar.clearHits();
 		this.panelXCache = panelX;
 		this.panelYCache = panelY;
 		this.panelWCache = panelW;
 		this.panelHCache = panelH;
-		PvDraw.fill(graphics, 0, 0, this.width, this.height, 0x99000000);
-
 		float scale = openScale();
 		this.openPivotX = panelX + panelW / 2.0F;
 		this.openPivotY = panelY + panelH / 2.0F;
@@ -383,7 +454,6 @@ public final class ProfileViewerScreen extends Screen {
 		}
 
 		PvDraw.panel(graphics, panelX, panelY, panelW, panelH);
-
 		if (!this.dataReady) {
 			InventorySplitLayout.hideInventorySearch(this.inventorySearch);
 			hidePlayerSearch();
@@ -392,7 +462,6 @@ public final class ProfileViewerScreen extends Screen {
 			this.topBar.drawTopFrameTabs(
 				graphics, this.font, panelX, panelY, mouseX, mouseY, topTabEntries(), this.tab
 			);
-
 			Object[] left = this.tab.leftTabs();
 			if (left.length > 0) {
 				List<IconButtonBar.Entry> side = sideTabEntries();
@@ -402,11 +471,8 @@ public final class ProfileViewerScreen extends Screen {
 				);
 			}
 
-			// Draw before body tooltips so item / pet tips are not covered by the search box.
 			positionPlayerSearch(graphics, panelX, panelY, panelW, panelH);
-
 			renderBody(graphics, panelX + PAD, panelY + PAD, panelW - PAD * 2, panelH - PAD * 2, mouseX, mouseY, delta);
-
 			this.profileSelector.renderFooter(graphics, this.font, panelX, panelY, panelW, panelH, mouseX, mouseY);
 			if (this.playerSearchErrorUntilMs > System.currentTimeMillis() && !this.playerSearchError.isBlank()) {
 				PvDraw.text(
@@ -417,8 +483,6 @@ public final class ProfileViewerScreen extends Screen {
 				);
 			}
 
-			// Higher stratum than EditBox / search chrome so tall item tips are not covered
-			// by the footer "Search player" field (vanilla deferred tips use the same pattern).
 			graphics.nextStratum();
 			DeferredTooltipLayer.render(
 				graphics,
@@ -469,15 +533,15 @@ public final class ProfileViewerScreen extends Screen {
 		if (scaled) {
 			graphics.pose().popMatrix();
 		}
-
-		PvDraw.text(
-			graphics,
-			this.font,
-			Component.translatable("betterpv.screen.flip_tip").getString(),
-			4,
-			this.height - this.font.lineHeight - 4,
-			0xFFFFFF55
-		);
+		if (this.dataReady && !this.firstVisibleLogged && this.loadStartedNanos > 0L) {
+			this.firstVisibleLogged = true;
+			BetterPV.LOGGER.info(
+				"[PV timing] event=first_visible_frame correlation_id={} player={} elapsed_ms={}",
+				this.loadCorrelationId,
+				this.requestedName,
+				(System.nanoTime() - this.loadStartedNanos) / 1_000_000L
+			);
+		}
 	}
 
 	private float openScale() {
@@ -668,7 +732,8 @@ public final class ProfileViewerScreen extends Screen {
 				} else {
 					this.homePage.render(
 						g, this.font, x, y, w, h, mouseX, mouseY, this.width, this.height,
-						openScale(), this.openPivotX, this.openPivotY
+						openScale(), this.openPivotX, this.openPivotY,
+						this.scaleViewport.renderScale(), this.scaleViewport.offsetX(), this.scaleViewport.offsetY()
 					);
 				}
 			}
@@ -834,11 +899,14 @@ public final class ProfileViewerScreen extends Screen {
 		if (click == null) {
 			return super.mouseClicked(click, doubled);
 		}
+		if (this.scaleSlider.mouseClicked(sliderMouseX(click.x()), sliderMouseY(click.y()), click.button())) {
+			return true;
+		}
+		double mx = virtualMouseX(click.x());
+		double my = virtualMouseY(click.y());
 		if (!uiInteractive()) {
 			return true;
 		}
-		double mx = click.x();
-		double my = click.y();
 		if (this.profileSelector.mouseClicked(mx, my)) {
 			return true;
 		}
@@ -876,7 +944,35 @@ public final class ProfileViewerScreen extends Screen {
 				return true;
 			}
 		}
-		return super.mouseClicked(click, doubled);
+		return super.mouseClicked(virtualClick(click), doubled);
+	}
+
+	@Override
+	public void mouseMoved(double mouseX, double mouseY) {
+		super.mouseMoved(virtualMouseX(mouseX), virtualMouseY(mouseY));
+	}
+
+	@Override
+	public boolean mouseDragged(MouseButtonEvent click, double dragX, double dragY) {
+		if (click == null) {
+			return super.mouseDragged(click, dragX, dragY);
+		}
+		if (this.scaleSlider.mouseDragged(sliderMouseX(click.x()))) {
+			return true;
+		}
+		float scale = this.scaleViewport == null ? 1.0F : this.scaleViewport.renderScale();
+		return super.mouseDragged(virtualClick(click), dragX / scale, dragY / scale);
+	}
+
+	@Override
+	public boolean mouseReleased(MouseButtonEvent click) {
+		if (click == null) {
+			return super.mouseReleased(click);
+		}
+		if (this.scaleSlider.mouseReleased(click.button())) {
+			return true;
+		}
+		return super.mouseReleased(virtualClick(click));
 	}
 
 	private boolean routePageClick(double mx, double my) {
@@ -911,17 +1007,44 @@ public final class ProfileViewerScreen extends Screen {
 		if (!uiInteractive()) {
 			return true;
 		}
+		double virtualX = virtualMouseX(mouseX);
+		double virtualY = virtualMouseY(mouseY);
 		boolean horizontal = scrollX != 0D || shiftDown();
 		if (PvTooltip.panOverflow(scrollX != 0D ? scrollX : scrollY, horizontal)) {
 			return true;
 		}
-		if (this.profileSelector.mouseScrolled(mouseX, mouseY, scrollY)) {
+		if (this.profileSelector.mouseScrolled(virtualX, virtualY, scrollY)) {
 			return true;
 		}
-		if (routePageScroll(mouseX, mouseY, scrollY)) {
+		if (routePageScroll(virtualX, virtualY, scrollY)) {
 			return true;
 		}
-		return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+		return super.mouseScrolled(virtualX, virtualY, scrollX, scrollY);
+	}
+
+	@Override
+	public boolean isMouseOver(double mouseX, double mouseY) {
+		return super.isMouseOver(virtualMouseX(mouseX), virtualMouseY(mouseY));
+	}
+
+	private MouseButtonEvent virtualClick(MouseButtonEvent click) {
+		return new MouseButtonEvent(virtualMouseX(click.x()), virtualMouseY(click.y()), click.buttonInfo());
+	}
+
+	private double virtualMouseX(double mouseX) {
+		return this.scaleViewport == null ? mouseX : this.scaleViewport.toVirtualX(mouseX);
+	}
+
+	private double virtualMouseY(double mouseY) {
+		return this.scaleViewport == null ? mouseY : this.scaleViewport.toVirtualY(mouseY);
+	}
+
+	private double sliderMouseX(double mouseX) {
+		return this.sliderViewport == null ? mouseX : this.sliderViewport.toVirtualX(mouseX);
+	}
+
+	private double sliderMouseY(double mouseY) {
+		return this.sliderViewport == null ? mouseY : this.sliderViewport.toVirtualY(mouseY);
 	}
 
 	private boolean routePageScroll(double mouseX, double mouseY, double scrollY) {

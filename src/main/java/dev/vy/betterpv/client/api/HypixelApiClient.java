@@ -45,6 +45,8 @@ public final class HypixelApiClient {
 	private static final ConcurrentHashMap<String, JsonObject> PLAYER_CACHE = new ConcurrentHashMap<>();
 	private static final ConcurrentHashMap<String, CompletableFuture<Optional<JsonObject>>> PLAYER_IN_FLIGHT =
 		new ConcurrentHashMap<>();
+	private static final InFlightRequestRegistry<String, Optional<JsonObject>> PROFILE_IN_FLIGHT =
+		new InFlightRequestRegistry<>();
 	/** Mojang names do not change during this client session often enough to justify repeat lookups. */
 	private static final ConcurrentHashMap<String, UuidName> UUID_NAME_CACHE = new ConcurrentHashMap<>();
 	/** Small pool so museum + election (and other GETs) can overlap while spacing starts. */
@@ -374,14 +376,34 @@ public final class HypixelApiClient {
 	}
 
 	public static CompletableFuture<Optional<JsonObject>> skyblockProfiles(UUID uuid) {
+		return skyblockProfiles(uuid, UUID.randomUUID().toString());
+	}
+
+	public static CompletableFuture<Optional<JsonObject>> skyblockProfiles(UUID uuid, String correlationId) {
 		String id = undashed(uuid);
-		return CompletableFuture.supplyAsync(
-			() -> fetchVyrivApi(
+		String correlation = validCorrelationId(correlationId);
+		long queuedNanos = System.nanoTime();
+		InFlightRequestRegistry.Shared<Optional<JsonObject>> shared = PROFILE_IN_FLIGHT.share(
+			id,
+			correlation,
+			() -> CompletableFuture.supplyAsync(() -> {
+				long taskStartedNanos = System.nanoTime();
+				return fetchVyrivApi(
 				WORKER_BASE + "/hypixel/skyblock/profiles/" + id,
-				"skyblock/profiles"
-			),
-			EXECUTOR
+				"skyblock/profiles",
+				new RequestTiming(correlation, queuedNanos, taskStartedNanos)
+				);
+			}, EXECUTOR)
 		);
+		if (shared.reused()) {
+			BetterPV.LOGGER.info(
+				"[PV timing] event=profile_request_deduplicated correlation_id={} active_correlation_id={} player_uuid={}",
+				correlation,
+				shared.correlationId(),
+				id
+			);
+		}
+		return shared.future();
 	}
 
 	public static CompletableFuture<Optional<JsonObject>> skyblockMuseum(UUID uuid) {
@@ -537,8 +559,13 @@ public final class HypixelApiClient {
 	}
 
 	private static Optional<JsonObject> fetchVyrivApi(String workerUrl, String routeName) {
+		long now = System.nanoTime();
+		return fetchVyrivApi(workerUrl, routeName, new RequestTiming(UUID.randomUUID().toString(), now, now));
+	}
+
+	private static Optional<JsonObject> fetchVyrivApi(String workerUrl, String routeName, RequestTiming timing) {
 		waitForSlot();
-		Optional<JsonObject> viaWorker = getJson(workerUrl);
+		Optional<JsonObject> viaWorker = getJson(workerUrl, true, true, timing);
 		if (viaWorker.isPresent()) {
 			return viaWorker;
 		}
@@ -547,12 +574,23 @@ public final class HypixelApiClient {
 	}
 
 	private static Optional<JsonObject> getJson(String url) {
-		return getJson(url, true, true);
+		long now = System.nanoTime();
+		return getJson(url, true, true, new RequestTiming(UUID.randomUUID().toString(), now, now));
 	}
 
 	// A streamed MISS is cut mid-body when the upstream read fails, so a broken
 	// transfer is retried once (usually a cache HIT by then).
 	private static Optional<JsonObject> getJson(String url, boolean allowReauth, boolean allowStreamRetry) {
+		long now = System.nanoTime();
+		return getJson(url, allowReauth, allowStreamRetry, new RequestTiming(UUID.randomUUID().toString(), now, now));
+	}
+
+	private static Optional<JsonObject> getJson(
+		String url,
+		boolean allowReauth,
+		boolean allowStreamRetry,
+		RequestTiming timing
+	) {
 		try {
 			URI uri = URI.create(url);
 			HttpRequest.Builder builder = HttpRequest.newBuilder(uri).timeout(TIMEOUT).GET();
@@ -568,6 +606,7 @@ public final class HypixelApiClient {
 			}
 			if (needsProxyAuth) {
 				builder.header("Accept-Encoding", "gzip");
+				builder.setHeader("X-BetterPV-Correlation-ID", timing.correlationId());
 			}
 			long startedNanos = System.nanoTime();
 			HttpResponse<InputStream> response = HTTP.send(builder.build(), HttpResponse.BodyHandlers.ofInputStream());
@@ -577,46 +616,65 @@ public final class HypixelApiClient {
 			try (InputStream raw = response.body()) {
 				bytes = raw.readAllBytes();
 			} catch (IOException exception) {
-				logTiming(url, response, -1, startedNanos, headersNanos);
+				logTiming(url, response, -1, timing, startedNanos, headersNanos, System.nanoTime(), 0L, 0L);
 				if (streamed && allowStreamRetry) {
 					BetterPV.LOGGER.warn("Hypixel GET {} stream broke ({}), retrying once", url, exception.toString());
-					return getJson(url, allowReauth, false);
+					return getJson(url, allowReauth, false, RequestTiming.retry(timing.correlationId()));
 				}
 				throw exception;
 			}
-			logTiming(url, response, bytes.length, startedNanos, headersNanos);
+			long bodyNanos = System.nanoTime();
 			if (response.statusCode() == 401 && needsProxyAuth) {
-				BetterPvSessionAuth.invalidate(response.request());
+				logTiming(url, response, bytes.length, timing, startedNanos, headersNanos, bodyNanos, 0L, 0L);
+				BetterPvSessionAuth.handleUnauthorized(
+					response.request(),
+					new String(bytes, StandardCharsets.UTF_8),
+					TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos)
+				);
 				if (allowReauth) {
-					return getJson(url, false, allowStreamRetry);
+					return getJson(url, false, allowStreamRetry, RequestTiming.retry(timing.correlationId()));
 				}
 				BetterPV.LOGGER.warn("Hypixel GET {} unauthorized after re-auth", url);
 				return Optional.empty();
 			}
 			if (response.statusCode() == 503 && needsProxyAuth) {
+				logTiming(url, response, bytes.length, timing, startedNanos, headersNanos, bodyNanos, 0L, 0L);
 				BetterPV.LOGGER.warn("Hypixel GET {} session auth unavailable (503)", url);
 				return Optional.empty();
 			}
 			if (response.statusCode() < 200 || response.statusCode() >= 300 || bytes.length == 0) {
+				logTiming(url, response, bytes.length, timing, startedNanos, headersNanos, bodyNanos, 0L, 0L);
 				BetterPV.LOGGER.warn("Hypixel GET {} failed status={}", url, response.statusCode());
 				return Optional.empty();
 			}
 			JsonElement element;
+			long parseStartedNanos = System.nanoTime();
+			long gzipNanos = 0L;
 			try {
 				InputStream body = new ByteArrayInputStream(bytes);
 				if (response.headers().firstValue("Content-Encoding").orElse("").equalsIgnoreCase("gzip")) {
+					long gzipStartedNanos = System.nanoTime();
 					body = new GZIPInputStream(body, 64 * 1024);
+					gzipNanos = System.nanoTime() - gzipStartedNanos;
 				}
-				try (Reader reader = new InputStreamReader(body, StandardCharsets.UTF_8)) {
+				TimedInputStream timedBody = new TimedInputStream(body);
+				try (Reader reader = new InputStreamReader(timedBody, StandardCharsets.UTF_8)) {
 					element = JsonParser.parseReader(reader);
 				}
+				if (body instanceof GZIPInputStream) {
+					gzipNanos += timedBody.readNanos();
+				}
 			} catch (IOException | JsonParseException exception) {
+				long parseNanos = System.nanoTime() - parseStartedNanos;
+				logTiming(url, response, bytes.length, timing, startedNanos, headersNanos, bodyNanos, gzipNanos, Math.max(0L, parseNanos - gzipNanos));
 				if (streamed && allowStreamRetry) {
 					BetterPV.LOGGER.warn("Hypixel GET {} stream incomplete ({}), retrying once", url, exception.toString());
-					return getJson(url, allowReauth, false);
+					return getJson(url, allowReauth, false, RequestTiming.retry(timing.correlationId()));
 				}
 				throw exception;
 			}
+			long parseNanos = System.nanoTime() - parseStartedNanos;
+			logTiming(url, response, bytes.length, timing, startedNanos, headersNanos, bodyNanos, gzipNanos, Math.max(0L, parseNanos - gzipNanos));
 			if (!element.isJsonObject()) {
 				return Optional.empty();
 			}
@@ -634,15 +692,30 @@ public final class HypixelApiClient {
 		}
 	}
 
-	private static void logTiming(String url, HttpResponse<?> response, int bytes, long startedNanos, long headersNanos) {
-		long ms = (System.nanoTime() - startedNanos) / 1_000_000L;
-		long headersMs = (headersNanos - startedNanos) / 1_000_000L;
+	private static void logTiming(
+		String url,
+		HttpResponse<?> response,
+		int bytes,
+		RequestTiming timing,
+		long startedNanos,
+		long headersNanos,
+		long bodyNanos,
+		long gzipNanos,
+		long jsonNanos
+	) {
+		long completedNanos = System.nanoTime();
 		String path = url.startsWith(WORKER_BASE) ? url.substring(WORKER_BASE.length()) : url;
 		BetterPV.LOGGER.info(
-			"[PV timing] GET {} {}ms headers={}ms stream={} status={} bytes={} encoding={} cache={} server=[{}] upstream=[bytes={} enc={} prevAge={} {}] arrival=[{}]",
+			"[PV timing] event=http_complete correlation_id={} path={} queue_ms={} admission_ms={} headers_ms={} body_ms={} gzip_ms={} json_ms={} total_ms={} stream={} status={} bytes={} encoding={} cache={} server=[{}] upstream=[bytes={} enc={} prevAge={} {}] arrival=[{}]",
+			timing.correlationId(),
 			path,
-			ms,
-			headersMs,
+			millis(timing.taskStartedNanos() - timing.queuedNanos()),
+			millis(startedNanos - timing.taskStartedNanos()),
+			millis(headersNanos - startedNanos),
+			millis(bodyNanos - headersNanos),
+			millis(gzipNanos),
+			millis(jsonNanos),
+			millis(completedNanos - timing.queuedNanos()),
 			response.headers().firstValue("x-hypixel-stream").orElse("0"),
 			response.statusCode(),
 			bytes,
@@ -655,6 +728,62 @@ public final class HypixelApiClient {
 			response.headers().firstValue("x-hypixel-shape").orElse(""),
 			response.headers().firstValue("x-hypixel-arrival").orElse("")
 		);
+	}
+
+	private static long millis(long nanos) {
+		return Math.max(0L, TimeUnit.NANOSECONDS.toMillis(nanos));
+	}
+
+	private static String validCorrelationId(String value) {
+		if (value != null && value.matches("[A-Za-z0-9._:-]{1,80}")) {
+			return value;
+		}
+		return UUID.randomUUID().toString();
+	}
+
+	private record RequestTiming(String correlationId, long queuedNanos, long taskStartedNanos) {
+		private static RequestTiming retry(String correlationId) {
+			long now = System.nanoTime();
+			return new RequestTiming(correlationId, now, now);
+		}
+	}
+
+	private static final class TimedInputStream extends InputStream {
+		private final InputStream delegate;
+		private long readNanos;
+
+		private TimedInputStream(InputStream delegate) {
+			this.delegate = delegate;
+		}
+
+		@Override
+		public int read() throws IOException {
+			long started = System.nanoTime();
+			try {
+				return this.delegate.read();
+			} finally {
+				this.readNanos += System.nanoTime() - started;
+			}
+		}
+
+		@Override
+		public int read(byte[] bytes, int offset, int length) throws IOException {
+			long started = System.nanoTime();
+			try {
+				return this.delegate.read(bytes, offset, length);
+			} finally {
+				this.readNanos += System.nanoTime() - started;
+			}
+		}
+
+		@Override
+		public void close() throws IOException {
+			this.delegate.close();
+		}
+
+		private long readNanos() {
+			return this.readNanos;
+		}
 	}
 
 	/**

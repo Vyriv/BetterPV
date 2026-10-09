@@ -66,7 +66,10 @@ public final class PlayerModelRenderer {
 		float flipPivotY,
 		float openScale,
 		float openPivotX,
-		float openPivotY
+		float openPivotY,
+		float uiScale,
+		float uiOffsetX,
+		float uiOffsetY
 	) {
 		Minecraft mc = Minecraft.getInstance();
 		ClientLevel level = mc.level;
@@ -93,6 +96,12 @@ public final class PlayerModelRenderer {
 		float[] box = {x0, y0, x1, y1};
 		scaleBox(box, openPivotX, openPivotY, open, open);
 		scaleBox(box, flipPivotX, flipPivotY, sx, sy);
+		for (int i = 0; i < box.length; i += 2) {
+			box[i] = uiOffsetX + box[i] * uiScale;
+			box[i + 1] = uiOffsetY + box[i + 1] * uiScale;
+		}
+		float screenMouseX = uiOffsetX + mouseX * uiScale;
+		float screenMouseY = uiOffsetY + mouseY * uiScale;
 		int sx0 = Math.round(box[0]);
 		int sy0 = Math.round(box[1]);
 		int sx1 = Math.round(box[2]);
@@ -101,10 +110,14 @@ public final class PlayerModelRenderer {
 			return;
 		}
 
+		// Entity extraction uses screen coordinates. Reset the GUI pose so the
+		// manually transformed model bounds and scissor are not transformed twice.
+		graphics.pose().pushMatrix();
+		graphics.pose().identity();
 		graphics.enableScissor(sx0, sy0, sx1, sy1);
 		try {
 			int baseScale = Math.max(16, Math.round(Math.min(x1 - x0, y1 - y0) / 2f * 0.8f));
-			int scale = Math.max(4, Math.round(baseScale * open * sx));
+			int scale = Math.max(4, Math.round(baseScale * open * sx * uiScale));
 			if (MoulberryMode.isActive()) {
 				extractSpinning(graphics, sx0, sy0, sx1, sy1, scale, entity);
 			} else {
@@ -118,13 +131,14 @@ public final class PlayerModelRenderer {
 					sy1,
 					scale,
 					OFFSET_Y,
-					mouseX,
-					mouseY,
+					screenMouseX,
+					screenMouseY,
 					entity
 				);
 			}
 		} finally {
 			graphics.disableScissor();
+			graphics.pose().popMatrix();
 		}
 	}
 
@@ -151,7 +165,7 @@ public final class PlayerModelRenderer {
 		float midY = (y0 + y1) / 2f;
 		draw(
 			graphics, uuid, name, x0, y0, x1, y1, mouseX, mouseY, helmet, chest, legs, boots,
-			flipScaleX, flipScaleY, flipPivotX, flipPivotY, 1.0F, midX, midY
+			flipScaleX, flipScaleY, flipPivotX, flipPivotY, 1.0F, midX, midY, 1.0F, 0.0F, 0.0F
 		);
 	}
 
@@ -172,7 +186,10 @@ public final class PlayerModelRenderer {
 	) {
 		float midX = (x0 + x1) / 2f;
 		float midY = (y0 + y1) / 2f;
-		draw(graphics, uuid, name, x0, y0, x1, y1, mouseX, mouseY, helmet, chest, legs, boots, 1.0F, 1.0F, midX, midY, 1.0F, midX, midY);
+		draw(
+			graphics, uuid, name, x0, y0, x1, y1, mouseX, mouseY, helmet, chest, legs, boots,
+			1.0F, 1.0F, midX, midY, 1.0F, midX, midY, 1.0F, 0.0F, 0.0F
+		);
 	}
 
 	private static void scaleBox(float[] box, float pivotX, float pivotY, float scaleX, float scaleY) {

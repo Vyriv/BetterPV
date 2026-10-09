@@ -197,7 +197,7 @@ public final class ProfileFetcher {
 	}
 
 	public static CompletableFuture<LoadedProfile> fetch(String playerName) {
-		return fetch(playerName, null);
+		return fetch(playerName, null, UUID.randomUUID().toString(), System.nanoTime());
 	}
 
 	/**
@@ -206,10 +206,21 @@ public final class ProfileFetcher {
 	 * never become a successful core load.
 	 */
 	public static CompletableFuture<LoadedProfile> fetch(String playerName, Consumer<LoadedProfile> onUpdate) {
+		return fetch(playerName, onUpdate, UUID.randomUUID().toString(), System.nanoTime());
+	}
+
+	public static CompletableFuture<LoadedProfile> fetch(
+		String playerName,
+		Consumer<LoadedProfile> onUpdate,
+		String correlationId,
+		long requestStartedNanos
+	) {
 		RepoData.ensureLoaded();
 		DungeonXpData.ensureLoaded();
 		GardenData.ensureLoaded();
 		MiningHotmData.ensureLoaded();
+		long startedNanos = requestStartedNanos > 0L ? requestStartedNanos : System.nanoTime();
+		String correlation = normalizeCorrelationId(correlationId);
 		if (!HypixelApiClient.canFetch()) {
 			return CompletableFuture.completedFuture(new LoadedProfile(
 				ProfileSnapshot.loading(playerName),
@@ -246,16 +257,16 @@ public final class ProfileFetcher {
 		LoadedProfile cached = getCached(nameKey(cleaned));
 		if (cached != null) {
 			BetterPV.LOGGER.info("Profile cache hit for {}", cleaned);
+			logStage(cleaned, "core_ready", startedNanos, correlation);
 			return CompletableFuture.completedFuture(cached);
 		}
-		long startedNanos = System.nanoTime();
 		CompletableFuture<Optional<String>> authFut = BetterPvSessionAuth.bearerTokenAsync();
 		HypixelApiClient.UuidName local = localUuid(cleaned);
 		CompletableFuture<Optional<HypixelApiClient.UuidName>> uuidFut = local != null
 			? CompletableFuture.completedFuture(Optional.of(local))
 			: HypixelApiClient.resolveUuid(cleaned);
 		return uuidFut.thenCompose(uuidOpt -> {
-			logStage(cleaned, local != null ? "uuid local" : "uuid", startedNanos);
+			logStage(cleaned, local != null ? "uuid_local" : "uuid", startedNanos, correlation);
 			if (uuidOpt.isEmpty()) {
 				return CompletableFuture.completedFuture(fail(cleaned, "Player not found"));
 			}
@@ -265,16 +276,17 @@ public final class ProfileFetcher {
 				BetterPV.LOGGER.info("Profile cache hit for {} ({})", id.name(), id.uuid());
 				putCache(nameKey(cleaned), byUuid);
 				putCache(nameKey(id.name()), byUuid);
+				logStage(cleaned, "core_ready", startedNanos, correlation);
 				return CompletableFuture.completedFuture(byUuid);
 			}
 
 			return authFut
 				.thenCompose(ignored -> {
-					logStage(cleaned, "auth", startedNanos);
-					return HypixelApiClient.skyblockProfiles(id.uuid());
+					logStage(cleaned, "auth", startedNanos, correlation);
+					return HypixelApiClient.skyblockProfiles(id.uuid(), correlation);
 				})
 				.thenCompose(profilesOpt -> {
-					logStage(cleaned, "profiles", startedNanos);
+					logStage(cleaned, "profiles", startedNanos, correlation);
 					if (profilesOpt.isEmpty()) {
 						String authMessage = BetterPvSessionAuth.userFacingFailure()
 							.orElse("Profiles request failed");
@@ -296,7 +308,7 @@ public final class ProfileFetcher {
 					);
 
 					coreFuture.thenAccept(core -> {
-						logStage(cleaned, "core parsed", startedNanos);
+						logStage(cleaned, "core_ready", startedNanos, correlation);
 						if (core != null && core.ok()) {
 							// Cache core immediately so a quick second /pv is warm for first paint.
 							putCache(uuidKey(id.uuid()), core);
@@ -374,8 +386,21 @@ public final class ProfileFetcher {
 		);
 	}
 
-	static void logStage(String name, String stage, long startedNanos) {
-		BetterPV.LOGGER.info("[PV timing] {} {} at {}ms", name, stage, (System.nanoTime() - startedNanos) / 1_000_000L);
+	private static void logStage(String name, String stage, long startedNanos, String correlationId) {
+		BetterPV.LOGGER.info(
+			"[PV timing] event={} correlation_id={} player={} elapsed_ms={}",
+			stage,
+			correlationId,
+			name,
+			(System.nanoTime() - startedNanos) / 1_000_000L
+		);
+	}
+
+	private static String normalizeCorrelationId(String correlationId) {
+		if (correlationId != null && correlationId.matches("[A-Za-z0-9._:-]{1,80}")) {
+			return correlationId;
+		}
+		return UUID.randomUUID().toString();
 	}
 
 	/**

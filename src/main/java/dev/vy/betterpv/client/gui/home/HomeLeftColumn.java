@@ -181,6 +181,9 @@ final class HomeLeftColumn {
 		float openScale,
 		float openPivotX,
 		float openPivotY,
+		float uiScale,
+		float uiOffsetX,
+		float uiOffsetY,
 		List<HomePage.HoverZone> zones
 	) {
 		this.leftHitX = x;
@@ -273,7 +276,10 @@ final class HomeLeftColumn {
 				cyFlip,
 				openScale,
 				openPivotX,
-				openPivotY
+				openPivotY,
+				uiScale,
+				uiOffsetX,
+				uiOffsetY
 			);
 		}
 	}

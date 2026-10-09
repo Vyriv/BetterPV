@@ -73,6 +73,9 @@ public final class HomePage {
 	private float openScale = 1.0F;
 	private float openPivotX;
 	private float openPivotY;
+	private float uiScale = 1.0F;
+	private float uiOffsetX;
+	private float uiOffsetY;
 
 	public HomePage(ProfileSnapshot snapshot) {
 		this.snapshot = snapshot;
@@ -358,11 +361,17 @@ public final class HomePage {
 		int screenH,
 		float openScale,
 		float openPivotX,
-		float openPivotY
+		float openPivotY,
+		float uiScale,
+		float uiOffsetX,
+		float uiOffsetY
 	) {
 		this.openScale = openScale;
 		this.openPivotX = openPivotX;
 		this.openPivotY = openPivotY;
+		this.uiScale = uiScale;
+		this.uiOffsetX = uiOffsetX;
+		this.uiOffsetY = uiOffsetY;
 		this.zones.clear();
 		this.sbXpOverlay.tick();
 		Layout layout = layoutFor(font, w);
@@ -418,7 +427,8 @@ public final class HomePage {
 				g, font, leftX, y, layout.leftW, contentH, layout, mouseX, mouseY,
 				this.snapshot, this.playerStats, this.playerStatus, this.playerRank, this.armor,
 				activeNetworth(), this.senither, this.lily, this.weightSystem, this.loadError,
-				this.openScale, this.openPivotX, this.openPivotY, this.zones
+				this.openScale, this.openPivotX, this.openPivotY,
+				this.uiScale, this.uiOffsetX, this.uiOffsetY, this.zones
 			);
 			if (leftMask > 0.01F) {
 				PvDraw.fill(g, leftX, y, layout.leftW, contentH, withAlpha(HomeSbXpOverlay.SB_XP_MASK, leftMask));
@@ -499,7 +509,10 @@ public final class HomePage {
 	}
 
 	public void render(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, int mouseX, int mouseY, int screenW, int screenH) {
-		render(g, font, x, y, w, h, mouseX, mouseY, screenW, screenH, 1.0F, x + w / 2F, y + h / 2F);
+		render(
+			g, font, x, y, w, h, mouseX, mouseY, screenW, screenH,
+			1.0F, x + w / 2F, y + h / 2F, 1.0F, 0.0F, 0.0F
+		);
 	}
 
 	private WeightBreakdown activeWeight() {

@@ -45,6 +45,7 @@ public final class BetterPvSessionAuth {
 	private static final URI AUTH_URI = URI.create("https://api.vyriv.dev/hypixel/auth/v2");
 	private static final Duration TIMEOUT = Duration.ofSeconds(12);
 	private static final long REFRESH_SKEW_MILLIS = 60_000L;
+	private static final long TOKEN_EXPIRY_SAFETY_MILLIS = 5_000L;
 	private static final long MOJANG_COOLDOWN_MILLIS = 60_000L;
 	private static final SessionAuthConnectionGate CONNECTION_GATE = new SessionAuthConnectionGate(System::nanoTime);
 	private static final HttpClient HTTP = HypixelApiClient.http();
@@ -108,21 +109,93 @@ public final class BetterPvSessionAuth {
 
 	public static void invalidate() {
 		synchronized (LOCK) {
-			cachedJwt = null;
-			expiresAtMillis = 0L;
-			// Never detach an active attempt or clear its cooldown.
-			cancelRefreshLocked();
+			invalidateLocked();
 		}
+	}
+
+	private static void invalidateLocked() {
+		cachedJwt = null;
+		expiresAtMillis = 0L;
+		usableUntilMillis = 0L;
+		// Never detach an active attempt or clear its cooldown.
+		cancelRefreshLocked();
 	}
 
 	/** Ignore late 401s for an older JWT; preserve the shared authentication attempt. */
 	public static void invalidate(HttpRequest rejectedRequest) {
+		handleUnauthorized(rejectedRequest, "{\"cause\":\"unauthorized\"}");
+	}
+
+	/**
+	 * Handles a resource 401 without assuming every request-proof failure invalidates the JWT.
+	 * Returns true only when the rejected request used and invalidated the current token.
+	 */
+	public static boolean handleUnauthorized(HttpRequest rejectedRequest, String responseBody) {
+		return handleUnauthorized(rejectedRequest, responseBody, -1L);
+	}
+
+	public static boolean handleUnauthorized(
+		HttpRequest rejectedRequest,
+		String responseBody,
+		long elapsedMillis
+	) {
+		String cause = unauthorizedCause(responseBody);
+		boolean invalidatingCause = invalidatesSession(cause);
+		boolean currentToken;
+		boolean invalidated = false;
+		long validForMillis;
+		long cooldownMillis;
 		synchronized (LOCK) {
-			String authorization = rejectedRequest.headers().firstValue("Authorization").orElse("");
-			if (cachedJwt != null && authorization.equals("Bearer " + cachedJwt)) {
-				invalidate();
+			String authorization = rejectedRequest == null
+				? ""
+				: rejectedRequest.headers().firstValue("Authorization").orElse("");
+			currentToken = cachedJwt != null && authorization.equals("Bearer " + cachedJwt);
+			validForMillis = Math.max(0L, expiresAtMillis - System.currentTimeMillis());
+			cooldownMillis = remainingAuthCooldownMillis();
+			if (currentToken && invalidatingCause) {
+				invalidateLocked();
+				invalidated = true;
+			} else if (currentToken) {
+				setFailure(Failure.AUTH_REJECTED, "resource 401 cause=" + cause);
 			}
 		}
+		String correlationId = rejectedRequest == null
+			? "none"
+			: rejectedRequest.headers().firstValue("X-BetterPV-Correlation-ID").orElse("none");
+		BetterPV.LOGGER.warn(
+			"BetterPV auth correlationId={} stage=resource_unauthorized elapsedMs={} httpStatus=401 cause={} currentToken={} action={} tokenValidForMs={} proofCooldownMs={}",
+			correlationId,
+			elapsedMillis < 0L ? "unknown" : elapsedMillis,
+			cause,
+			currentToken,
+			invalidated ? "invalidate" : currentToken ? "preserve" : "ignore_stale",
+			validForMillis,
+			cooldownMillis
+		);
+		return invalidated;
+	}
+
+	static String unauthorizedCause(String responseBody) {
+		if (responseBody == null || responseBody.isBlank()) {
+			return "unknown";
+		}
+		try {
+			JsonObject root = JsonParser.parseString(responseBody).getAsJsonObject();
+			if (root.has("cause") && root.get("cause").isJsonPrimitive()) {
+				String cause = root.get("cause").getAsString();
+				if (cause != null && cause.matches("[A-Za-z0-9_]{1,80}")) {
+					return cause.toLowerCase(Locale.ROOT);
+				}
+			}
+		} catch (RuntimeException ignored) {
+		}
+		return "unknown";
+	}
+
+	static boolean invalidatesSession(String cause) {
+		return "unauthorized".equals(cause)
+			|| "session_revoked_or_expired".equals(cause)
+			|| "auth_v1_disabled".equals(cause);
 	}
 
 	public static long remainingAuthCooldownMillis() {
@@ -198,7 +271,8 @@ public final class BetterPvSessionAuth {
 				builder.header("Authorization", "Bearer " + token)
 					.header("X-BetterPV-Timestamp", timestamp)
 					.header("X-BetterPV-Nonce", nonce)
-					.header("X-BetterPV-Signature", signature);
+					.header("X-BetterPV-Signature", signature)
+					.header("X-BetterPV-Correlation-ID", UUID.randomUUID().toString());
 				return true;
 			} catch (Exception exception) {
 				BetterPV.LOGGER.warn("BetterPV request proof failed", exception);
@@ -287,7 +361,7 @@ public final class BetterPvSessionAuth {
 
 	private static CompletableFuture<Optional<String>> requestToken(boolean refresh) {
 		synchronized (LOCK) {
-			if (!refresh && isUsable()) {
+			if (!refresh && isTokenValid()) {
 				setFailure(Failure.NONE, "");
 				return CompletableFuture.completedFuture(Optional.of(cachedJwt));
 			}
@@ -317,22 +391,37 @@ public final class BetterPvSessionAuth {
 	// Only one pending refresh, and only while BetterPV is in use.
 	private static void scheduleRefresh() {
 		synchronized (LOCK) {
-			cancelRefreshLocked();
-			long generation = refreshGeneration;
-			long delayMillis = Math.max(30_000L, usableUntilMillis - System.currentTimeMillis() - 30_000L);
-			pendingRefresh = REFRESH_SCHEDULER.schedule(() -> {
-				synchronized (LOCK) {
-					if (generation != refreshGeneration) return;
-					pendingRefresh = null;
-					if (System.currentTimeMillis() - lastUsedAtMillis > REFRESH_WHILE_USED_MILLIS) return;
-					requestToken(true);
-				}
-			}, delayMillis, TimeUnit.MILLISECONDS);
+			long delayMillis = Math.max(30_000L, usableUntilMillis - System.currentTimeMillis());
+			scheduleRefreshLocked(delayMillis);
 		}
 	}
 
-	private static boolean isUsable() {
-		return cachedJwt != null && !cachedJwt.isBlank() && System.currentTimeMillis() < usableUntilMillis;
+	private static void scheduleRefreshLocked(long delayMillis) {
+		cancelRefreshLocked();
+		long generation = refreshGeneration;
+		pendingRefresh = REFRESH_SCHEDULER.schedule(() -> {
+			synchronized (LOCK) {
+				if (generation != refreshGeneration) return;
+				pendingRefresh = null;
+				if (System.currentTimeMillis() - lastUsedAtMillis > REFRESH_WHILE_USED_MILLIS) return;
+				long cooldownMillis = remainingAuthCooldownMillis();
+				if (cooldownMillis > 0L) {
+					BetterPV.LOGGER.info(
+						"BetterPV session refresh deferred proofCooldownMs={} tokenValidForMs={}",
+						cooldownMillis,
+						Math.max(0L, expiresAtMillis - System.currentTimeMillis())
+					);
+					scheduleRefreshLocked(cooldownMillis + 250L);
+					return;
+				}
+				requestToken(true);
+			}
+		}, Math.max(1L, delayMillis), TimeUnit.MILLISECONDS);
+	}
+
+	private static boolean isTokenValid() {
+		return cachedJwt != null && !cachedJwt.isBlank()
+			&& System.currentTimeMillis() < expiresAtMillis - TOKEN_EXPIRY_SAFETY_MILLIS;
 	}
 
 	private static Optional<String> authenticateOnce() {
@@ -508,6 +597,12 @@ public final class BetterPvSessionAuth {
 				scheduleRefresh();
 			}
 			setFailure(Failure.NONE, "");
+			BetterPV.LOGGER.info(
+				"BetterPV session token installed ttlSeconds={} refreshInMs={} proofCooldownMs={}",
+				expiresInSeconds,
+				Math.max(0L, usableUntilMillis - System.currentTimeMillis()),
+				remainingAuthCooldownMillis()
+			);
 			logAuthStage(correlationId, "authentication_succeeded", authStartedAtMillis, status);
 			return Optional.of(token);
 		} catch (Exception exception) {

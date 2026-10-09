@@ -1004,12 +1004,16 @@ public final class GardenSnapshot {
 		return "none";
 	}
 
-	private static String cropFromContestKey(String key) {
+	static String cropFromContestKey(String key) {
 		if (key == null || key.isBlank()) {
 			return "";
 		}
-		int idx = key.lastIndexOf(':');
-		return idx >= 0 ? key.substring(idx + 1) : key;
+		int first = key.indexOf(':');
+		if (first < 0) {
+			return key;
+		}
+		int second = key.indexOf(':', first + 1);
+		return second >= 0 ? key.substring(second + 1) : key.substring(first + 1);
 	}
 
 	private static List<GreenhouseRow> buildGreenhouse(List<String> discovered, List<String> analyzed) {

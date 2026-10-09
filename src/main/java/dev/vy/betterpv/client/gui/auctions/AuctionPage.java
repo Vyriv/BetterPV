@@ -52,6 +52,7 @@ public final class AuctionPage {
 	private boolean loadMoreVisible;
 	private final AtomicBoolean loadingMore = new AtomicBoolean(false);
 	private final java.util.Set<String> enrichedAuctionIds = java.util.concurrent.ConcurrentHashMap.newKeySet();
+	private boolean detailRequestsEnabled;
 	private InventorySnapshot.Slot hoveredSlot;
 	private ItemStack hoveredStack = ItemStack.EMPTY;
 	private AuctionSnapshot.Listing hoveredListing;
@@ -66,7 +67,10 @@ public final class AuctionPage {
 			// Late Coflnet history for the same player: keep scroll and already-enriched listings.
 			this.appliedSource = snapshot;
 			this.snapshot = this.snapshot.withHistoryFrom(snapshot);
-			prefetchAndEnrich(this.snapshot);
+			warmIcons(this.snapshot);
+			if (this.detailRequestsEnabled) {
+				prefetchAndEnrich(this.snapshot);
+			}
 			return;
 		}
 		this.appliedSource = snapshot;
@@ -75,7 +79,8 @@ public final class AuctionPage {
 		this.statsScroll = 0;
 		this.loadingMore.set(false);
 		this.enrichedAuctionIds.clear();
-		prefetchAndEnrich(this.snapshot);
+		this.detailRequestsEnabled = false;
+		warmIcons(this.snapshot);
 	}
 
 	public AuctionSnapshot snapshot() {
@@ -95,6 +100,7 @@ public final class AuctionPage {
 		int screenW,
 		int screenH
 	) {
+		requestDetailsIfNeeded();
 		this.hoveredSlot = null;
 		this.hoveredStack = ItemStack.EMPTY;
 		this.hoveredListing = null;
@@ -666,6 +672,39 @@ public final class AuctionPage {
 		prefetchAndEnrich(this.snapshot);
 	}
 
+	void requestDetailsIfNeeded() {
+		if (this.detailRequestsEnabled) {
+			return;
+		}
+		this.detailRequestsEnabled = true;
+		prefetchAndEnrich(this.snapshot);
+	}
+
+	boolean detailRequestsEnabled() {
+		return this.detailRequestsEnabled;
+	}
+
+	private static void warmIcons(AuctionSnapshot snapshot) {
+		if (snapshot == null) {
+			return;
+		}
+		java.util.Set<String> ids = new java.util.HashSet<>();
+		for (AuctionSnapshot.Bucket bucket : AuctionSnapshot.Bucket.values()) {
+			for (AuctionSnapshot.Listing listing : snapshot.forBucket(bucket)) {
+				String id = listing.tag();
+				if ((id == null || id.isBlank()) && listing.slot() != null) {
+					id = listing.slot().id();
+				}
+				if (id != null && !id.isBlank()) {
+					ids.add(id);
+				}
+			}
+		}
+		for (String id : ids) {
+			SkyBlockItemFactory.iconStack(id);
+		}
+	}
+
 	/**
 	 * Warm icons (incl. {@code PET_*} → NEU pet skulls) and enrich Cofl history rows.
 	 * Player auction/bid summaries omit tier + upgrades; {@code /auction/{id}} has them.
@@ -674,16 +713,12 @@ public final class AuctionPage {
 		if (snapshot == null) {
 			return;
 		}
-		java.util.Set<String> ids = new java.util.HashSet<>();
 		java.util.List<AuctionSnapshot.Listing> needDetail = new java.util.ArrayList<>();
 		for (AuctionSnapshot.Bucket bucket : AuctionSnapshot.Bucket.values()) {
 			for (AuctionSnapshot.Listing listing : snapshot.forBucket(bucket)) {
 				String id = listing.tag();
 				if (id == null || id.isBlank()) {
 					id = listing.slot() == null ? null : listing.slot().id();
-				}
-				if (id != null && !id.isBlank()) {
-					ids.add(id);
 				}
 				if (listing.auctionId() == null || listing.auctionId().isBlank()) {
 					continue;
@@ -698,9 +733,6 @@ public final class AuctionPage {
 					needDetail.add(listing);
 				}
 			}
-		}
-		for (String id : ids) {
-			SkyBlockItemFactory.iconStack(id);
 		}
 		if (needDetail.isEmpty()) {
 			return;

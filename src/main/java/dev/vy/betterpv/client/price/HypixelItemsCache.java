@@ -93,9 +93,14 @@ public final class HypixelItemsCache {
 			throw new IOException(BetterPvSessionAuth.userFacingFailure()
 				.orElse("Missing BetterPV credentials for Hypixel items"));
 		}
+		long startedNanos = System.nanoTime();
 		HttpResponse<String> response = HTTP.send(builder.build(), HttpResponse.BodyHandlers.ofString());
 		if (response.statusCode() == 401) {
-			BetterPvSessionAuth.invalidate(response.request());
+			BetterPvSessionAuth.handleUnauthorized(
+				response.request(),
+				response.body(),
+				TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos)
+			);
 			if (allowReauth) {
 				refresh(false);
 				return;

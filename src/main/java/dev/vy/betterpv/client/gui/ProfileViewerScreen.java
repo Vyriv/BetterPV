@@ -6,6 +6,7 @@ import dev.vy.betterpv.BetterPV;
 import dev.vy.betterpv.client.api.BetterPvSessionAuth;
 import dev.vy.betterpv.client.api.HypixelApiClient;
 import dev.vy.betterpv.client.api.ProfileFetcher;
+import dev.vy.betterpv.client.compat.PvProfileImcPublisher;
 import dev.vy.betterpv.client.data.MiscStatsSnapshot;
 import dev.vy.betterpv.client.data.ProfileSnapshot;
 import dev.vy.betterpv.client.gui.auctions.AuctionPage;
@@ -240,6 +241,7 @@ public final class ProfileViewerScreen extends Screen {
 					return;
 				}
 				this.loadError = null;
+				PvProfileImcPublisher.publish(displayed);
 				applyLoadedProfile(displayed);
 				this.dataReady = true;
 			});

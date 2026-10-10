@@ -613,10 +613,11 @@ public final class HypixelApiClient {
 			long headersNanos = System.nanoTime();
 			boolean streamed = "1".equals(response.headers().firstValue("x-hypixel-stream").orElse(""));
 			byte[] bytes;
-			try (InputStream raw = response.body()) {
-				bytes = raw.readAllBytes();
+			BodyReadTiming bodyRead = new BodyReadTiming(response.body(), headersNanos);
+			try (bodyRead) {
+				bytes = bodyRead.readAllBytes();
 			} catch (IOException exception) {
-				logTiming(url, response, -1, timing, startedNanos, headersNanos, System.nanoTime(), 0L, 0L);
+				logTiming(url, response, bodyRead.bytesRead(), timing, startedNanos, headersNanos, System.nanoTime(), 0L, 0L, bodyRead);
 				if (streamed && allowStreamRetry) {
 					BetterPV.LOGGER.warn("Hypixel GET {} stream broke ({}), retrying once", url, exception.toString());
 					return getJson(url, allowReauth, false, RequestTiming.retry(timing.correlationId()));
@@ -625,7 +626,7 @@ public final class HypixelApiClient {
 			}
 			long bodyNanos = System.nanoTime();
 			if (response.statusCode() == 401 && needsProxyAuth) {
-				logTiming(url, response, bytes.length, timing, startedNanos, headersNanos, bodyNanos, 0L, 0L);
+				logTiming(url, response, bytes.length, timing, startedNanos, headersNanos, bodyNanos, 0L, 0L, bodyRead);
 				BetterPvSessionAuth.handleUnauthorized(
 					response.request(),
 					new String(bytes, StandardCharsets.UTF_8),
@@ -638,12 +639,12 @@ public final class HypixelApiClient {
 				return Optional.empty();
 			}
 			if (response.statusCode() == 503 && needsProxyAuth) {
-				logTiming(url, response, bytes.length, timing, startedNanos, headersNanos, bodyNanos, 0L, 0L);
+				logTiming(url, response, bytes.length, timing, startedNanos, headersNanos, bodyNanos, 0L, 0L, bodyRead);
 				BetterPV.LOGGER.warn("Hypixel GET {} session auth unavailable (503)", url);
 				return Optional.empty();
 			}
 			if (response.statusCode() < 200 || response.statusCode() >= 300 || bytes.length == 0) {
-				logTiming(url, response, bytes.length, timing, startedNanos, headersNanos, bodyNanos, 0L, 0L);
+				logTiming(url, response, bytes.length, timing, startedNanos, headersNanos, bodyNanos, 0L, 0L, bodyRead);
 				BetterPV.LOGGER.warn("Hypixel GET {} failed status={}", url, response.statusCode());
 				return Optional.empty();
 			}
@@ -666,7 +667,7 @@ public final class HypixelApiClient {
 				}
 			} catch (IOException | JsonParseException exception) {
 				long parseNanos = System.nanoTime() - parseStartedNanos;
-				logTiming(url, response, bytes.length, timing, startedNanos, headersNanos, bodyNanos, gzipNanos, Math.max(0L, parseNanos - gzipNanos));
+				logTiming(url, response, bytes.length, timing, startedNanos, headersNanos, bodyNanos, gzipNanos, Math.max(0L, parseNanos - gzipNanos), bodyRead);
 				if (streamed && allowStreamRetry) {
 					BetterPV.LOGGER.warn("Hypixel GET {} stream incomplete ({}), retrying once", url, exception.toString());
 					return getJson(url, allowReauth, false, RequestTiming.retry(timing.correlationId()));
@@ -674,7 +675,7 @@ public final class HypixelApiClient {
 				throw exception;
 			}
 			long parseNanos = System.nanoTime() - parseStartedNanos;
-			logTiming(url, response, bytes.length, timing, startedNanos, headersNanos, bodyNanos, gzipNanos, Math.max(0L, parseNanos - gzipNanos));
+			logTiming(url, response, bytes.length, timing, startedNanos, headersNanos, bodyNanos, gzipNanos, Math.max(0L, parseNanos - gzipNanos), bodyRead);
 			if (!element.isJsonObject()) {
 				return Optional.empty();
 			}
@@ -701,18 +702,25 @@ public final class HypixelApiClient {
 		long headersNanos,
 		long bodyNanos,
 		long gzipNanos,
-		long jsonNanos
+		long jsonNanos,
+		BodyReadTiming bodyRead
 	) {
 		long completedNanos = System.nanoTime();
 		String path = url.startsWith(WORKER_BASE) ? url.substring(WORKER_BASE.length()) : url;
 		BetterPV.LOGGER.info(
-			"[PV timing] event=http_complete correlation_id={} path={} queue_ms={} admission_ms={} headers_ms={} body_ms={} gzip_ms={} json_ms={} total_ms={} stream={} status={} bytes={} encoding={} cache={} server=[{}] upstream=[bytes={} enc={} prevAge={} {}] arrival=[{}]",
+			"[PV timing] event=http_complete correlation_id={} path={} queue_ms={} admission_ms={} headers_ms={} body_ms={} first_body_byte_ms={} max_read_wait_ms={} read_calls={} http_version={} content_length={} transfer_encoding={} gzip_ms={} json_ms={} total_ms={} stream={} status={} bytes={} encoding={} cache={} server=[{}] upstream=[bytes={} enc={} prevAge={} {}] arrival=[{}]",
 			timing.correlationId(),
 			path,
 			millis(timing.taskStartedNanos() - timing.queuedNanos()),
 			millis(startedNanos - timing.taskStartedNanos()),
 			millis(headersNanos - startedNanos),
 			millis(bodyNanos - headersNanos),
+			bodyRead.firstByteMillis(),
+			bodyRead.maxReadWaitMillis(),
+			bodyRead.readCalls(),
+			response.version(),
+			response.headers().firstValue("Content-Length").orElse("-"),
+			response.headers().firstValue("Transfer-Encoding").orElse("-"),
 			millis(gzipNanos),
 			millis(jsonNanos),
 			millis(completedNanos - timing.queuedNanos()),
@@ -745,6 +753,79 @@ public final class HypixelApiClient {
 		private static RequestTiming retry(String correlationId) {
 			long now = System.nanoTime();
 			return new RequestTiming(correlationId, now, now);
+		}
+	}
+
+	static final class BodyReadTiming extends InputStream {
+		private final InputStream delegate;
+		private final long headersNanos;
+		private long firstByteNanos;
+		private long maxReadWaitNanos;
+		private int readCalls;
+		private int bytesRead;
+
+		BodyReadTiming(InputStream delegate, long headersNanos) {
+			this.delegate = delegate;
+			this.headersNanos = headersNanos;
+		}
+
+		@Override
+		public int read() throws IOException {
+			long started = System.nanoTime();
+			try {
+				int value = this.delegate.read();
+				recordRead(started, value < 0 ? 0 : 1);
+				return value;
+			} catch (IOException exception) {
+				recordRead(started, 0);
+				throw exception;
+			}
+		}
+
+		@Override
+		public int read(byte[] bytes, int offset, int length) throws IOException {
+			long started = System.nanoTime();
+			try {
+				int count = this.delegate.read(bytes, offset, length);
+				recordRead(started, Math.max(0, count));
+				return count;
+			} catch (IOException exception) {
+				recordRead(started, 0);
+				throw exception;
+			}
+		}
+
+		private void recordRead(long started, int count) {
+			long finished = System.nanoTime();
+			this.readCalls++;
+			this.maxReadWaitNanos = Math.max(this.maxReadWaitNanos, finished - started);
+			if (count > 0) {
+				if (this.firstByteNanos == 0L) {
+					this.firstByteNanos = finished;
+				}
+				this.bytesRead += count;
+			}
+		}
+
+		@Override
+		public void close() throws IOException {
+			this.delegate.close();
+		}
+
+		int bytesRead() {
+			return this.bytesRead;
+		}
+
+		int readCalls() {
+			return this.readCalls;
+		}
+
+		long firstByteMillis() {
+			return this.firstByteNanos == 0L ? -1L : millis(this.firstByteNanos - this.headersNanos);
+		}
+
+		long maxReadWaitMillis() {
+			return millis(this.maxReadWaitNanos);
 		}
 	}
 

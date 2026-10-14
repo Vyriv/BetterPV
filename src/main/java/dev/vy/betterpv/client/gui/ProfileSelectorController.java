@@ -521,11 +521,13 @@ final class ProfileSelectorController {
 		String clipped = font.plainSubstrByWidth(name, maxW);
 		PvDraw.text(g, font, clipped, nameX, y, nameColor);
 		if (visible && resolved) {
-			this.coopMemberHits.add(new CoopMemberHit(x, y, w, PROFILE_COOP_FLYOUT_ROW, member.uuid(), name));
+			ProfileFetcher.ProfileChoice choice = this.profileMenuHoverChoice;
+			String profileId = choice == null ? null : choice.profileId();
+			this.coopMemberHits.add(new CoopMemberHit(x, y, w, PROFILE_COOP_FLYOUT_ROW, member.uuid(), name, profileId));
 		}
 	}
 
-	private static ItemStack coopMemberHead(UUID uuid) {
+	static ItemStack coopMemberHead(UUID uuid) {
 		ItemStack head = new ItemStack(Items.PLAYER_HEAD);
 		if (uuid == null) {
 			return head;
@@ -655,25 +657,31 @@ final class ProfileSelectorController {
 	private boolean clickCoopFlyoutMember(double mx, double my) {
 		for (CoopMemberHit hit : this.coopMemberHits) {
 			if (mx >= hit.x && mx < hit.x + hit.w && my >= hit.y && my < hit.y + hit.h) {
-				openCoopMemberProfile(hit.name);
+				openCoopMemberProfile(hit.name, hit.profileId);
 				return true;
 			}
 		}
 		return true;
 	}
 
-	private void openCoopMemberProfile(String name) {
+	private void openCoopMemberProfile(String name, String profileId) {
 		if (name == null || name.isBlank()) {
 			return;
 		}
 		String current = this.screen.homePage().playerName();
 		if (current != null && current.equalsIgnoreCase(name)) {
+			if (profileId != null && !profileId.equals(this.screen.profileId())) {
+				this.profileMenuOpen = false;
+				this.profileMenuHoverChoice = null;
+				this.coopMemberHits.clear();
+				switchProfile(profileId);
+			}
 			return;
 		}
-		Minecraft.getInstance().setScreen(new ProfileViewerScreen(name));
+		Minecraft.getInstance().setScreen(this.screen.forCoopMember(name, profileId));
 	}
 
-	private record CoopMemberHit(int x, int y, int w, int h, String uuid, String name) {
+	private record CoopMemberHit(int x, int y, int w, int h, String uuid, String name, String profileId) {
 	}
 
 	private void switchProfile(String nextProfileId) {

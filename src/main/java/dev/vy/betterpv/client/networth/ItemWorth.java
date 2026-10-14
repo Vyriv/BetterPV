@@ -167,6 +167,7 @@ public final class ItemWorth {
 		UPGRADES("Upgrades"),
 		GEMSTONES("Gemstones"),
 		ENCHANTMENTS("Enchantments"),
+		CONTENTS("Contents"),
 		OTHER("Other");
 
 		private final String title;

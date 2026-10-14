@@ -130,6 +130,11 @@ public final class HomePage {
 		this.historyMaxScroll = 0;
 	}
 
+	/** Real cursor for the 3D model when the hover mouse passed to {@link #render} is masked. */
+	public void setModelLook(int x, int y) {
+		this.leftColumn.setModelLook(x, y);
+	}
+
 	public void applyPlayerStatus(PlayerStatus status) {
 		this.playerStatus = status == null ? PlayerStatus.idle() : status;
 	}

@@ -134,7 +134,7 @@ public final class BetterPVClient implements ClientModInitializer {
 		}
 		client.gui.getChat().addClientSystemMessage(
 			net.minecraft.network.chat.Component.literal(
-				"BetterPV: another mod kept /pv. Use /betterpv pv (or /betterpv pv <name>)."
+				"BetterPV: another mod uses /pv. Use /betterpv pv [name] instead."
 			).withColor(0xFFD36A)
 		);
 	}

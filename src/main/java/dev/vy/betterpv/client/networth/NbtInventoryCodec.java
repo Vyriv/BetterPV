@@ -30,7 +30,8 @@ final class NbtInventoryCodec {
 			}
 			Tag itemsTag = root.get("i");
 			if (!(itemsTag instanceof ListTag items)) {
-				return List.of();
+				InventoryDecoder.Stack bare = fromBareAttributes(root);
+				return bare == null ? List.of() : List.of(bare);
 			}
 			List<InventoryDecoder.Stack> out = new ArrayList<>();
 			int size = Math.max(minSlots, items.size());
@@ -59,7 +60,8 @@ final class NbtInventoryCodec {
 			}
 			Tag itemsTag = root.get("i");
 			if (!(itemsTag instanceof ListTag items)) {
-				return List.of();
+				InventoryDecoder.Stack bare = fromBareAttributes(root);
+				return bare == null ? List.of() : List.of(bare);
 			}
 			List<InventoryDecoder.Stack> out = new ArrayList<>();
 			for (int i = 0; i < items.size(); i++) {
@@ -74,6 +76,16 @@ final class NbtInventoryCodec {
 			}
 			return out;
 		}
+	}
+
+	// Farming and hunting toolkit slots store the item's ExtraAttributes as the root, with no "i" list,
+	// display name or lore.
+	static InventoryDecoder.Stack fromBareAttributes(CompoundTag root) {
+		String id = string(root, "id");
+		if (id == null || id.isBlank()) {
+			return null;
+		}
+		return new InventoryDecoder.Stack(id, 1, root, List.of(), false);
 	}
 
 	static InventoryDecoder.Stack fromSlot(CompoundTag slot) {

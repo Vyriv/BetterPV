@@ -38,10 +38,28 @@ public final class AuctionSnapshot {
 		long highestBid,
 		long endMs,
 		InventorySnapshot.Slot slot,
-		List<String> detailLines
+		List<String> detailLines,
+		// SkyBlock profile the auction belongs to; blank when the source didn't say.
+		String profileId
 	) {
 		public Listing {
 			detailLines = List.copyOf(detailLines == null ? List.of() : detailLines);
+			profileId = profileId == null ? "" : profileId.replace("-", "").toLowerCase(Locale.ROOT);
+		}
+
+		public Listing(
+			String auctionId,
+			String tag,
+			String itemName,
+			String tier,
+			boolean bin,
+			long startingBid,
+			long highestBid,
+			long endMs,
+			InventorySnapshot.Slot slot,
+			List<String> detailLines
+		) {
+			this(auctionId, tag, itemName, tier, bin, startingBid, highestBid, endMs, slot, detailLines, "");
 		}
 
 		public Listing(
@@ -66,6 +84,15 @@ public final class AuctionSnapshot {
 			return this.endMs > 0L && this.endMs <= nowMs;
 		}
 
+		public boolean profileKnown() {
+			return !this.profileId.isBlank();
+		}
+
+		public boolean onProfile(String viewedProfileId) {
+			return profileKnown() && viewedProfileId != null
+				&& this.profileId.equals(viewedProfileId.replace("-", "").toLowerCase(Locale.ROOT));
+		}
+
 		public Listing withTier(String newTier) {
 			String t = newTier == null ? "" : newTier;
 			if (t.equals(this.tier == null ? "" : this.tier)) {
@@ -81,11 +108,22 @@ public final class AuctionSnapshot {
 				this.highestBid,
 				this.endMs,
 				this.slot,
-				this.detailLines
+				this.detailLines,
+				this.profileId
 			);
 		}
 
 		public Listing withEnrichment(String name, String tier, InventorySnapshot.Slot slot, List<String> details) {
+			return withEnrichment(name, tier, slot, details, this.profileId);
+		}
+
+		public Listing withEnrichment(
+			String name,
+			String tier,
+			InventorySnapshot.Slot slot,
+			List<String> details,
+			String knownProfileId
+		) {
 			String n = name == null || name.isBlank() ? this.itemName : name;
 			String t = tier == null || tier.isBlank() ? (this.tier == null ? "" : this.tier) : tier;
 			InventorySnapshot.Slot s = slot == null ? this.slot : slot;
@@ -100,7 +138,8 @@ public final class AuctionSnapshot {
 				this.highestBid,
 				this.endMs,
 				s,
-				d
+				d,
+				knownProfileId == null || knownProfileId.isBlank() ? this.profileId : knownProfileId
 			);
 		}
 	}
@@ -505,6 +544,10 @@ public final class AuctionSnapshot {
 	}
 
 	public static Listing enrichFromCoflDetail(Listing base, JsonObject detail) {
+		return enrichFromCoflDetail(base, detail, null);
+	}
+
+	public static Listing enrichFromCoflDetail(Listing base, JsonObject detail, UUID player) {
 		if (base == null || detail == null) {
 			return base;
 		}
@@ -519,7 +562,38 @@ public final class AuctionSnapshot {
 		}
 		List<String> details = coflDetailLines(detail);
 		InventorySnapshot.Slot slot = InventoryDecoder.slotFromTag(tag, name, tier);
-		return base.withEnrichment(name, tier, slot, details);
+		return base.withEnrichment(name, tier, slot, details, coflProfileFor(detail, player));
+	}
+
+	/** Profile the player used on this auction (as seller, else as bidder); blank if SkyCofl doesn't say. */
+	static String coflProfileFor(JsonObject detail, UUID player) {
+		if (detail == null || player == null) {
+			return "";
+		}
+		String me = HypixelApiClient.undashed(player).toLowerCase(Locale.ROOT);
+		if (me.equals(str(detail, "auctioneerId").replace("-", "").toLowerCase(Locale.ROOT))) {
+			return str(detail, "profileId");
+		}
+		String best = "";
+		long bestAmount = -1L;
+		JsonElement bids = detail.get("bids");
+		if (bids != null && bids.isJsonArray()) {
+			for (JsonElement el : bids.getAsJsonArray()) {
+				if (el == null || !el.isJsonObject()) {
+					continue;
+				}
+				JsonObject bid = el.getAsJsonObject();
+				if (!me.equals(str(bid, "bidder").replace("-", "").toLowerCase(Locale.ROOT))) {
+					continue;
+				}
+				long amount = longVal(bid, "amount");
+				if (amount > bestAmount) {
+					bestAmount = amount;
+					best = str(bid, "profileId");
+				}
+			}
+		}
+		return best;
 	}
 
 	private static String formatCoflItemName(JsonObject detail) {
@@ -656,8 +730,8 @@ public final class AuctionSnapshot {
 		String player = playerUuid == null ? "" : HypixelApiClient.undashed(playerUuid).toLowerCase(Locale.ROOT);
 		long now = System.currentTimeMillis();
 		List<Listing> active = parseHypixelActive(hypixelAuctionRoot, player, now);
-		List<Listing> sold = parseCoflSold(coflSoldPage0);
-		List<Listing> bought = parseCoflBought(coflBidsPage0);
+		List<Listing> sold = parseCoflSold(coflSoldPage0, now);
+		List<Listing> bought = parseCoflBought(coflBidsPage0, now);
 		boolean soldMore = coflSoldPage0 != null && coflSoldPage0.size() >= 10;
 		boolean boughtMore = coflBidsPage0 != null && coflBidsPage0.size() >= 10;
 		return new AuctionSnapshot(
@@ -666,8 +740,16 @@ public final class AuctionSnapshot {
 	}
 
 	public static List<Listing> parseCoflSold(JsonArray array) {
+		return parseCoflSold(array, System.currentTimeMillis());
+	}
+
+	// SkyCofl's player auctions list every auction created, including expired-unsold and live ones.
+	static List<Listing> parseCoflSold(JsonArray array, long nowMs) {
 		List<Listing> out = new ArrayList<>();
 		for (JsonObject obj : CoflnetApiClient.objects(array)) {
+			if (longVal(obj, "highestBid") <= 0L || !coflEnded(obj, nowMs)) {
+				continue;
+			}
 			Listing listing = fromCoflSummary(obj, false);
 			if (listing != null) {
 				out.add(listing);
@@ -677,12 +759,16 @@ public final class AuctionSnapshot {
 	}
 
 	public static List<Listing> parseCoflBought(JsonArray array) {
+		return parseCoflBought(array, System.currentTimeMillis());
+	}
+
+	static List<Listing> parseCoflBought(JsonArray array, long nowMs) {
 		List<Listing> out = new ArrayList<>();
 		for (JsonObject obj : CoflnetApiClient.objects(array)) {
 			long own = longVal(obj, "highestOwnBid");
 			long high = longVal(obj, "highestBid");
-			if (own <= 0L || high <= 0L || own < high) {
-				continue; // not a win
+			if (own <= 0L || high <= 0L || own < high || !coflEnded(obj, nowMs)) {
+				continue; // not a win (yet)
 			}
 			Listing listing = fromCoflSummary(obj, true);
 			if (listing != null) {
@@ -746,7 +832,15 @@ public final class AuctionSnapshot {
 		if (slot == null && !name.isBlank()) {
 			slot = InventoryDecoder.slotFromTag("PAPER", name);
 		}
-		return new Listing(id, tag, name.isBlank() ? "Unknown" : name, SkyBlockItemFactory.normalizeTier(tier), bin, startBid, high, end, slot);
+		return new Listing(
+			id, tag, name.isBlank() ? "Unknown" : name, SkyBlockItemFactory.normalizeTier(tier),
+			bin, startBid, high, end, slot, List.of(), str(a, "profile_id")
+		);
+	}
+
+	private static boolean coflEnded(JsonObject obj, long nowMs) {
+		long end = parseCoflTime(str(obj, "end"));
+		return end > 0L && end <= nowMs;
 	}
 
 	private static Listing fromCoflSummary(JsonObject obj, boolean bought) {

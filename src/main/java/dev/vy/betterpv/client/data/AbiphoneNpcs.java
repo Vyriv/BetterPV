@@ -67,13 +67,17 @@ public final class AbiphoneNpcs {
 		"trinity", "SISTER_TRINITY_NPC"
 	);
 	/** Hypixel contact ids that match neither the NEU name nor its callNames. */
-	private static final Map<String, String> API_TO_CONTACT = Map.of(
-		"pet_sitter", "kat",
-		"arrow_forger", "jax",
-		"queen", "queen_nyx",
-		"forge_foreman", "fred",
-		"plumber", "plumber_joe",
-		"pesthunter_phillip", "philip"
+	private static final Map<String, String> API_TO_CONTACT = Map.ofEntries(
+		Map.entry("pet_sitter", "kat"),
+		Map.entry("arrow_forger", "jax"),
+		Map.entry("queen", "queen_nyx"),
+		Map.entry("forge_foreman", "fred"),
+		Map.entry("plumber", "plumber_joe"),
+		Map.entry("pesthunter_phillip", "philip"),
+		Map.entry("trevor_the_trapper", "trevor"),
+		Map.entry("jake_lab", "jake"),
+		Map.entry("feast_baker_scott", "scott"),
+		Map.entry("feast_chef_ted", "ted")
 	);
 
 	public record Undiscovered(String name, String neuId, List<String> requirement) {
@@ -124,6 +128,36 @@ public final class AbiphoneNpcs {
 		}
 		out.sort(Comparator.comparing(Undiscovered::name, String.CASE_INSENSITIVE_ORDER));
 		return out;
+	}
+
+	/** In-game contact name for a Hypixel contact id (e.g. {@code slayer} → Maddox the Slayer), or null if unknown. */
+	public static String displayName(String contactId) {
+		return displayName(contactId, NeuRepoCache.abiphoneContacts());
+	}
+
+	static String displayName(String contactId, JsonObject contacts) {
+		String id = norm(contactId);
+		if (id.isEmpty() || contacts == null) {
+			return null;
+		}
+		String key = API_TO_CONTACT.getOrDefault(id, id);
+		String byCallName = null;
+		for (Map.Entry<String, JsonElement> entry : contacts.entrySet()) {
+			String name = norm(entry.getKey());
+			if (name.equals(key) || name.equals(id)) {
+				return entry.getKey();
+			}
+			if (byCallName == null && entry.getValue().isJsonObject()) {
+				for (String call : strings(entry.getValue().getAsJsonObject(), "callNames")) {
+					String c = norm(call);
+					if (c.equals(id) || c.equals(key)) {
+						byCallName = entry.getKey();
+						break;
+					}
+				}
+			}
+		}
+		return byCallName;
 	}
 
 	private static String norm(String text) {

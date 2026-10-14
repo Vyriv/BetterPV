@@ -51,7 +51,7 @@ final class LoadoutDecoder {
 				}
 				String name = entry.has("name") && entry.get("name").isJsonPrimitive()
 					? entry.get("name").getAsString()
-					: "Loadout " + (index + 1);
+					: "Loadout " + index;
 				Integer armorId = InventoryDecodeSupport.jsonInt(entry, "armor_set_id");
 				Integer equipId = InventoryDecodeSupport.jsonInt(entry, "equipment_set_id");
 				List<InventorySnapshot.Slot> armor = WardrobeDecoder.readArmorSet(inventory, armorLayouts, armorId, null);
@@ -70,7 +70,9 @@ final class LoadoutDecoder {
 				InventorySnapshot.Slot petSlot = petSlot(petJson);
 				String petLabel = petLabel(petJson);
 				byIndex.put(index, new InventorySnapshot.Loadout(
-					name, equip, armor, power, tuneSlot, tuning, petSlot, petLabel
+					name, equip, armor, power, tuneSlot, tuning, petSlot, petLabel,
+					presetSlot(entry, "mining_core_selected_slot"),
+					presetSlot(entry, "foraging_core_selected_slot")
 				));
 			}
 		}
@@ -98,33 +100,42 @@ final class LoadoutDecoder {
 					continue;
 				}
 				byIndex.put(id, new InventorySnapshot.Loadout(
-					"Loadout " + (id + 1),
+					"Loadout " + id,
 					WardrobeDecoder.readEquipSet(inventory, equipLayouts, id, key),
 					WardrobeDecoder.readArmorSet(inventory, armorLayouts, id, key),
 					"",
 					null,
 					List.of(),
 					null,
-					""
+					"",
+					null,
+					null
 				));
 			}
 		}
 		return padLoadouts(byIndex);
 	}
 
-	/** Only named loadouts with gear, pet, power, or tuning. */
+	/** Loadouts with gear, pet, power, tuning or a tree preset, in key order (API keys are 1-based). */
 	static List<InventorySnapshot.Loadout> padLoadouts(Map<Integer, InventorySnapshot.Loadout> byIndex) {
 		List<InventorySnapshot.Loadout> out = new ArrayList<>();
 		if (byIndex == null || byIndex.isEmpty()) {
 			return out;
 		}
-		for (int i = 0; i < LOADOUT_SLOT_COUNT; i++) {
-			InventorySnapshot.Loadout loadout = byIndex.get(i);
-			if (loadout != null && loadoutHasContent(loadout)) {
+		List<Integer> keys = new ArrayList<>(byIndex.keySet());
+		keys.sort(null);
+		for (Integer key : keys) {
+			InventorySnapshot.Loadout loadout = byIndex.get(key);
+			if (loadout != null && loadoutHasContent(loadout) && out.size() < LOADOUT_SLOT_COUNT) {
 				out.add(loadout);
 			}
 		}
 		return out;
+	}
+
+	static Integer presetSlot(JsonObject entry, String key) {
+		Integer slot = InventoryDecodeSupport.jsonInt(entry, key);
+		return slot != null && slot >= 1 && slot <= 5 ? slot : null;
 	}
 
 	static boolean loadoutHasContent(InventorySnapshot.Loadout loadout) {
@@ -132,6 +143,9 @@ final class LoadoutDecoder {
 			return false;
 		}
 		if (!loadout.powerStone().isBlank() || !loadout.petLabel().isBlank()) {
+			return true;
+		}
+		if (loadout.hotmPreset() != null || loadout.hotfPreset() != null) {
 			return true;
 		}
 		if (loadout.pet() != null && !loadout.pet().isEmpty()) {
@@ -168,7 +182,9 @@ final class LoadoutDecoder {
 			null,
 			List.of(),
 			null,
-			""
+			"",
+			null,
+			null
 		);
 	}
 

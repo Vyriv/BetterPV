@@ -21,8 +21,10 @@ import dev.vy.betterpv.client.data.DungeonSnapshot;
 import dev.vy.betterpv.client.data.FishFamilyData;
 import dev.vy.betterpv.client.data.FormatUtil;
 import dev.vy.betterpv.client.data.ForagingSnapshot;
+import dev.vy.betterpv.client.dungeons.EssencePerkTips;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
+import dev.vy.betterpv.client.gui.essence.EssenceIcons;
 import dev.vy.betterpv.client.gui.foraging.ForagingUi;
 import dev.vy.betterpv.client.gui.foraging.ForagingUi.HoverZone;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
@@ -346,8 +348,8 @@ public final class ForagingOverviewPage {
 		} else {
 			for (ForagingSnapshot.WhisperPool pool : pools) {
 				int poolColor = whisperPoolColor(pool.id());
-				ry = ForagingUi.statLine(g, font, pool.label(), FormatUtil.commas(pool.balance()),
-					rx, ry, rw, poolColor) + 1;
+				this.zones.add(HoverZone.of(rx, ry, rw, STAT_ROW, HotfPage.whisperTip(pool, poolColor)));
+				ry = ForagingUi.statLine(g, font, pool.label(), HotfPage.whisperValue(pool), rx, ry, rw, poolColor) + 1;
 			}
 		}
 	}
@@ -416,6 +418,7 @@ public final class ForagingOverviewPage {
 			int valueColor = perk.maxed() ? COLOR_MAXED : PvDraw.COLOR_TEXT;
 			PvDraw.text(g, font, left, labelX, rowAlign.textY(), PvDraw.COLOR_MUTED);
 			PvDraw.textRight(g, font, right, px + colW, rowAlign.textY(), valueColor);
+			this.zones.add(HoverZone.of(px, py, colW, rowH, EssencePerkTips.tip(perk)));
 		}
 
 		int sepY = ForagingUi.sectionSeparator(g, font, x, shopsBottom, w);
@@ -428,17 +431,6 @@ public final class ForagingOverviewPage {
 	}
 
 	private static ItemStack forestPerkIcon(String perkId) {
-		if (perkId == null) {
-			return new ItemStack(Items.PAPER);
-		}
-		return switch (perkId) {
-			case "trapped" -> new ItemStack(Items.IRON_TRAPDOOR);
-			case "axed" -> new ItemStack(Items.IRON_AXE);
-			case "extreme_pressure" -> new ItemStack(Items.OBSIDIAN);
-			case "lumberjack" -> new ItemStack(Items.OAK_LOG);
-			case "tasty" -> new ItemStack(Items.APPLE);
-			case "forest_training" -> new ItemStack(Items.BOOK);
-			default -> new ItemStack(Items.PAPER);
-		};
+		return EssenceIcons.perk(perkId);
 	}
 }

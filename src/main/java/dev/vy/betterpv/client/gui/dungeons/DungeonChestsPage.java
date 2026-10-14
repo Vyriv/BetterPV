@@ -175,7 +175,7 @@ public final class DungeonChestsPage {
 		this.maxScroll = Math.max(0, runs.size() * ROW - this.listH);
 		this.scroll = Math.min(this.scroll, this.maxScroll);
 		if (runs.isEmpty()) {
-			PvDraw.textCentered(g, font, "Hypixel keeps only recent runs here",
+			PvDraw.textCentered(g, font, "No recent runs",
 				px + pw / 2, this.listY + this.listH / 2 - font.lineHeight / 2, PvDraw.COLOR_MUTED);
 			return;
 		}
@@ -248,7 +248,7 @@ public final class DungeonChestsPage {
 			String title = typeLabel(chest.type()) + (chest.paid() ? " (opened)" : "");
 			tip.add(PvTooltip.Line.of(title, typeColor(chest.type())));
 			for (String reward : chest.rewards()) {
-				tip.add(PvTooltip.Line.of("  " + DungeonChestHistory.prettyReward(reward), rewardColor(reward)));
+				tip.add(rewardLine(DungeonChestHistory.prettyReward(reward), DungeonChestHistory.rewardTier(reward)));
 			}
 		}
 		return tip;
@@ -272,18 +272,45 @@ public final class DungeonChestsPage {
 		int end = x + maxW;
 		for (int i = 0; i < items.size(); i++) {
 			String text = DungeonChestHistory.prettyReward(items.get(i)) + (i < items.size() - 1 ? "," : "");
+			int color = rewardColor(items.get(i));
 			int remaining = end - cx;
+			if (isBold(DungeonChestHistory.rewardTier(items.get(i)))) {
+				if (PvDraw.widthBold(font, text) > remaining) {
+					PvDraw.text(g, font, trim(font, text, remaining), cx, y, color);
+					return;
+				}
+				PvDraw.textBold(g, font, text, cx, y, color);
+				cx += PvDraw.widthBold(font, text) + font.width(" ");
+				continue;
+			}
 			if (font.width(text) > remaining) {
-				PvDraw.text(g, font, trim(font, text, remaining), cx, y, rewardColor(items.get(i)));
+				PvDraw.text(g, font, trim(font, text, remaining), cx, y, color);
 				return;
 			}
-			PvDraw.text(g, font, text, cx, y, rewardColor(items.get(i)));
+			PvDraw.text(g, font, text, cx, y, color);
 			cx += font.width(text + " ");
 		}
 	}
 
+	// Hypixel lore draws ultimate enchants bold (\u00a7d\u00a7l); regular books are not.
+	static boolean isBold(String tier) {
+		return "ULTIMATE".equals(tier);
+	}
+
+	static PvTooltip.Line rewardLine(String name, String tier) {
+		int color = tierColor(tier);
+		return new PvTooltip.Line(List.of(
+			PvTooltip.Span.of("  ", color),
+			isBold(tier) ? PvTooltip.Span.bold(name, color) : PvTooltip.Span.of(name, color)
+		));
+	}
+
 	private static int rewardColor(String raw) {
-		return switch (DungeonChestHistory.rewardTier(raw)) {
+		return tierColor(DungeonChestHistory.rewardTier(raw));
+	}
+
+	private static int tierColor(String tier) {
+		return switch (tier) {
 			case "ESSENCE", "ULTIMATE", "MYTHIC" -> ESSENCE;
 			case "BOOK", "RARE" -> 0xFF5555FF;
 			case "COMMON" -> 0xFFFFFFFF;

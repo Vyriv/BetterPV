@@ -18,9 +18,11 @@ import dev.vy.betterpv.client.gui.dungeons.DungeonChestsPage;
 import dev.vy.betterpv.client.gui.dungeons.DungeonPage;
 import dev.vy.betterpv.client.gui.events.EventsPage;
 import dev.vy.betterpv.client.gui.fishing.FishingPage;
+import dev.vy.betterpv.client.gui.fishing.FishingTrophyTrialPage;
 import dev.vy.betterpv.client.gui.foraging.ForagingPage;
 import dev.vy.betterpv.client.gui.garden.GardenPage;
 import dev.vy.betterpv.client.gui.home.HomePage;
+import dev.vy.betterpv.client.gui.home.page.EssencePage;
 import dev.vy.betterpv.client.gui.home.page.MiscStatsPage;
 import dev.vy.betterpv.client.gui.home.page.RecordsPage;
 import dev.vy.betterpv.client.gui.inventories.InventoryPage;
@@ -32,6 +34,8 @@ import dev.vy.betterpv.client.gui.nav.PvSubTab;
 import dev.vy.betterpv.client.gui.nav.PvTab;
 import dev.vy.betterpv.client.gui.pets.PetsPage;
 import dev.vy.betterpv.client.gui.rift.RiftPage;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
@@ -42,6 +46,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.screens.ConfirmLinkScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
@@ -52,6 +57,7 @@ public final class ProfileViewerScreen extends Screen {
 	private static final int PAD = 8;
 	private static final int TARGET_GUI_SCALE = 2;
 	private static final int BOTTOM_FIT_ROOM = 39;
+	private static final int TIP_SLIDER_GAP = 8;
 	private static final long OPEN_ANIM_MS = 260L;
 	private static final float OPEN_SCALE_START = 0.12F;
 
@@ -59,6 +65,7 @@ public final class ProfileViewerScreen extends Screen {
 	private final HomePage homePage;
 	private final MiscStatsPage homeMiscPage = new MiscStatsPage();
 	private final RecordsPage homeRecordsPage = new RecordsPage();
+	private final EssencePage homeEssencePage = new EssencePage();
 	private final DungeonPage dungeonPage = new DungeonPage();
 	private final DungeonChestsPage dungeonChestsPage = new DungeonChestsPage();
 	private final InventoryPage inventoryPage = new InventoryPage();
@@ -69,6 +76,7 @@ public final class ProfileViewerScreen extends Screen {
 	private final MiningPage miningPage = new MiningPage();
 	private final ForagingPage foragingPage = new ForagingPage();
 	private final FishingPage fishingPage = new FishingPage();
+	private final FishingTrophyTrialPage fishingTrophyTrialPage = new FishingTrophyTrialPage();
 	private final CrimsonPage crimsonPage = new CrimsonPage();
 	private final RiftPage riftPage = new RiftPage();
 	private final MuseumPage museumPage = new MuseumPage();
@@ -86,6 +94,10 @@ public final class ProfileViewerScreen extends Screen {
 	private float openPivotX;
 	private float openPivotY;
 	private final ProfileScaleSlider scaleSlider = new ProfileScaleSlider();
+	private final TipEasterEgg tipEasterEgg = new TipEasterEgg(report -> Minecraft.getInstance().delayCrash(report));
+	private final SocialsMenu socialsMenu = new SocialsMenu(this::socialTarget, this::openExternalLink);
+	private final SearchHistoryMenu searchHistory = new SearchHistoryMenu(BetterPVConfig::searchHistory, this::openSearchedPlayer);
+	private boolean recordSearch;
 	private ProfileViewerScale.Viewport scaleViewport;
 	private ProfileViewerScale.Viewport sliderViewport;
 
@@ -103,6 +115,7 @@ public final class ProfileViewerScreen extends Screen {
 	private final Consumer<ProfileFetcher.LoadedProfile> networthListener = this::onDeferredNetworth;
 	private boolean breakScheduled;
 	private String profileId;
+	private String preferredProfileId;
 	private UUID playerUuid;
 	private EditBox inventorySearch;
 	private String inventorySearchQuery = "";
@@ -124,6 +137,10 @@ public final class ProfileViewerScreen extends Screen {
 	}
 
 	public ProfileViewerScreen(String playerName, PvTab initialTab) {
+		this(playerName, initialTab, null);
+	}
+
+	public ProfileViewerScreen(String playerName, PvTab initialTab, PvSubTab initialSub) {
 		super(Component.translatable("betterpv.screen.title"));
 		this.requestedName = playerName == null || playerName.isBlank() ? "?" : playerName.trim();
 		this.homePage = new HomePage(ProfileSnapshot.loading(this.requestedName));
@@ -134,6 +151,19 @@ public final class ProfileViewerScreen extends Screen {
 				this.subSelection.put(t, subs[0]);
 			}
 		}
+		if (initialSub != null && new PvTab.Route(this.tab, initialSub).valid()) {
+			this.subSelection.put(this.tab, initialSub);
+		}
+	}
+
+	/** Same SkyBlock profile and page, different co-op member. */
+	ProfileViewerScreen forCoopMember(String playerName, String coopProfileId) {
+		ProfileViewerScreen next = new ProfileViewerScreen(playerName, this.tab);
+		next.subSelection.putAll(this.subSelection);
+		next.homeEssencePage.select(this.homeEssencePage.selectedEntry().def().id());
+		next.museumSort = this.museumSort;
+		next.preferredProfileId = coopProfileId;
+		return next;
 	}
 
 	@Override
@@ -178,6 +208,8 @@ public final class ProfileViewerScreen extends Screen {
 		this.addWidget(this.playerSearch);
 
 		if (this.fetchStarted) {
+			// removed() drops this while a link confirm screen is up; late networth still needs to land.
+			ProfileFetcher.addNetworthListener(this.networthListener);
 			return;
 		}
 		this.fetchStarted = true;
@@ -187,7 +219,7 @@ public final class ProfileViewerScreen extends Screen {
 		int generation = ++this.loadGeneration;
 		ProfileFetcher.prioritizeTab(this.tab);
 		ProfileFetcher.addNetworthListener(this.networthListener);
-		ProfileFetcher.fetch(this.requestedName, updated -> {
+		ProfileFetcher.fetch(this.requestedName, this.preferredProfileId, updated -> {
 			Minecraft client = Minecraft.getInstance();
 			if (client == null) {
 				return;
@@ -219,7 +251,7 @@ public final class ProfileViewerScreen extends Screen {
 					);
 					String message = error != null && error.getMessage() != null
 						? error.getMessage()
-						: "Profile fetch failed";
+						: "Couldn't load profile";
 					displayed = ProfileFetcher.failed(this.requestedName, message);
 				}
 				if (!displayed.ok()) {
@@ -232,6 +264,10 @@ public final class ProfileViewerScreen extends Screen {
 				PvProfileImcPublisher.publish(displayed);
 				applyLoadedProfile(displayed);
 				this.dataReady = true;
+				if (this.recordSearch && displayed.snapshot() != null) {
+					this.recordSearch = false;
+					BetterPVConfig.recordSearch(displayed.snapshot().playerUuid(), displayed.snapshot().playerName());
+				}
 				BetterPV.LOGGER.info(
 					"[PV timing] event=render_thread_applied correlation_id={} player={} elapsed_ms={}",
 					this.loadCorrelationId,
@@ -261,6 +297,9 @@ public final class ProfileViewerScreen extends Screen {
 
 	@Override
 	public void removed() {
+		this.tipEasterEgg.reset();
+		this.socialsMenu.close();
+		this.searchHistory.close();
 		ProfileFetcher.removeNetworthListener(this.networthListener);
 		super.removed();
 	}
@@ -295,16 +334,19 @@ public final class ProfileViewerScreen extends Screen {
 		this.homeMiscPage.apply(loaded.misc() == null ? MiscStatsSnapshot.empty() : loaded.misc());
 		this.homeMiscPage.setGuildClickHandler(this.dataLoader::ensureGuild);
 		this.homeRecordsPage.apply(loaded.misc());
+		this.homeEssencePage.apply(loaded.dungeons(), loaded.mining(), loaded.foraging(), loaded.crimson());
 		this.dungeonPage.apply(loaded.dungeons());
 		this.dungeonChestsPage.apply(loaded.dungeons());
 		this.inventoryPage.apply(loaded.inventories());
 		this.petsPage.apply(loaded.pets());
-		this.auctionPage.apply(loaded.auctions());
+		this.auctionPage.apply(loaded.auctions(), loaded.profileId());
 		this.collectionsPage.apply(loaded.collections());
 		this.gardenPage.apply(loaded.garden());
+		this.gardenPage.setPlayerStats(loaded.playerStats());
 		this.miningPage.apply(loaded.mining());
+		this.miningPage.setPlayerStats(loaded.playerStats());
 		this.foragingPage.apply(loaded.foraging());
-		this.fishingPage.apply(loaded.fishing());
+		this.fishingPage.apply(loaded.fishing(), loaded.bestiary());
 		this.crimsonPage.apply(loaded.crimson());
 		this.riftPage.apply(loaded.rift());
 		this.bestiaryPage.apply(loaded.bestiary());
@@ -356,7 +398,8 @@ public final class ProfileViewerScreen extends Screen {
 
 		int topRoom = IconButtonBar.TAB + 4;
 		int leftRoom = IconButtonBar.TAB + 4;
-		int panelW = Math.min(520, Math.max(420, virtualWidth - 80 - leftRoom));
+		int tabsW = 8 + PvTab.values().length * (IconButtonBar.TAB + IconButtonBar.GAP);
+		int panelW = Math.min(Math.max(520, tabsW), Math.max(Math.max(420, tabsW), virtualWidth - 80 - leftRoom));
 		int contentH = this.homePage.preferredHeight(this.font, panelW - PAD * 2);
 		if (this.tab == PvTab.HOME && activeSub(PvSubTab.HOME_OVERVIEW) != PvSubTab.HOME_OVERVIEW) {
 			contentH = Math.max(contentH, 220);
@@ -393,6 +436,8 @@ public final class ProfileViewerScreen extends Screen {
 			int dimRight = (int) Math.ceil(this.scaleViewport.toVirtualX(screenWidth));
 			int dimBottom = (int) Math.ceil(this.scaleViewport.toVirtualY(screenHeight));
 			PvDraw.fill(graphics, dimLeft, dimTop, dimRight - dimLeft, dimBottom - dimTop, 0x99000000);
+			this.socialsMenu.setViewport(dimLeft, dimTop, dimRight, dimBottom);
+			this.searchHistory.setViewport(dimLeft, dimTop, dimRight, dimBottom);
 			extractProfileRenderState(
 				graphics, virtualMouseX, virtualMouseY, delta,
 				panelX, panelY, panelW, panelH
@@ -410,18 +455,36 @@ public final class ProfileViewerScreen extends Screen {
 		graphics.pose().translate(this.sliderViewport.offsetX(), this.sliderViewport.offsetY());
 		graphics.pose().scale(this.sliderViewport.renderScale(), this.sliderViewport.renderScale());
 		try {
-			String tip = Component.translatable("betterpv.screen.flip_tip").getString();
-			ProfileViewerScale.Point tipPosition = ProfileViewerScale.bottomLeftPosition(
+			String tip = this.tipEasterEgg.text(Component.translatable("betterpv.screen.flip_tip").getString());
+			TipEasterEgg.Layout tipLayout = TipEasterEgg.layout(
+				tip,
+				this.font::width,
+				this.font.lineHeight,
 				virtualWidth,
 				virtualHeight,
-				this.font.width(tip),
-				this.font.lineHeight,
-				ProfileScaleSlider.SCREEN_MARGIN
+				ProfileScaleSlider.SCREEN_MARGIN,
+				ProfileScaleSlider.position(virtualWidth, virtualHeight).x() - TIP_SLIDER_GAP
 			);
-			PvDraw.text(graphics, this.font, tip, tipPosition.x(), tipPosition.y(), 0xFFFFFF55);
+			this.tipEasterEgg.setLayout(tipLayout);
+			PvDraw.textScaled(graphics, this.font, tipLayout.text(), tipLayout.x(), tipLayout.y(), this.tipEasterEgg.color(),
+				tipLayout.scale());
 			this.scaleSlider.render(graphics, this.font, sliderMouseX, sliderMouseY);
 		} finally {
 			graphics.pose().popMatrix();
+		}
+
+		if (this.dataReady && (this.socialsMenu.isOpen() || this.searchHistory.isVisible())) {
+			// Last stratum so the tip and scale slider can't draw over the popup.
+			graphics.nextStratum();
+			graphics.pose().pushMatrix();
+			graphics.pose().translate(this.scaleViewport.offsetX(), this.scaleViewport.offsetY());
+			graphics.pose().scale(this.scaleViewport.renderScale(), this.scaleViewport.renderScale());
+			try {
+				this.socialsMenu.renderPopup(graphics, this.font, virtualMouseX, virtualMouseY);
+				this.searchHistory.render(graphics, this.font, virtualMouseX, virtualMouseY);
+			} finally {
+				graphics.pose().popMatrix();
+			}
 		}
 	}
 
@@ -472,8 +535,21 @@ public final class ProfileViewerScreen extends Screen {
 			}
 
 			positionPlayerSearch(graphics, panelX, panelY, panelW, panelH);
-			renderBody(graphics, panelX + PAD, panelY + PAD, panelW - PAD * 2, panelH - PAD * 2, mouseX, mouseY, delta);
+			boolean popupOwnsMouse = this.socialsMenu.blocksMouse(mouseX, mouseY)
+				|| this.searchHistory.blocksMouse(mouseX, mouseY);
+			int bodyMouseX = popupOwnsMouse ? -10_000 : mouseX;
+			int bodyMouseY = popupOwnsMouse ? -10_000 : mouseY;
+			this.homePage.setModelLook(mouseX, mouseY);
+			renderBody(
+				graphics, panelX + PAD, panelY + PAD, panelW - PAD * 2, panelH - PAD * 2, bodyMouseX, bodyMouseY, delta
+			);
 			this.profileSelector.renderFooter(graphics, this.font, panelX, panelY, panelW, panelH, mouseX, mouseY);
+			this.socialsMenu.renderLabel(
+				graphics, this.font,
+				this.profileSelector.footerX() + this.profileSelector.footerW() + SocialsMenu.LABEL_GAP,
+				this.profileSelector.footerY(),
+				mouseX, mouseY
+			);
 			if (this.playerSearchErrorUntilMs > System.currentTimeMillis() && !this.playerSearchError.isBlank()) {
 				PvDraw.text(
 					graphics, this.font, this.playerSearchError,
@@ -493,8 +569,8 @@ public final class ProfileViewerScreen extends Screen {
 				panelY,
 				panelW,
 				panelH,
-				mouseX,
-				mouseY,
+				bodyMouseX,
+				bodyMouseY,
 				this.tab,
 				activeSub(PvSubTab.HOME_OVERVIEW),
 				this.profileSelector,
@@ -504,6 +580,7 @@ public final class ProfileViewerScreen extends Screen {
 				this.homePage,
 				this.homeMiscPage,
 				this.homeRecordsPage,
+				this.homeEssencePage,
 				this.dungeonPage,
 				this.dungeonChestsPage,
 				this.petsPage,
@@ -513,6 +590,7 @@ public final class ProfileViewerScreen extends Screen {
 				this.miningPage,
 				this.foragingPage,
 				this.fishingPage,
+				this.fishingTrophyTrialPage,
 				this.crimsonPage,
 				this.riftPage,
 				this.museumPage,
@@ -522,11 +600,13 @@ public final class ProfileViewerScreen extends Screen {
 			);
 
 			if (dungeonOverview()) {
-				this.dungeonPage.renderOverlay(graphics, this.font, this.width, this.height, mouseX, mouseY);
+				this.dungeonPage.renderOverlay(graphics, this.font, this.width, this.height, bodyMouseX, bodyMouseY);
 			} else if (this.tab == PvTab.HOME && activeSub(PvSubTab.HOME_OVERVIEW) == PvSubTab.HOME_OVERVIEW) {
-				this.homePage.renderSlayerOverlay(graphics, this.font, this.width, this.height, mouseX, mouseY);
+				this.homePage.renderSlayerOverlay(graphics, this.font, this.width, this.height, bodyMouseX, bodyMouseY);
 			} else if (this.tab.isInventorySplit()) {
-				this.inventoryPage.renderOverlay(graphics, this.font, this.width, this.height, mouseX, mouseY);
+				this.inventoryPage.renderOverlay(graphics, this.font, this.width, this.height, bodyMouseX, bodyMouseY);
+			} else if (this.tab == PvTab.COLLECTIONS) {
+				this.collectionsPage.renderOverlay(graphics, this.font, this.width, this.height, bodyMouseX, bodyMouseY);
 			}
 		}
 
@@ -598,7 +678,7 @@ public final class ProfileViewerScreen extends Screen {
 			case 3 -> "...";
 			default -> "";
 		};
-		String loading = "Loading Data" + dots;
+		String loading = "Loading data" + dots;
 
 		if (elapsedMs >= LoadingEgg.BREAK_AT_MS) {
 			scheduleBreakFinale();
@@ -729,6 +809,8 @@ public final class ProfileViewerScreen extends Screen {
 					);
 				} else if (homeSub == PvSubTab.HOME_RECORDS) {
 					this.homeRecordsPage.render(g, this.font, x, y, w, h);
+				} else if (homeSub == PvSubTab.HOME_ESSENCE) {
+					this.homeEssencePage.render(g, this.font, x, y, w, h, mouseX, mouseY);
 				} else {
 					this.homePage.render(
 						g, this.font, x, y, w, h, mouseX, mouseY, this.width, this.height,
@@ -806,7 +888,11 @@ public final class ProfileViewerScreen extends Screen {
 			}
 			case FISHING -> {
 				prepareStandardBody();
-				this.fishingPage.render(g, this.font, x, y, w, h, mouseX, mouseY, this.width, this.height);
+				if (activeSub(PvSubTab.FISHING_MAIN) == PvSubTab.FISHING_TROPHIES) {
+					this.fishingTrophyTrialPage.render(g, this.font, this.fishingPage.snapshot(), x, y, w, h);
+				} else {
+					this.fishingPage.render(g, this.font, x, y, w, h, mouseX, mouseY, this.width, this.height);
+				}
 			}
 			case CRIMSON -> {
 				prepareStandardBody();
@@ -870,6 +956,12 @@ public final class ProfileViewerScreen extends Screen {
 				PvDraw.COLOR_MUTED
 			);
 		}
+		this.searchHistory.setAnchor(boxX, boxY, boxW, InventorySplitLayout.SEARCH_H);
+		if (this.searchHistory.syncSearch(focused, this.playerSearch.getValue())) {
+			this.socialsMenu.close();
+			this.profileSelector.closeMenu();
+		}
+		this.searchHistory.layoutDropdown(this.font.lineHeight);
 	}
 
 	private void hidePlayerSearch() {
@@ -878,6 +970,17 @@ public final class ProfileViewerScreen extends Screen {
 		}
 		this.playerSearch.setFocused(false);
 		this.playerSearch.setVisible(false);
+		this.searchHistory.close();
+	}
+
+	private boolean playerSearchHit(double mx, double my) {
+		return this.playerSearch != null && this.playerSearch.isVisible() && this.searchHistory.anchorContains(mx, my);
+	}
+
+	private void openSearchedPlayer(String name) {
+		ProfileViewerScreen next = new ProfileViewerScreen(name);
+		next.recordSearch = true;
+		Minecraft.getInstance().setScreen(next);
 	}
 
 	private void submitPlayerSearch() {
@@ -891,7 +994,7 @@ public final class ProfileViewerScreen extends Screen {
 			return;
 		}
 		this.playerSearchError = "";
-		Minecraft.getInstance().setScreen(new ProfileViewerScreen(trimmed));
+		openSearchedPlayer(trimmed);
 	}
 
 	@Override
@@ -899,12 +1002,37 @@ public final class ProfileViewerScreen extends Screen {
 		if (click == null) {
 			return super.mouseClicked(click, doubled);
 		}
+		double mx = virtualMouseX(click.x());
+		double my = virtualMouseY(click.y());
+		if (this.searchHistory.mouseClicked(mx, my, click.button())) {
+			return true;
+		}
+		if (uiInteractive() && playerSearchHit(mx, my)) {
+			this.socialsMenu.close();
+			this.profileSelector.closeMenu();
+			this.searchHistory.open();
+			super.mouseClicked(virtualClick(click), doubled);
+			if (!this.playerSearch.isFocused()) {
+				this.setFocused(this.playerSearch);
+			}
+			return true;
+		}
+		if (this.socialsMenu.isOpen() && this.socialsMenu.mouseClicked(mx, my, click.button())) {
+			return true;
+		}
 		if (this.scaleSlider.mouseClicked(sliderMouseX(click.x()), sliderMouseY(click.y()), click.button())) {
 			return true;
 		}
-		double mx = virtualMouseX(click.x());
-		double my = virtualMouseY(click.y());
+		if (this.tipEasterEgg.mouseClicked(sliderMouseX(click.x()), sliderMouseY(click.y()), click.button())) {
+			return true;
+		}
 		if (!uiInteractive()) {
+			return true;
+		}
+		if (this.socialsMenu.mouseClicked(mx, my, click.button())) {
+			if (this.socialsMenu.isOpen()) {
+				this.profileSelector.closeMenu();
+			}
 			return true;
 		}
 		if (this.profileSelector.mouseClicked(mx, my)) {
@@ -977,12 +1105,14 @@ public final class ProfileViewerScreen extends Screen {
 
 	private boolean routePageClick(double mx, double my) {
 		return switch (this.tab) {
-			case HOME -> activeSub(PvSubTab.HOME_OVERVIEW) == PvSubTab.HOME_MISC
-				&& this.homeMiscPage.mouseClicked(mx, my);
+			case HOME -> switch (activeSub(PvSubTab.HOME_OVERVIEW)) {
+				case HOME_MISC -> this.homeMiscPage.mouseClicked(mx, my);
+				case HOME_ESSENCE -> this.homeEssencePage.mouseClicked(mx, my);
+				default -> false;
+			};
 			case DUNGEONS -> dungeonOverview() && this.dungeonPage.mouseClicked(mx, my);
 			case MINING -> this.miningPage.mouseClicked(mx, my);
 			case FORAGING -> this.foragingPage.mouseClicked(mx, my);
-			case FISHING -> this.fishingPage.mouseClicked(mx, my);
 			case CRIMSON -> this.crimsonPage.mouseClicked(mx, my);
 			case RIFT -> this.riftPage.mouseClicked(mx, my, activeSub(PvSubTab.RIFT_OVERVIEW));
 			case MUSEUM -> {
@@ -1009,6 +1139,9 @@ public final class ProfileViewerScreen extends Screen {
 		}
 		double virtualX = virtualMouseX(mouseX);
 		double virtualY = virtualMouseY(mouseY);
+		if (this.socialsMenu.mouseScrolled(virtualX, virtualY) || this.searchHistory.mouseScrolled(virtualX, virtualY)) {
+			return true;
+		}
 		boolean horizontal = scrollX != 0D || shiftDown();
 		if (PvTooltip.panOverflow(scrollX != 0D ? scrollX : scrollY, horizontal)) {
 			return true;
@@ -1056,6 +1189,9 @@ public final class ProfileViewerScreen extends Screen {
 				if (activeSub(PvSubTab.HOME_OVERVIEW) == PvSubTab.HOME_RECORDS) {
 					yield false;
 				}
+				if (activeSub(PvSubTab.HOME_OVERVIEW) == PvSubTab.HOME_ESSENCE) {
+					yield this.homeEssencePage.mouseScrolled(mouseX, mouseY, scrollY);
+				}
 				yield this.homePage.mouseScrolled(mouseX, mouseY, scrollY);
 			}
 			case MUSEUM -> this.museumPage.mouseScrolled(mouseX, mouseY, scrollY);
@@ -1077,6 +1213,8 @@ public final class ProfileViewerScreen extends Screen {
 			case RIFT -> this.riftPage.mouseScrolled(
 				mouseX, mouseY, scrollY, activeSub(PvSubTab.RIFT_OVERVIEW));
 			case BESTIARY -> this.bestiaryPage.mouseScrolled(mouseX, mouseY, scrollY);
+			case FISHING -> activeSub(PvSubTab.FISHING_MAIN) != PvSubTab.FISHING_TROPHIES
+				&& this.fishingPage.mouseScrolled(mouseX, mouseY, scrollY);
 			case EVENTS -> this.eventsPage.mouseScrolled(
 				mouseX, mouseY, scrollY, activeSub(PvSubTab.EVENTS_BINGO));
 			case INVENTORIES -> {
@@ -1092,6 +1230,9 @@ public final class ProfileViewerScreen extends Screen {
 	@Override
 	public boolean keyPressed(KeyEvent event) {
 		if (event != null) {
+			if (this.searchHistory.keyPressed(event.key()) || this.socialsMenu.keyPressed(event.key())) {
+				return true;
+			}
 			boolean typingInvSearch = this.inventorySearch != null
 				&& this.inventorySearch.isVisible()
 				&& this.inventorySearch.isFocused();
@@ -1106,6 +1247,12 @@ public final class ProfileViewerScreen extends Screen {
 			if (directional && !typingInvSearch && !typingPlayerSearch) {
 				MoulberryMode.keyPressed(event.key());
 				if (uiInteractive() && dungeonOverview() && this.dungeonPage.keyPressed(event.key())) {
+					return true;
+				}
+				if (uiInteractive()
+					&& this.tab == PvTab.HOME
+					&& activeSub(PvSubTab.HOME_OVERVIEW) == PvSubTab.HOME_ESSENCE
+					&& this.homeEssencePage.keyPressed(event.key())) {
 					return true;
 				}
 				// Screen arrow-key focus navigation would otherwise steal these
@@ -1131,6 +1278,11 @@ public final class ProfileViewerScreen extends Screen {
 				return true;
 			}
 			if (uiInteractive() && dungeonOverview() && this.dungeonPage.keyPressed(event.key())) {
+				return true;
+			}
+			if (uiInteractive()
+				&& this.tab == PvTab.COLLECTIONS
+				&& this.collectionsPage.keyPressed(event.key(), activeSub(PvSubTab.COLLECTIONS_LIST))) {
 				return true;
 			}
 			if (uiInteractive() && this.profileSelector.menuOpen() && event.key() == 256) {
@@ -1209,6 +1361,26 @@ public final class ProfileViewerScreen extends Screen {
 
 	UUID playerUuid() {
 		return this.playerUuid;
+	}
+
+	private SocialLinks.Target socialTarget() {
+		return new SocialLinks.Target(
+			this.playerUuid, this.homePage.playerName(), this.profileId, this.homePage.profileName()
+		);
+	}
+
+	private void openExternalLink(String url) {
+		URI uri;
+		try {
+			uri = new URI(url);
+		} catch (URISyntaxException e) {
+			BetterPV.LOGGER.warn("Bad social link {}", url, e);
+			return;
+		}
+		// Same path as chat links (honours the confirm prompt); still confirm if chat links are off.
+		if (!clickUrlAction(Minecraft.getInstance(), this, uri)) {
+			ConfirmLinkScreen.confirmLinkNow(this, uri);
+		}
 	}
 
 	JsonObject profilesRoot() {

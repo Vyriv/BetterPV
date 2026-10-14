@@ -15,6 +15,8 @@ import net.minecraft.world.item.component.DyedItemColor;
 
 /** Legacy 1.8 material / damage remaps used when building stacks from NEU or Hypixel defs. */
 final class LegacyMaterialMap {
+	private static final Pattern VALID_PATH = Pattern.compile("[a-z0-9/._-]+");
+	private static final Pattern LEGACY_DATA = Pattern.compile("\\d{1,5}");
 	private static final Pattern LEATHER_COLOR = Pattern.compile(
 		"color\\s*:\\s*(\\d+)",
 		Pattern.CASE_INSENSITIVE
@@ -189,48 +191,96 @@ final class LegacyMaterialMap {
 		};
 	}
 
+	/** Hypixel item def material: legacy Bukkit name plus damage value. */
+	record Material(String name, int damage) {
+	}
+
+	/**
+	 * Parses a Hypixel item def material. Accepts {@code NAME} (damage from {@code durability}),
+	 * Bukkit {@code NAME:data} and {@code minecraft:name}. Anything else is not a material:
+	 * NEU's {@code TYPE;N} is a pet rarity / item level, not damage. Returns null when unusable.
+	 */
+	static Material parseMaterial(String raw, int durability) {
+		if (raw == null || raw.isBlank()) {
+			return null;
+		}
+		String name = raw.trim().toLowerCase(Locale.ROOT).replace(' ', '_');
+		if (name.startsWith("minecraft:")) {
+			name = name.substring("minecraft:".length());
+		}
+		int damage = durability;
+		int colon = name.indexOf(':');
+		if (colon >= 0) {
+			String data = name.substring(colon + 1);
+			if (!LEGACY_DATA.matcher(data).matches()) {
+				return null;
+			}
+			damage = Integer.parseInt(data);
+			name = name.substring(0, colon);
+		}
+		if (!VALID_PATH.matcher(name).matches()) {
+			return null;
+		}
+		return new Material(name.toUpperCase(Locale.ROOT), damage);
+	}
+
+	/** Vanilla item lookup that never throws on bad ids. Accepts {@code name} or {@code minecraft:name}. */
+	static Optional<Item> vanillaItem(String id) {
+		if (id == null) {
+			return Optional.empty();
+		}
+		String path = id.toLowerCase(Locale.ROOT);
+		if (path.startsWith("minecraft:")) {
+			path = path.substring("minecraft:".length());
+		}
+		if (!VALID_PATH.matcher(path).matches()) {
+			return Optional.empty();
+		}
+		return BuiltInRegistries.ITEM.getOptional(Identifier.fromNamespaceAndPath("minecraft", path));
+	}
+
 	static Item resolveMaterial(String material, String skyblockId, int durability) {
-		if (material != null && !material.isBlank()) {
-			String upper = material.toUpperCase(Locale.ROOT);
+		Material parsed = parseMaterial(material, durability);
+		if (parsed != null) {
+			String upper = parsed.name();
+			int damage = parsed.damage();
 			// Legacy coloured blocks used material + durability (meta).
 			String remapped = switch (upper) {
-				case "STAINED_GLASS_PANE" -> colorPrefixed("stained_glass_pane", durability);
-				case "STAINED_GLASS" -> colorPrefixed("stained_glass", durability);
-				case "WOOL" -> colorPrefixed("wool", durability);
-				case "CARPET" -> colorPrefixed("carpet", durability);
-				case "STAINED_CLAY", "STAINED_HARDENED_CLAY", "HARDENED_CLAY" -> colorPrefixed("terracotta", durability);
-				case "CONCRETE" -> colorPrefixed("concrete", durability);
-				case "CONCRETE_POWDER" -> colorPrefixed("concrete_powder", durability);
+				case "STAINED_GLASS_PANE" -> colorPrefixed("stained_glass_pane", damage);
+				case "STAINED_GLASS" -> colorPrefixed("stained_glass", damage);
+				case "WOOL" -> colorPrefixed("wool", damage);
+				case "CARPET" -> colorPrefixed("carpet", damage);
+				case "STAINED_CLAY", "STAINED_HARDENED_CLAY", "HARDENED_CLAY" -> colorPrefixed("terracotta", damage);
+				case "CONCRETE" -> colorPrefixed("concrete", damage);
+				case "CONCRETE_POWDER" -> colorPrefixed("concrete_powder", damage);
+				case "INK_SACK", "DYE" -> dyeByDamage(damage);
 				default -> null;
 			};
 			if (remapped != null) {
-				Optional<Item> colored = BuiltInRegistries.ITEM.getOptional(Identifier.parse(remapped));
+				Optional<Item> colored = vanillaItem(remapped);
 				if (colored.isPresent()) {
 					return colored.get();
 				}
 			}
-			Item mapped = legacyMaterial(material);
+			Item mapped = legacyMaterial(upper);
 			if (mapped != null) {
 				return mapped;
 			}
-			String path = material.toLowerCase(Locale.ROOT);
-			Optional<Item> item = BuiltInRegistries.ITEM.getOptional(Identifier.fromNamespaceAndPath("minecraft", path));
+			Optional<Item> item = vanillaItem(upper);
 			if (item.isPresent()) {
 				return item.get();
 			}
 		}
-		// Modern Hypixel ids like RED_STAINED_GLASS_PANE.
+		// Modern Hypixel ids like RED_STAINED_GLASS_PANE. Drop NEU's ;N / -N suffix first.
+		String upperId = NeuItemResolver.canonicalId(skyblockId);
 		for (String color : COLOR_NAMES) {
 			String prefix = color + "_";
-			String upperId = skyblockId == null ? "" : skyblockId.toUpperCase(Locale.ROOT);
 			if (upperId.startsWith(prefix)) {
-				String rest = upperId.substring(prefix.length()).toLowerCase(Locale.ROOT);
-				Optional<Item> direct = BuiltInRegistries.ITEM.getOptional(
-					Identifier.fromNamespaceAndPath("minecraft", color.toLowerCase(Locale.ROOT) + "_" + rest)
-				);
+				Optional<Item> direct = vanillaItem(upperId);
 				if (direct.isPresent()) {
 					return direct.get();
 				}
+				break;
 			}
 		}
 		return guessFromId(skyblockId);

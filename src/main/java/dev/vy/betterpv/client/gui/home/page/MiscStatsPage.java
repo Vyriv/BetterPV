@@ -278,7 +278,7 @@ public final class MiscStatsPage {
 				PvTooltip.Line.divider(),
 				PvTooltip.Line.meta(this.freeCookieKnown
 					? (this.freeCookieMs > 0L ? "First claim " + formatAgo(this.freeCookieMs) : "Never claimed")
-					: "Loaded with player rank")
+					: "Not loaded yet")
 			));
 
 		if (s.refinedJyrreUses() > 0) {
@@ -314,8 +314,7 @@ public final class MiscStatsPage {
 					PvTooltip.Line.divider(),
 					PvTooltip.Line.row("Kills", PvDraw.COLOR_MUTED, FormatUtil.commas(s.killsTotal()), HEADER_KILLS),
 					PvTooltip.Line.row("Deaths", PvDraw.COLOR_MUTED, FormatUtil.commas(s.deathsTotal()), HEADER_DEATHS),
-					PvTooltip.Line.row("K/D", PvDraw.COLOR_MUTED, FormatUtil.twoDecimals(s.killDeathRatio()), PvDraw.COLOR_TEXT),
-					PvTooltip.Line.meta(s.deathsTotal() == 0L ? "No deaths recorded" : "Total kills / total deaths")
+					PvTooltip.Line.row("K/D", PvDraw.COLOR_MUTED, FormatUtil.twoDecimals(s.killDeathRatio()), PvDraw.COLOR_TEXT)
 				));
 			cy = stat(g, font, "Highest Crit", FormatUtil.shortXp((long) s.highestCriticalDamage()), x, cy, w, PvDraw.COLOR_GOLD, null);
 			cy = stat(g, font, "Gifts",
@@ -631,7 +630,7 @@ public final class MiscStatsPage {
 		tip.add(PvTooltip.Line.divider());
 		switch (this.guild.state()) {
 			case IDLE -> tip.add(PvTooltip.Line.action("Click to load guild"));
-			case LOADING -> tip.add(PvTooltip.Line.meta("Loading…"));
+			case LOADING -> tip.add(PvTooltip.Line.meta("Loading..."));
 			case NONE -> tip.add(PvTooltip.Line.meta("Not in a guild"));
 			case ERROR -> tip.add(PvTooltip.Line.meta(this.guild.error().isBlank() ? "Unavailable" : this.guild.error()));
 			case READY -> {
@@ -738,7 +737,7 @@ public final class MiscStatsPage {
 		g.disableScissor();
 
 		if (rows.isEmpty()) {
-			PvDraw.textCentered(g, font, "No " + title.toLowerCase() + " recorded",
+			PvDraw.textCentered(g, font, "No " + title.toLowerCase(),
 				x + w / 2, listTop + listH / 2 - font.lineHeight / 2, PvDraw.COLOR_MUTED);
 		}
 

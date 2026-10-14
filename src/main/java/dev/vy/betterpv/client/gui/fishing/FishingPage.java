@@ -1,14 +1,13 @@
 package dev.vy.betterpv.client.gui.fishing;
 
+import dev.vy.betterpv.client.data.BestiarySnapshot;
 import dev.vy.betterpv.client.data.FishingSnapshot;
 import dev.vy.betterpv.client.data.FormatUtil;
 import dev.vy.betterpv.client.data.TrophyFishData;
 import dev.vy.betterpv.client.data.TrophySkulls;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
-import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import dev.vy.betterpv.client.neu.NeuRepoCache;
-import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.util.ArrayList;
@@ -17,13 +16,10 @@ import java.util.List;
 import java.util.Locale;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 
 /**
- * Fishing: single page, 1:2 split.
- * Left (~1/3) overview stats - click to flip to trophy frogs.
- * Right (~2/3) trophy fish.
+ * Fishing main page. Left: skill, items fished and sea creature totals. Right: sea creature kills
+ * per bestiary family. Trophy fish and frogs live on the Trophies subtab.
  */
 public final class FishingPage {
 	private static final int PAD = 6;
@@ -33,12 +29,11 @@ public final class FishingPage {
 	private static final int STAT_ROW = 12;
 	private static final int SEP_GAP = 10;
 	private static final int BAR_FISH = 0xFF55AAFF;
-	private static final int ITEM_SLOT_BG = 0xFF101018;
 	private static final int SLOT = 16;
-	private static final int SLOT_GAP = 3;
 	private static final int TIER_BORDER = 1;
-	private static final int PANEL_HOVER = 0x0AFFFFFF;
-	private static final int FLIP_MS = 480;
+	private static final int COLOR_MAXED = 0xFF7CFF9A;
+	/** NEU bestiary category holding every sea creature family. */
+	private static final String SEA_CREATURE_CATEGORY = "fishing";
 	/** Soft violet for trophy names. */
 	private static final int NAME_COLOR = 0xFFC9A6FF;
 	private static final int TIER_DIAMOND = 0xFF55FFFF;
@@ -56,20 +51,20 @@ public final class FishingPage {
 	private static final int TIP_MIN_W = 160;
 
 	private FishingSnapshot snapshot = FishingSnapshot.empty();
+	private BestiarySnapshot bestiary = BestiarySnapshot.empty();
 	private final List<HoverZone> zones = new ArrayList<>();
+	private int listScroll;
+	private int listMaxScroll;
+	private int listX;
+	private int listY;
+	private int listW;
+	private int listH;
 
-	private int leftHitX;
-	private int leftHitY;
-	private int leftHitW;
-	private int leftHitH;
-	/** False = overview face, true = trophy frogs face. */
-	private boolean leftFrogsFace;
-	private long leftFlipStartMs;
-	private boolean leftFlipTarget;
-
-	public void apply(FishingSnapshot snapshot) {
+	public void apply(FishingSnapshot snapshot, BestiarySnapshot bestiary) {
 		this.snapshot = snapshot == null ? FishingSnapshot.empty() : snapshot;
+		this.bestiary = bestiary == null ? BestiarySnapshot.empty() : bestiary;
 		this.zones.clear();
+		this.listScroll = 0;
 		TrophyFishData.ensureLoaded();
 		TrophySkulls.ensureLoaded();
 	}
@@ -78,17 +73,16 @@ public final class FishingPage {
 		return this.snapshot;
 	}
 
-	/** Flip left overview ↔ trophy frogs panel. */
-	public boolean mouseClicked(double mx, double my) {
-		if (mx < this.leftHitX || mx >= this.leftHitX + this.leftHitW
-			|| my < this.leftHitY || my >= this.leftHitY + this.leftHitH) {
+	public boolean mouseScrolled(double mx, double my, double scrollY) {
+		if (this.listMaxScroll <= 0
+			|| mx < this.listX || mx >= this.listX + this.listW || my < this.listY || my >= this.listY + this.listH) {
 			return false;
 		}
-		if (this.leftFlipStartMs != 0L) {
-			return true;
+		int next = Math.max(0, Math.min(this.listMaxScroll, this.listScroll + (scrollY > 0 ? -STAT_ROW : STAT_ROW)));
+		if (next == this.listScroll) {
+			return false;
 		}
-		this.leftFlipTarget = !this.leftFrogsFace;
-		this.leftFlipStartMs = System.currentTimeMillis();
+		this.listScroll = next;
 		return true;
 	}
 
@@ -97,96 +91,22 @@ public final class FishingPage {
 		int x, int y, int w, int h, int mouseX, int mouseY, int screenW, int screenH
 	) {
 		this.zones.clear();
-
-		// 1:2 - left overview/frogs, right trophy fish.
-		int leftW = Math.max(90, w / 3);
-		int rightW = Math.max(120, w - leftW - GAP);
-		leftW = w - rightW - GAP;
-		int leftX = x;
-		int rightX = x + leftW + GAP;
-
-		drawLeftFlipPanel(g, font, leftX, y, leftW, h, mouseX, mouseY);
-
-		PvDraw.innerPanel(g, rightX, y, rightW, h);
-		drawTrophyPanel(
-			g, font, rightX, y, rightW, h,
-			"Trophy Fish",
-			FormatUtil.commas(this.snapshot.trophyFishTotal()) + " caught",
-			this.snapshot.trophyFishLastCaught().isBlank()
-				? null
-				: "Last: " + prettyLast(this.snapshot.trophyFishLastCaught()),
-			sortedRows(this.snapshot.trophyFish())
-		);
+		int leftW = Math.max(150, w * 42 / 100);
+		int rightW = w - leftW - GAP;
+		PvDraw.innerPanel(g, x, y, leftW, h);
+		PvDraw.innerPanel(g, x + leftW + GAP, y, rightW, h);
+		drawOverview(g, font, x, y, leftW, h);
+		drawSeaCreatureKills(g, font, x + leftW + GAP, y, rightW, h);
 	}
 
 	public void renderTooltip(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH) {
 		drawHover(g, font, mouseX, mouseY, screenW, screenH);
 	}
 
-	private void drawLeftFlipPanel(
-		GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, int mouseX, int mouseY
-	) {
-		this.leftHitX = x;
-		this.leftHitY = y;
-		this.leftHitW = w;
-		this.leftHitH = h;
-
-		boolean hovered = mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + h;
-		float flipProgress = 0F;
-		boolean animating = this.leftFlipStartMs != 0L;
-		if (animating) {
-			flipProgress = Math.min(1F, (System.currentTimeMillis() - this.leftFlipStartMs) / (float) FLIP_MS);
-			if (flipProgress >= 1F) {
-				this.leftFrogsFace = this.leftFlipTarget;
-				this.leftFlipStartMs = 0L;
-				animating = false;
-				flipProgress = 0F;
-			}
-		}
-		float eased = animating ? easeInOutCubic(flipProgress) : 0F;
-		float angle = eased * (float) Math.PI;
-		boolean showFrogs = animating
-			? (Math.cos(angle) < 0.0 ? this.leftFlipTarget : this.leftFrogsFace)
-			: this.leftFrogsFace;
-		float scaleX = 1F;
-		float scaleY = 1F;
-		if (animating) {
-			scaleX = Math.max(0.04F, Math.abs((float) Math.cos(angle)));
-			scaleY = 1F - (1F - scaleX) * 0.06F;
-		}
-
-		float cxFlip = x + w / 2F;
-		float cyFlip = y + h / 2F;
-		g.pose().pushMatrix();
-		g.pose().translate(cxFlip, cyFlip);
-		g.pose().scale(scaleX, scaleY);
-		g.pose().translate(-cxFlip, -cyFlip);
-
-		PvDraw.innerPanel(g, x, y, w, h);
-		if (hovered && !animating) {
-			PvDraw.fill(g, x + 1, y + 1, w - 2, h - 2, PANEL_HOVER);
-		}
-
-		if (showFrogs) {
-			drawTrophyPanel(
-				g, font, x, y, w, h,
-				"Trophy Frogs",
-				FormatUtil.commas(this.snapshot.itemsFishedTrophyFrog()) + " caught",
-				null,
-				sortedRows(this.snapshot.trophyFrogs())
-			);
-		} else {
-			drawOverviewFace(g, font, x, y, w, h);
-		}
-
-		g.pose().popMatrix();
-	}
-
-	private void drawOverviewFace(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h) {
+	private void drawOverview(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h) {
 		int lx = x + PAD;
 		int ly = y + PAD;
 		int lw = w - PAD * 2;
-		int bottom = y + h - PAD;
 
 		ly = drawBar(g, font, "Fishing", String.valueOf(this.snapshot.fishingLevel()),
 			this.snapshot.fishingFill(), this.snapshot.fishingMaxed(), BAR_FISH,
@@ -203,144 +123,133 @@ public final class FishingPage {
 			lx, ly, lw, PvDraw.COLOR_TEXT);
 		ly = statLine(g, font, "Large treasure", FormatUtil.commas(this.snapshot.itemsFishedLargeTreasure()),
 			lx, ly, lw, PvDraw.COLOR_TEXT);
-		ly = statLine(g, font, "Trophy fish", FormatUtil.commas(this.snapshot.itemsFishedTrophyFish()),
-			lx, ly, lw, TIER_GOLD);
-		ly = statLine(g, font, "Trophy frogs", FormatUtil.commas(this.snapshot.itemsFishedTrophyFrog()),
-			lx, ly, lw, TIER_GOLD);
 		ly = statLine(g, font, "Outstanding", FormatUtil.commas(this.snapshot.itemsFishedOutstanding()),
 			lx, ly, lw, PvDraw.COLOR_MUTED);
 
 		ly = sectionSeparator(g, font, x, ly, w);
-		ly = statLine(g, font, "Sea creature kills", FormatUtil.commas(this.snapshot.seaCreatureKills()),
+		PvDraw.text(g, font, "Sea creatures", lx, ly, PvDraw.COLOR_MUTED);
+		ly += font.lineHeight + 3;
+		int killsY = ly;
+		ly = statLine(g, font, "Kills", FormatUtil.commas(this.snapshot.seaCreatureKills()),
 			lx, ly, lw, PvDraw.COLOR_ACCENT);
-		ly = statLine(g, font, "Festival sharks", FormatUtil.commas(this.snapshot.festivalSharksKilled()),
+		this.zones.add(HoverZone.of(lx, killsY, lw, STAT_ROW, List.of(
+			PvTooltip.Line.title("Sea creature kills", PvDraw.COLOR_TEXT),
+			PvTooltip.Line.divider(),
+			PvTooltip.Line.of("Hypixel's sea creature kills stat.", PvDraw.COLOR_MUTED)
+		)));
+		if (this.snapshot.dolphinMilestone() >= 0L) {
+			int rowY = ly;
+			ly = statLine(g, font, "Dolphin milestone", FormatUtil.commas(this.snapshot.dolphinMilestone()),
+				lx, ly, lw, PvDraw.COLOR_TEXT);
+			this.zones.add(HoverZone.of(lx, rowY, lw, STAT_ROW, List.of(
+				PvTooltip.Line.title("Dolphin milestone", PvDraw.COLOR_TEXT),
+				PvTooltip.Line.divider(),
+				PvTooltip.Line.of("Sea creatures killed toward the", PvDraw.COLOR_MUTED),
+				PvTooltip.Line.of("Dolphin pet's milestone rewards.", PvDraw.COLOR_MUTED),
+				PvTooltip.Line.of("Hypixel keeps this as a separate", PvDraw.COLOR_MUTED),
+				PvTooltip.Line.of("counter from Kills, so the two", PvDraw.COLOR_MUTED),
+				PvTooltip.Line.of("totals don't match.", PvDraw.COLOR_MUTED)
+			)));
+		}
+		statLine(g, font, "Festival sharks", FormatUtil.commas(this.snapshot.festivalSharksKilled()),
 			lx, ly, lw, TIER_GOLD);
 	}
 
-	private void drawTrophyPanel(
-		GuiGraphicsExtractor g, Font font, int x, int y, int w, int h,
-		String title, String totalText, String subtitle, List<FishingSnapshot.TrophyRow> rows
-	) {
-		int cx = x + PAD;
-		int cy = y + PAD;
-		int innerW = w - PAD * 2;
+	private void drawSeaCreatureKills(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h) {
+		int rx = x + PAD;
+		int ry = y + PAD;
+		int rw = w - PAD * 2;
 		int bottom = y + h - PAD;
 
-		PvDraw.text(g, font, title, cx, cy, PvDraw.COLOR_MUTED);
-		PvDraw.textRight(g, font, totalText, cx + innerW, cy, PvDraw.COLOR_ACCENT);
-		cy += font.lineHeight + 2;
-		if (subtitle != null && !subtitle.isBlank()) {
-			PvDraw.text(g, font, trim(font, subtitle, innerW), cx, cy, PvDraw.COLOR_MUTED);
-			cy += font.lineHeight + 2;
+		BestiarySnapshot.CategoryProgress category = this.bestiary.category(SEA_CREATURE_CATEGORY);
+		List<BestiarySnapshot.FamilyProgress> rows = seaCreatureRows(category);
+		int families = category == null ? 0 : category.families().size();
+		PvDraw.text(g, font, "Sea creature kills", rx, ry, PvDraw.COLOR_MUTED);
+		if (families > 0) {
+			PvDraw.textRight(g, font, rows.size() + " / " + families + " killed", rx + rw, ry, PvDraw.COLOR_ACCENT);
 		}
+		this.zones.add(HoverZone.of(rx, ry, rw, font.lineHeight, List.of(
+			PvTooltip.Line.title("Sea creature kills", PvDraw.COLOR_TEXT),
+			PvTooltip.Line.divider(),
+			PvTooltip.Line.of("Kills per sea creature from the bestiary.", PvDraw.COLOR_MUTED),
+			PvTooltip.Line.of("The total on the left comes from player", PvDraw.COLOR_MUTED),
+			PvTooltip.Line.of("stats, so the two can differ.", PvDraw.COLOR_MUTED)
+		)));
+		ry += font.lineHeight + 4;
 
-		if (rows == null || rows.isEmpty()) {
-			PvDraw.textCentered(g, font, "No data",
-				x + w / 2, y + h / 2 - font.lineHeight / 2, PvDraw.COLOR_MUTED);
+		this.listX = rx;
+		this.listY = ry;
+		this.listW = rw;
+		this.listH = Math.max(0, bottom - ry);
+		if (rows.isEmpty()) {
+			this.listMaxScroll = 0;
+			String empty = category == null ? "No bestiary data" : "No sea creature kills";
+			PvDraw.textCentered(g, font, empty, rx + rw / 2, ry + this.listH / 2 - font.lineHeight / 2, PvDraw.COLOR_MUTED);
 			return;
 		}
+		this.listMaxScroll = Math.max(0, rows.size() * STAT_ROW - this.listH);
+		this.listScroll = Math.min(this.listScroll, this.listMaxScroll);
+		int textW = this.listMaxScroll > 0 ? rw - 5 : rw;
 
-		String summary = completionSummary(rows);
-		PvDraw.text(g, font, trim(font, summary, innerW), cx, cy, PvDraw.COLOR_MUTED);
-		cy += font.lineHeight + 2;
-		cy = panelSeparator(g, x, cy, w);
-
-		int cols = Math.max(1, Math.min(rows.size(), Math.max(1, (innerW + SLOT_GAP) / (SLOT + SLOT_GAP))));
-		int rowsN = (rows.size() + cols - 1) / cols;
-		int gridX = cx;
-		int gridY = cy;
-		int gridH = rowsN * SLOT + Math.max(0, rowsN - 1) * SLOT_GAP;
-		int fullRowW = cols * SLOT + Math.max(0, cols - 1) * SLOT_GAP;
-
+		g.enableScissor(rx, ry, rx + rw, ry + this.listH);
 		for (int i = 0; i < rows.size(); i++) {
-			FishingSnapshot.TrophyRow row = rows.get(i);
-			int col = i % cols;
-			int r = i / cols;
-			int rowStart = r * cols;
-			int rowCount = Math.min(cols, rows.size() - rowStart);
-			int rowOffset = 0;
-			if (rowCount < cols) {
-				int rowW = rowCount * SLOT + Math.max(0, rowCount - 1) * SLOT_GAP;
-				rowOffset = (fullRowW - rowW) / 2;
+			int rowY = ry + i * STAT_ROW - this.listScroll;
+			if (rowY + STAT_ROW <= ry || rowY >= ry + this.listH) {
+				continue;
 			}
-			int bx = gridX + rowOffset + col * (SLOT + SLOT_GAP);
-			int by = gridY + r * (SLOT + SLOT_GAP);
-			PvDraw.fill(g, bx, by, SLOT, SLOT, ITEM_SLOT_BG);
-
-			TrophyFishData.Tier best = row.counts().bestDiscovered();
-			if (best != null) {
-				ItemStack skull = SkyBlockItemFactory.trophySkullStack(row.id() + "_" + best.suffix());
-				if (skull.isEmpty()) {
-					skull = new ItemStack(Items.TROPICAL_FISH);
-				}
-				g.item(skull, bx, by);
-				drawTierBorder(g, bx, by, tierColor(best));
-			} else {
-				g.item(new ItemStack(Items.GRAY_DYE), bx, by);
+			BestiarySnapshot.FamilyProgress fam = rows.get(i);
+			String kills = FormatUtil.commas(fam.kills());
+			int nameMax = Math.max(8, textW - font.width(kills) - 6);
+			PvDraw.text(g, font, trim(font, fam.family().name(), nameMax), rx, rowY,
+				fam.maxed() ? COLOR_MAXED : PvDraw.COLOR_TEXT);
+			PvDraw.textRight(g, font, kills, rx + textW, rowY, PvDraw.COLOR_ACCENT);
+			int top = Math.max(rowY, ry);
+			int hz = Math.min(rowY + STAT_ROW, ry + this.listH) - top;
+			if (hz > 0) {
+				this.zones.add(HoverZone.of(rx, top, textW, hz, seaCreatureTip(fam)));
 			}
-			this.zones.add(HoverZone.trophy(bx, by, SLOT, SLOT, row));
 		}
+		g.disableScissor();
 
-		cy = gridY + gridH + 2;
-		cy = panelSeparator(g, x, cy, w);
-
-		int barRow = font.lineHeight + BAR_LABEL_GAP + PvDraw.BAR_HEIGHT;
-		int avail = Math.max(0, bottom - cy);
-		int gap = 3;
-		int needed = 4 * barRow + 3 * gap;
-		if (needed > avail && avail > 4 * barRow) {
-			gap = Math.max(1, (avail - 4 * barRow) / 3);
-		}
-		TrophyFishData.Tier[] tiers = {
-			TrophyFishData.Tier.BRONZE,
-			TrophyFishData.Tier.SILVER,
-			TrophyFishData.Tier.GOLD,
-			TrophyFishData.Tier.DIAMOND
-		};
-		for (TrophyFishData.Tier tier : tiers) {
-			if (cy + barRow > bottom) {
-				break;
-			}
-			int have = 0;
-			for (FishingSnapshot.TrophyRow row : rows) {
-				if (row.counts().discovered(tier)) {
-					have++;
-				}
-			}
-			int max = rows.size();
-			float fill = max <= 0 ? 0f : have / (float) max;
-			String label = tierTitle(tier);
-			String value = have + "/" + max;
-			PvDraw.labeledBar(g, font, label, value, fill, cx, cy, innerW, tierColor(tier), false);
-			this.zones.add(HoverZone.of(cx, cy, innerW, barRow, List.of(
-				PvTooltip.Line.of(label + " " + value, tierColor(tier)),
-				PvTooltip.Line.of(
-					fill >= 1f ? "Complete" : FormatUtil.oneDecimal(fill * 100f) + "% of species",
-					PvDraw.COLOR_MUTED
-				)
-			)));
-			cy += barRow + gap;
+		if (this.listMaxScroll > 0) {
+			int contentH = rows.size() * STAT_ROW;
+			int thumbH = Math.max(12, this.listH * this.listH / Math.max(1, contentH));
+			int thumbY = ry + (this.listH - thumbH) * this.listScroll / this.listMaxScroll;
+			PvDraw.fill(g, rx + rw - 2, thumbY, 2, thumbH, PvDraw.COLOR_BORDER);
 		}
 	}
 
-	private static float easeInOutCubic(float t) {
-		float x = Math.max(0F, Math.min(1F, t));
-		return x < 0.5F
-			? 4F * x * x * x
-			: 1F - (float) Math.pow(-2F * x + 2F, 3) / 2F;
-	}
-
-	private static int panelSeparator(GuiGraphicsExtractor g, int panelX, int y, int panelW) {
-		int lineInset = PAD + 4;
-		int lineW = Math.max(0, panelW - lineInset * 2);
-		int lineY = y + 2;
-		if (lineW > 0) {
-			PvDraw.fill(g, panelX + lineInset, lineY, lineW, 1, 0x33FFFFFF);
+	private static List<PvTooltip.Line> seaCreatureTip(BestiarySnapshot.FamilyProgress fam) {
+		List<PvTooltip.Line> tip = new ArrayList<>();
+		tip.add(PvTooltip.Line.title(fam.family().name(), PvDraw.COLOR_TEXT));
+		tip.add(PvTooltip.Line.divider());
+		tip.add(PvTooltip.Line.row("Kills", PvDraw.COLOR_MUTED, FormatUtil.commas(fam.kills()), PvDraw.COLOR_ACCENT));
+		tip.add(PvTooltip.Line.row("Deaths", PvDraw.COLOR_MUTED, FormatUtil.commas(fam.deaths()), PvDraw.COLOR_TEXT));
+		if (fam.tiersMax() > 0) {
+			String tier = fam.maxed() ? "Maxed" : fam.tier() + " / " + fam.tiersMax();
+			tip.add(PvTooltip.Line.row("Bestiary tier", PvDraw.COLOR_MUTED, tier,
+				fam.maxed() ? COLOR_MAXED : PvDraw.COLOR_TEXT));
 		}
-		return lineY + 1 + 4;
+		return tip;
 	}
 
-	private static void drawTierBorder(GuiGraphicsExtractor g, int bx, int by, int color) {
+	/** Sea creature families with at least one kill, most kills first. */
+	static List<BestiarySnapshot.FamilyProgress> seaCreatureRows(BestiarySnapshot.CategoryProgress category) {
+		if (category == null) {
+			return List.of();
+		}
+		List<BestiarySnapshot.FamilyProgress> out = new ArrayList<>();
+		for (BestiarySnapshot.FamilyProgress fam : category.families()) {
+			if (fam.kills() > 0L) {
+				out.add(fam);
+			}
+		}
+		out.sort(Comparator.comparingLong(BestiarySnapshot.FamilyProgress::kills).reversed()
+			.thenComparing(fam -> fam.family().name(), String.CASE_INSENSITIVE_ORDER));
+		return out;
+	}
+
+	static void drawTierBorder(GuiGraphicsExtractor g, int bx, int by, int color) {
 		int t = TIER_BORDER;
 		PvDraw.fill(g, bx, by, SLOT, t, color);
 		PvDraw.fill(g, bx, by + SLOT - t, SLOT, t, color);
@@ -348,31 +257,7 @@ public final class FishingPage {
 		PvDraw.fill(g, bx + SLOT - t, by + t, t, SLOT - t * 2, color);
 	}
 
-	private static String completionSummary(List<FishingSnapshot.TrophyRow> rows) {
-		int n = rows.size();
-		int diamond = 0;
-		int discovered = 0;
-		int tiers = 0;
-		boolean exact = true;
-		for (FishingSnapshot.TrophyRow row : rows) {
-			if (row.counts().bestRank() >= 4) {
-				diamond++;
-			}
-			if (row.anyDiscovered()) {
-				discovered++;
-			}
-			tiers += row.counts().discoveredTier();
-			exact = exact && row.countsExact();
-		}
-		int tierMax = n * 4;
-		int pct = tierMax <= 0 ? 0 : Math.round(100f * tiers / tierMax);
-		if (exact) {
-			return diamond + "/" + n + " diamond · " + tiers + "/" + tierMax + " tiers (" + pct + "%)";
-		}
-		return discovered + "/" + n + " found · " + tiers + "/" + tierMax + " tiers (" + pct + "%)";
-	}
-
-	private static List<FishingSnapshot.TrophyRow> sortedRows(List<FishingSnapshot.TrophyRow> rows) {
+	static List<FishingSnapshot.TrophyRow> sortedRows(List<FishingSnapshot.TrophyRow> rows) {
 		if (rows == null || rows.isEmpty()) {
 			return List.of();
 		}
@@ -385,7 +270,7 @@ public final class FishingPage {
 		return out;
 	}
 
-	private static void drawTrophyStatTooltip(
+	static void drawTrophyStatTooltip(
 		GuiGraphicsExtractor g, Font font, FishingSnapshot.TrophyRow row,
 		int mouseX, int mouseY, int screenW, int screenH
 	) {
@@ -416,7 +301,7 @@ public final class FishingPage {
 			}
 		}
 
-		// Only show obtain/howto text when NEU item lore has it — do not invent.
+		// Only show obtain/howto text when NEU item lore has it.
 		String howto = trophyHowtoFromNeu(row);
 
 		int contentW = Math.max(font.width(PvDraw.styled(title, NAME_COLOR, true)), font.width(totalLabel) + 10 + font.width(PvDraw.styled(totalValue, TIP_TOTAL_VALUE, true)));
@@ -487,7 +372,7 @@ public final class FishingPage {
 
 	/**
 	 * First NEU lore line for the best/bronze trophy item when it looks like obtain text.
-	 * Returns null when unavailable — do not invent howto copy.
+	 * Returns null when unavailable, so no howto copy is invented.
 	 */
 	private static String trophyHowtoFromNeu(FishingSnapshot.TrophyRow row) {
 		if (row == null || row.id() == null || row.id().isBlank()) {
@@ -500,31 +385,16 @@ public final class FishingPage {
 		if (neu == null || !neu.has("lore") || !neu.get("lore").isJsonArray()) {
 			return null;
 		}
-		JsonArray lore = neu.getAsJsonArray("lore");
-		for (JsonElement el : lore) {
-			if (el == null || !el.isJsonPrimitive()) {
-				continue;
+		List<String> lore = new ArrayList<>();
+		for (JsonElement el : neu.getAsJsonArray("lore")) {
+			if (el != null && el.isJsonPrimitive()) {
+				lore.add(el.getAsString());
 			}
-			String raw = el.getAsString();
-			if (raw == null || raw.isBlank()) {
-				continue;
-			}
-			String plain = raw.replaceAll("§.", "").trim();
-			if (plain.isBlank()) {
-				continue;
-			}
-			String lower = plain.toLowerCase(Locale.ROOT);
-			if (lower.startsWith("caught") || lower.contains("near ") || lower.contains("found ")
-				|| lower.contains("obtain") || lower.startsWith("can be") || lower.contains("fished")) {
-				return plain;
-			}
-			// First non-empty lore line is usually the obtain hint for trophy items.
-			return plain;
 		}
-		return null;
+		return TrophyFishData.howtoFromLore(lore);
 	}
 
-	private static String tierTitle(TrophyFishData.Tier tier) {
+	static String tierTitle(TrophyFishData.Tier tier) {
 		return switch (tier) {
 			case DIAMOND -> "Diamond";
 			case GOLD -> "Gold";
@@ -533,7 +403,7 @@ public final class FishingPage {
 		};
 	}
 
-	private static int tierColor(TrophyFishData.Tier tier) {
+	static int tierColor(TrophyFishData.Tier tier) {
 		return switch (tier) {
 			case DIAMOND -> TIER_DIAMOND;
 			case GOLD -> TIER_GOLD;
@@ -542,7 +412,7 @@ public final class FishingPage {
 		};
 	}
 
-	private static String prettyLast(String raw) {
+	static String prettyLast(String raw) {
 		if (raw == null || raw.isBlank()) {
 			return "";
 		}
@@ -609,7 +479,7 @@ public final class FishingPage {
 		return trim(font, value, max);
 	}
 
-	private static String trim(Font font, String text, int maxW) {
+	static String trim(Font font, String text, int maxW) {
 		if (text == null) {
 			return "";
 		}
@@ -635,23 +505,15 @@ public final class FishingPage {
 	private void drawHover(GuiGraphicsExtractor g, Font font, int mx, int my, int screenW, int screenH) {
 		for (HoverZone zone : this.zones) {
 			if (mx >= zone.x && mx < zone.x + zone.w && my >= zone.y && my < zone.y + zone.h) {
-				if (zone.trophy != null) {
-					drawTrophyStatTooltip(g, font, zone.trophy, mx, my, screenW, screenH);
-				} else {
-					PvTooltip.drawStyled(g, font, zone.lines, mx, my, screenW, screenH);
-				}
+				PvTooltip.drawStyled(g, font, zone.lines, mx, my, screenW, screenH);
 				return;
 			}
 		}
 	}
 
-	private record HoverZone(int x, int y, int w, int h, List<PvTooltip.Line> lines, FishingSnapshot.TrophyRow trophy) {
+	private record HoverZone(int x, int y, int w, int h, List<PvTooltip.Line> lines) {
 		static HoverZone of(int x, int y, int w, int h, List<PvTooltip.Line> lines) {
-			return new HoverZone(x, y, w, h, lines, null);
-		}
-
-		static HoverZone trophy(int x, int y, int w, int h, FishingSnapshot.TrophyRow row) {
-			return new HoverZone(x, y, w, h, List.of(), row);
+			return new HoverZone(x, y, w, h, lines);
 		}
 	}
 }

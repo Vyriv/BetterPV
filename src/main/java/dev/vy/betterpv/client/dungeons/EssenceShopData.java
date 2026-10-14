@@ -2,10 +2,16 @@ package dev.vy.betterpv.client.dungeons;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import dev.vy.betterpv.BetterPV;
 import dev.vy.betterpv.client.data.DungeonSnapshot;
 import dev.vy.betterpv.client.data.Leveling;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class EssenceShopData {
 	private record Def(String id, String name, int maxLevel, String... aliasIds) {
@@ -17,7 +23,8 @@ public final class EssenceShopData {
 		new Def("permanent_speed", "Speed", 2),
 		new Def("permanent_intelligence", "Intelligence", 5),
 		new Def("permanent_strength", "Strength", 5),
-		new Def("forbidden_blessing", "Blessing", 10)
+		new Def("forbidden_blessing", "Blessing", 10),
+		new Def("dungeonbreaker_secrets", "Echoes of the Lost", 5)
 	);
 
 	private static final List<Def> UNDEAD = List.of(
@@ -117,8 +124,13 @@ public final class EssenceShopData {
 		new Def("deep_diver", "Deep Diver", 10),
 		new Def("quickdraw", "Quickdraw", 10),
 		new Def("amateur_hour", "Amateur Hour", 10),
-		new Def("sparkling_specialist", "Sparkling Specialist", 1)
+		new Def("sparkling_specialist", "Sparkling Specialist", 1),
+		new Def("eagles_advantage", "Eagle's Advantage", 5)
 	);
+
+	private static final Set<String> MAPPED_KEYS = mappedKeys(
+		WITHER, UNDEAD, GOLD, CRIMSON, FOREST, FOSSIL, DIAMOND, SPIDER, DRAGON, ICE, SAFARI);
+	private static final Set<String> LOGGED_UNMAPPED = ConcurrentHashMap.newKeySet();
 
 	private EssenceShopData() {
 	}
@@ -164,7 +176,49 @@ public final class EssenceShopData {
 	}
 
 	public static DungeonSnapshot.EssenceShop safari(JsonObject member) {
+		logUnmappedPerks(member);
 		return shop("safari", "Safari", "SAFARI", "ESSENCE_SAFARI", SAFARI, member);
+	}
+
+	/**
+	 * Perk keys present on the profile that no shop reads, with their raw values. NEU's perk ids are
+	 * hand-authored, so a new perk can be stored by Hypixel under a different key (or format).
+	 */
+	static Map<String, String> unmappedPerks(JsonObject member) {
+		Map<String, String> out = new TreeMap<>();
+		JsonObject perks = perks(member);
+		if (perks == null) {
+			return out;
+		}
+		for (Map.Entry<String, JsonElement> entry : perks.entrySet()) {
+			if (!MAPPED_KEYS.contains(entry.getKey())) {
+				out.put(entry.getKey(), String.valueOf(entry.getValue()));
+			}
+		}
+		return out;
+	}
+
+	// Called once per profile load; logs each unmapped key once per session so the real ids show up in latest.log.
+	private static void logUnmappedPerks(JsonObject member) {
+		Map<String, String> unmapped = unmappedPerks(member);
+		unmapped.keySet().removeIf(key -> !LOGGED_UNMAPPED.add(key));
+		if (!unmapped.isEmpty()) {
+			BetterPV.LOGGER.info("[BetterPV] Unmapped essence perk keys: {}", unmapped);
+		}
+	}
+
+	@SafeVarargs
+	private static Set<String> mappedKeys(List<Def>... shops) {
+		Set<String> keys = new HashSet<>();
+		for (List<Def> shop : shops) {
+			for (Def def : shop) {
+				keys.add(def.id());
+				if (def.aliasIds() != null) {
+					keys.addAll(List.of(def.aliasIds()));
+				}
+			}
+		}
+		return Set.copyOf(keys);
 	}
 
 	/** Raw essence balance from {@code currencies.essence.<TYPE>.current}. */

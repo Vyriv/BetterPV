@@ -234,15 +234,17 @@ public final class BestiarySnapshot {
 			killSum += kills.getOrDefault(mobId, 0L);
 			deathSum += deaths.getOrDefault(mobId, 0L);
 		}
-		if (fam.cap() > 0) {
-			killSum = Math.min(killSum, fam.cap());
-		}
-		List<Integer> ladder = BestiaryData.bracket(fam.bracketType(), fam.bracket());
+		return progressFor(fam, killSum, deathSum, BestiaryData.bracket(fam.bracketType(), fam.bracket()));
+	}
+
+	/** {@code killSum} stays the real total; only tier math is clamped to the family cap. */
+	static FamilyProgress progressFor(BestiaryData.Family fam, long killSum, long deathSum, List<Integer> ladder) {
+		long tierKills = fam.cap() > 0 ? Math.min(killSum, fam.cap()) : killSum;
 		// NEU brackets are cumulative kill thresholds. Family cap = kills for that family's max tier.
 		int tiersMax = tiersMaxFor(ladder, fam.cap());
 		int tier = 0;
 		for (int i = 0; i < tiersMax; i++) {
-			if (killSum >= ladder.get(i)) {
+			if (tierKills >= ladder.get(i)) {
 				tier = i + 1;
 			} else {
 				break;
@@ -254,7 +256,7 @@ public final class BestiarySnapshot {
 		if (!maxed && tier < ladder.size()) {
 			long prev = tier > 0 ? ladder.get(tier - 1) : 0L;
 			long nextThresh = ladder.get(tier);
-			into = Math.max(0L, killSum - prev);
+			into = Math.max(0L, tierKills - prev);
 			next = Math.max(0L, nextThresh - prev);
 		}
 		return new FamilyProgress(fam, killSum, deathSum, tier, tiersMax, into, next, maxed);

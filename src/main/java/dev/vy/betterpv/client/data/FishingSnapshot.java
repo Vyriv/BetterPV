@@ -93,6 +93,8 @@ public final class FishingSnapshot {
 	private final long itemsFishedOutstanding;
 	private final long seaCreatureKills;
 	private final long festivalSharksKilled;
+	/** -1 when the profile has no Dolphin milestone field. */
+	private final long dolphinMilestone;
 
 	private final long trophyFishTotal;
 	private final String trophyFishLastCaught;
@@ -104,7 +106,7 @@ public final class FishingSnapshot {
 		int fishingLevel, float fishingFill, boolean fishingMaxed, String fishingHover,
 		long itemsFishedTotal, long itemsFishedNormal, long itemsFishedTreasure, long itemsFishedLargeTreasure,
 		long itemsFishedTrophyFish, long itemsFishedTrophyFrog, long itemsFishedOutstanding,
-		long seaCreatureKills, long festivalSharksKilled,
+		long seaCreatureKills, long festivalSharksKilled, long dolphinMilestone,
 		long trophyFishTotal, String trophyFishLastCaught,
 		List<TrophyRow> trophyFish, List<TrophyRow> trophyFrogs,
 		long peltCount
@@ -122,6 +124,7 @@ public final class FishingSnapshot {
 		this.itemsFishedOutstanding = Math.max(0L, itemsFishedOutstanding);
 		this.seaCreatureKills = Math.max(0L, seaCreatureKills);
 		this.festivalSharksKilled = Math.max(0L, festivalSharksKilled);
+		this.dolphinMilestone = Math.max(-1L, dolphinMilestone);
 		this.trophyFishTotal = Math.max(0L, trophyFishTotal);
 		this.trophyFishLastCaught = trophyFishLastCaught == null ? "" : trophyFishLastCaught;
 		this.trophyFish = List.copyOf(trophyFish == null ? List.of() : trophyFish);
@@ -133,7 +136,7 @@ public final class FishingSnapshot {
 		return new FishingSnapshot(
 			0, 0f, false, "",
 			0, 0, 0, 0, 0, 0, 0,
-			0, 0,
+			0, 0, -1L,
 			0, "", List.of(), List.of(),
 			0L
 		);
@@ -153,6 +156,10 @@ public final class FishingSnapshot {
 		JsonObject stats = Leveling.obj(member.get("player_stats"));
 		JsonObject fished = Leveling.obj(stats == null ? null : stats.get("items_fished"));
 		JsonObject leveling = Leveling.obj(member.get("leveling"));
+		JsonObject pets = Leveling.obj(stats == null ? null : stats.get("pets"));
+		JsonObject milestones = Leveling.obj(pets == null ? null : pets.get("milestone"));
+		long dolphin = milestones != null && milestones.has("sea_creatures_killed")
+			? longOf(milestones, "sea_creatures_killed") : -1L;
 
 		JsonObject trophyRoot = Leveling.obj(member.get("trophy_fish"));
 		long totalCaught = longOf(trophyRoot, "total_caught");
@@ -181,6 +188,7 @@ public final class FishingSnapshot {
 			longOf(fished, "outstanding"),
 			longOf(stats, "sea_creature_kills"),
 			longOf(leveling, "fishing_festival_sharks_killed"),
+			dolphin,
 			totalCaught, last, fishRows, frogRows,
 			longOf(trapper, "pelt_count")
 		);
@@ -267,6 +275,7 @@ public final class FishingSnapshot {
 	public long itemsFishedOutstanding() { return itemsFishedOutstanding; }
 	public long seaCreatureKills() { return seaCreatureKills; }
 	public long festivalSharksKilled() { return festivalSharksKilled; }
+	public long dolphinMilestone() { return dolphinMilestone; }
 	public long trophyFishTotal() { return trophyFishTotal; }
 	public String trophyFishLastCaught() { return trophyFishLastCaught; }
 	public List<TrophyRow> trophyFish() { return trophyFish; }

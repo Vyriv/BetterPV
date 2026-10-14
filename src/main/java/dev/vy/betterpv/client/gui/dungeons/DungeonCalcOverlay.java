@@ -219,9 +219,9 @@ public final class DungeonCalcOverlay {
 				PvTooltip.Span.of(" runs (S+ est.)", PvDraw.COLOR_MUTED)
 			)));
 			if (view.timedOut()) {
-				lines.add(PvTooltip.Line.of("Timed out (hit run cap).", COLOR_WARN));
+				lines.add(PvTooltip.Line.of("Hit the run cap", COLOR_WARN));
 			}
-			lines.add(PvTooltip.Line.of("Selected runs per class:", PvDraw.COLOR_MUTED));
+			lines.add(PvTooltip.Line.of("Runs per class:", PvDraw.COLOR_MUTED));
 			lines.add(PvTooltip.Line.blank());
 			for (ClassBlock block : view.classBlocks()) {
 				int nameColor = classColor(block.classId());
@@ -255,9 +255,9 @@ public final class DungeonCalcOverlay {
 		lines.add(PvTooltip.Line.blank());
 		if (view.floors().isEmpty()) {
 			if (view.xpNeeded() <= 0F) {
-				lines.add(PvTooltip.Line.of("Already at or above target.", COLOR_DONE));
+				lines.add(PvTooltip.Line.of("Already at target", COLOR_DONE));
 			} else {
-				lines.add(PvTooltip.Line.of("No runnable floors found.", COLOR_WARN));
+				lines.add(PvTooltip.Line.of("No floors available", COLOR_WARN));
 			}
 			return lines;
 		}

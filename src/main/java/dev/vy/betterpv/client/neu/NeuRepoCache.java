@@ -346,6 +346,44 @@ public final class NeuRepoCache {
 		return ITEMS.get(internalName.toUpperCase(Locale.ROOT));
 	}
 
+	private static volatile Map<String, List<String>> displayNameIndex = Map.of();
+	private static volatile int displayNameIndexSize = -1;
+
+	/**
+	 * Item id whose NEU display name (formatting stripped) matches exactly, ignoring case.
+	 * Null when unknown or when several items share the name.
+	 */
+	public static String idForDisplayName(String name) {
+		List<String> ids = idsForDisplayName(name);
+		return ids.size() == 1 ? ids.get(0) : null;
+	}
+
+	/** Every item id sharing that NEU display name (formatting stripped, case ignored), sorted. */
+	public static List<String> idsForDisplayName(String name) {
+		if (name == null || name.isBlank()) {
+			return List.of();
+		}
+		int size = ITEMS.size();
+		if (size != displayNameIndexSize) {
+			Map<String, List<String>> index = new java.util.HashMap<>();
+			for (var entry : ITEMS.entrySet()) {
+				JsonObject item = entry.getValue();
+				if (item == null || !item.has("displayname") || !item.get("displayname").isJsonPrimitive()) {
+					continue;
+				}
+				String key = item.get("displayname").getAsString()
+					.replaceAll("\u00a7.", "").trim().toLowerCase(Locale.ROOT);
+				if (!key.isEmpty()) {
+					index.computeIfAbsent(key, k -> new java.util.ArrayList<>()).add(entry.getKey());
+				}
+			}
+			index.replaceAll((k, v) -> v.stream().sorted().toList());
+			displayNameIndex = index;
+			displayNameIndexSize = size;
+		}
+		return displayNameIndex.getOrDefault(name.trim().toLowerCase(Locale.ROOT), List.of());
+	}
+
 	/** Prefetch many ids (off-thread). Safe to call from API/parse threads. */
 	public static void prefetch(Collection<String> ids) {
 		if (ids == null || ids.isEmpty()) {

@@ -28,6 +28,7 @@ import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.ToIntFunction;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.core.component.DataComponents;
@@ -46,11 +47,37 @@ public final class KuudraPage {
 	private int kuudraW;
 	private int kuudraH;
 
+	private final KuudraChecklistColumn itemsColumn = new KuudraChecklistColumn();
+	private final KuudraChecklistColumn armourColumn = new KuudraChecklistColumn();
+	private boolean showingChecklist;
+	private int buttonX;
+	private int buttonY;
+	private int buttonW;
+	private int buttonH;
+
 	public void resetScroll() {
 		this.kuudraScroll = 0;
+		this.itemsColumn.resetScroll();
+		this.armourColumn.resetScroll();
+	}
+
+	public boolean mouseClicked(double mouseX, double mouseY) {
+		if (this.buttonW <= 0) {
+			return false;
+		}
+		if (mouseX >= this.buttonX && mouseX < this.buttonX + this.buttonW
+			&& mouseY >= this.buttonY && mouseY < this.buttonY + this.buttonH) {
+			this.showingChecklist = !this.showingChecklist;
+			return true;
+		}
+		return false;
 	}
 
 	public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
+		if (this.showingChecklist) {
+			return this.itemsColumn.mouseScrolled(mouseX, mouseY, scrollY)
+				|| this.armourColumn.mouseScrolled(mouseX, mouseY, scrollY);
+		}
 		if (this.kuudraMaxScroll > 0
 			&& mouseX >= this.kuudraX && mouseX < this.kuudraX + this.kuudraW
 			&& mouseY >= this.kuudraY && mouseY < this.kuudraY + this.kuudraH) {
@@ -69,29 +96,111 @@ public final class KuudraPage {
 		int x, int y, int w, int h, int mouseX, int mouseY, int screenW, int screenH
 	) {
 		this.zones.clear();
+		if (this.showingChecklist) {
+			drawChecklist(g, font, snapshot.kuudraCard(), x, y, w, h, mouseX, mouseY);
+			return;
+		}
 		int leftW = Math.max(140, w * 40 / 100);
 		int rightW = w - leftW - GAP;
 		PvDraw.innerPanel(g, x, y, leftW, h);
 		PvDraw.innerPanel(g, x + leftW + GAP, y, rightW, h);
-		drawKuudraTiers(g, font, snapshot, x, y, leftW, h);
+		drawKuudraTiers(g, font, snapshot, x, y, leftW, h, mouseX, mouseY);
 		drawKuudraCard(g, font, snapshot, x + leftW + GAP, y, rightW, h, mouseX, mouseY);
+	}
+
+	private void drawChecklist(
+		GuiGraphicsExtractor g, Font font, CrimsonKuudraCard card, int x, int y, int w, int h, int mx, int my
+	) {
+		int headerH = 22;
+		PvDraw.innerPanel(g, x, y, w, headerH);
+		String title = "Kuudra Gear Checklist";
+		int textY = y + (headerH - font.lineHeight) / 2 + 1;
+		PvDraw.text(g, font, title, x + PAD, textY, KUUDRA_COLOR);
+		String back = "\u2190 Back to Overview";
+		int bw = font.width(back) + 14;
+		int bx = x + w - PAD - bw;
+		drawViewButton(g, font, back, bx, y + 3, bw, headerH - 6, mx, my);
+		int legendX = x + PAD + font.width(title) + LEGEND_GAP;
+		for (LegendPart part : headerLegend(bx - LEGEND_GAP - legendX, font::width)) {
+			PvDraw.text(g, font, part.text(), legendX, textY, part.color());
+			legendX += font.width(part.text());
+		}
+		int top = y + headerH + GAP;
+		int colH = h - headerH - GAP;
+		int colW = (w - GAP) / 2;
+		this.itemsColumn.render(g, font, x, top, colW, colH, "Important Items", card.gear().items(), mx, my, this.zones);
+		this.armourColumn.render(g, font, x + colW + GAP, top, w - colW - GAP, colH, "Armour", card.gear().armour(),
+			mx, my, this.zones);
+	}
+
+	private static final int LEGEND_GAP = 12;
+
+	record LegendPart(String text, int color) {
+	}
+
+	private static final List<List<LegendPart>> LEGENDS = List.of(
+		legend("\u2714 Good", "! Upgrade", "\u2718 Missing", "   "),
+		legend("\u2714 Good", "! Upgrade", "\u2718 Missing", "  "),
+		legend("\u2714 OK", "! Upg", "\u2718 Miss", " "),
+		legend("\u2714", "!", "\u2718", " ")
+	);
+
+	private static List<LegendPart> legend(String good, String upgrade, String missing, String gap) {
+		return List.of(
+			new LegendPart(good, KuudraChecklistColumn.COLOR_OK), new LegendPart(gap, 0),
+			new LegendPart(upgrade, KuudraChecklistColumn.COLOR_UPGRADE), new LegendPart(gap, 0),
+			new LegendPart(missing, KuudraChecklistColumn.COLOR_MISSING));
+	}
+
+	/** Widest legend that fits beside the title, shortening labels instead of clipping; empty if nothing fits. */
+	static List<LegendPart> headerLegend(int available, ToIntFunction<String> width) {
+		for (List<LegendPart> parts : LEGENDS) {
+			int total = 0;
+			for (LegendPart part : parts) {
+				total += width.applyAsInt(part.text());
+			}
+			if (total <= available) {
+				return parts;
+			}
+		}
+		return List.of();
+	}
+
+	private void drawViewButton(
+		GuiGraphicsExtractor g, Font font, String label, int bx, int by, int bw, int bh, int mx, int my
+	) {
+		this.buttonX = bx;
+		this.buttonY = by;
+		this.buttonW = bw;
+		this.buttonH = bh;
+		boolean hovered = mx >= bx && mx < bx + bw && my >= by && my < by + bh;
+		PvDraw.fill(g, bx, by, bw, bh, hovered ? 0x40FF5555 : 0x26FF5555);
+		g.outline(bx, by, bw, bh, hovered ? KUUDRA_COLOR : 0xFF8A3A3A);
+		PvDraw.textCentered(g, font, label, bx + bw / 2, by + (bh - font.lineHeight) / 2 + 1, PvDraw.COLOR_WHITE);
 	}
 
 	public void renderTooltip(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH) {
 		drawHover(g, font, this.zones, mouseX, mouseY, screenW, screenH);
 	}
 
-	private void drawKuudraTiers(GuiGraphicsExtractor g, Font font, CrimsonSnapshot snapshot, int x, int y, int w, int h) {
+	private void drawKuudraTiers(
+		GuiGraphicsExtractor g, Font font, CrimsonSnapshot snapshot, int x, int y, int w, int h, int mx, int my
+	) {
 		int lx = x + PAD;
 		int ly = y + PAD;
 		int lw = w - PAD * 2;
+		int buttonH = font.lineHeight + 9;
+		int buttonY = y + h - PAD - buttonH;
+		drawViewButton(g, font, "Gear Checklist \u2192", lx, buttonY, lw, buttonH, mx, my);
+		int tiersBottom = buttonY - 4;
 
 		PvDraw.text(g, font, "Kuudra", lx, ly, PvDraw.COLOR_MUTED);
 		ly += font.lineHeight + 4;
 		ly = sectionSeparator(g, font, x, ly, w);
 
+		int tierGap = tierGap(tiersBottom - ly, CrimsonSnapshot.KuudraTier.values().length);
 		for (CrimsonSnapshot.KuudraTier tier : CrimsonSnapshot.KuudraTier.values()) {
-			if (ly + STAT_ROW * 2 + 6 > y + h - PAD) {
+			if (ly + STAT_ROW * 2 > tiersBottom) {
 				break;
 			}
 			CrimsonSnapshot.KuudraTierStats stats = snapshot.kuudra(tier);
@@ -103,8 +212,13 @@ public final class KuudraPage {
 			PvDraw.textRight(g, font,
 				stats.highestWave() > 0 ? String.valueOf(stats.highestWave()) : "-",
 				lx + lw, ly, PvDraw.COLOR_TEXT);
-			ly += STAT_ROW + 6;
+			ly += STAT_ROW + tierGap;
 		}
+	}
+
+	/** Gap between tier blocks, shrinking so every tier still fits above the checklist button. */
+	static int tierGap(int available, int tiers) {
+		return Math.max(0, Math.min(6, available / Math.max(1, tiers) - STAT_ROW * 2));
 	}
 
 	private void drawKuudraCard(
@@ -283,27 +397,8 @@ public final class KuudraPage {
 		String label, String displayName, boolean owned, List<String> details, List<String> lore
 	) {
 		if (lore != null && !lore.isEmpty()) {
-			List<Component> tip = new ArrayList<>();
 			String title = displayName != null && !displayName.isBlank() ? displayName : label;
-			tip.add(SkyBlockItemFactory.legacyLine(title == null ? "" : title));
-			String titlePlain = stripFormatting(title);
-			int start = 0;
-			if (!lore.isEmpty()) {
-				String firstPlain = stripFormatting(lore.get(0));
-				if (!titlePlain.isBlank() && !firstPlain.isBlank()
-					&& (firstPlain.equalsIgnoreCase(titlePlain)
-					|| titlePlain.regionMatches(true, 0, firstPlain, 0, Math.min(titlePlain.length(), firstPlain.length()))
-					|| firstPlain.regionMatches(true, 0, titlePlain, 0, Math.min(titlePlain.length(), firstPlain.length())))) {
-					start = 1;
-				}
-			}
-			for (int i = start; i < lore.size(); i++) {
-				String loreLine = lore.get(i);
-				tip.add(loreLine == null || loreLine.isBlank()
-					? Component.empty()
-					: SkyBlockItemFactory.legacyLine(loreLine));
-			}
-			this.zones.add(HoverZone.ofComponents(x, y, w, h, tip));
+			this.zones.add(HoverZone.ofComponents(x, y, w, h, loreComponents(title, lore)));
 			return;
 		}
 		List<PvTooltip.Line> tip = new ArrayList<>();
@@ -314,5 +409,28 @@ public final class KuudraPage {
 			tip.add(PvTooltip.Line.of(d, PvDraw.COLOR_MUTED));
 		}
 		this.zones.add(HoverZone.of(x, y, w, h, tip));
+	}
+
+	static List<Component> loreComponents(String title, List<String> lore) {
+		List<Component> tip = new ArrayList<>();
+		tip.add(SkyBlockItemFactory.legacyLine(title == null ? "" : title));
+		String titlePlain = stripFormatting(title);
+		int start = 0;
+		if (!lore.isEmpty()) {
+			String firstPlain = stripFormatting(lore.get(0));
+			if (!titlePlain.isBlank() && !firstPlain.isBlank()
+				&& (firstPlain.equalsIgnoreCase(titlePlain)
+				|| titlePlain.regionMatches(true, 0, firstPlain, 0, Math.min(titlePlain.length(), firstPlain.length()))
+				|| firstPlain.regionMatches(true, 0, titlePlain, 0, Math.min(titlePlain.length(), firstPlain.length())))) {
+				start = 1;
+			}
+		}
+		for (int i = start; i < lore.size(); i++) {
+			String loreLine = lore.get(i);
+			tip.add(loreLine == null || loreLine.isBlank()
+				? Component.empty()
+				: SkyBlockItemFactory.legacyLine(loreLine));
+		}
+		return tip;
 	}
 }

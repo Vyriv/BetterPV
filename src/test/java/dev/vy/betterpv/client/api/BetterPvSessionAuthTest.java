@@ -139,6 +139,135 @@ public final class BetterPvSessionAuthTest {
 		System.out.println("BetterPV session auth regression checks passed");
 	}
 
+	@org.junit.Test
+	public void sessionRenewalRegression() throws Exception {
+		var previousTransport = BetterPvSessionAuth.renewTransport;
+		var previousSigner = BetterPvSessionAuth.requestSigner;
+		var sent = new java.util.concurrent.CopyOnWriteArrayList<HttpRequest>();
+		var reply = new java.util.concurrent.atomic.AtomicReference<BetterPvSessionAuth.RenewReply>();
+		var beforeReply = new java.util.concurrent.atomic.AtomicReference<Runnable>(() -> {});
+		resetRenewalState();
+		try {
+			BetterPvSessionAuth.requestSigner = transcript -> {
+				check(transcript.startsWith("betterpv-request-v2\nPOST\n/hypixel/auth/v2/refresh\n"),
+					"Refresh proof signs the POST refresh path");
+				return "signature";
+			};
+			BetterPvSessionAuth.renewTransport = request -> {
+				sent.add(request);
+				beforeReply.get().run();
+				if (reply.get() == null) throw new java.io.IOException("offline");
+				return reply.get();
+			};
+			// Holds the Mojang path closed: renewal must never depend on it.
+			method("pauseAuth", BetterPvSessionAuth.Failure.class, String.class)
+				.invoke(null, BetterPvSessionAuth.Failure.AUTH_COOLDOWN, "test cooldown");
+			long mojangDeadline = (long) get("nextMojangAuthAttemptAtMillis");
+
+			installRenewable("jwt-1");
+			reply.set(renewed("jwt-2", 300, 86_000));
+			check(refresh().equals(Optional.of("jwt-2")), "Renewal returns the rotated JWT");
+			HttpRequest request = sent.get(0);
+			check(request.method().equals("POST") && request.uri().getPath().equals("/hypixel/auth/v2/refresh"),
+				"Renewal posts to the refresh route");
+			check(request.headers().firstValue("Authorization").orElse("").equals("Bearer jwt-1"),
+				"Renewal presents the current JWT");
+			check(request.headers().firstValue("X-BetterPV-Signature").isPresent()
+				&& request.headers().firstValue("X-BetterPV-Nonce").isPresent(), "Renewal carries a request proof");
+			check(get("cachedJwt").equals("jwt-2"), "Rotated JWT installed");
+			long deadline = (long) get("sessionDeadlineMillis");
+			check(deadline > System.currentTimeMillis() + 85_000_000L, "Session deadline follows the API");
+			check(((ScheduledFuture<?>) get("pendingRefresh")).getDelay(TimeUnit.MILLISECONDS) > 235_000L,
+				"Next renewal scheduled before the new JWT expires");
+			check((long) get("nextMojangAuthAttemptAtMillis") == mojangDeadline, "Renewal never touches Mojang");
+
+			for (BetterPvSessionAuth.RenewReply transient_ : new BetterPvSessionAuth.RenewReply[] {
+				new BetterPvSessionAuth.RenewReply(503, "{\"cause\":\"unavailable\"}", "application"), null}) {
+				installRenewable("jwt-3");
+				reply.set(transient_);
+				check(refresh().equals(Optional.of("jwt-3")), "Transient refresh failure keeps the valid JWT");
+				check(get("cachedJwt").equals("jwt-3"), "Transient failure does not invalidate");
+				check(((ScheduledFuture<?>) get("pendingRefresh")).getDelay(TimeUnit.MILLISECONDS) <= 10_000L,
+					"Transient failure retries soon");
+			}
+
+			installRenewable("jwt-4");
+			reply.set(new BetterPvSessionAuth.RenewReply(401, "{\"cause\":\"session_reauth_required\"}", "application"));
+			check(refresh().isEmpty(), "Proof fallback stays behind the Mojang cooldown");
+			check(get("cachedJwt").equals("jwt-4") && (long) get("sessionDeadlineMillis") == 0L,
+				"Unrenewable session keeps its JWT until expiry");
+			check(BetterPvSessionAuth.ensureBearerToken().equals(Optional.of("jwt-4")),
+				"Callers still get the unexpired JWT");
+
+			installRenewable("jwt-5");
+			reply.set(new BetterPvSessionAuth.RenewReply(401, "{\"cause\":\"session_revoked_or_expired\"}", "application"));
+			check(refresh().isEmpty() && get("cachedJwt") == null, "Revoked session drops its JWT");
+
+			installRenewable("jwt-6");
+			reply.set(new BetterPvSessionAuth.RenewReply(403, "{\"cause\":\"access_restricted\"}", "application"));
+			refresh();
+			check(BetterPvSessionAuth.lastFailure() == BetterPvSessionAuth.Failure.AUTH_REJECTED,
+				"Restricted account is reported");
+			check((long) get("sessionDeadlineMillis") == 0L, "Restricted account stops renewing");
+
+			installRenewable("jwt-7");
+			reply.set(renewed("jwt-lost", 300, 86_000));
+			beforeReply.set(() -> {
+				try {
+					installCachedToken("jwt-newer", System.currentTimeMillis() + 300_000L, System.currentTimeMillis() + 240_000L);
+				} catch (Exception exception) {
+					throw new IllegalStateException(exception);
+				}
+			});
+			check(refresh().equals(Optional.of("jwt-newer")), "A newer JWT wins over a late renewal");
+			check(get("cachedJwt").equals("jwt-newer"), "Late renewal does not overwrite a newer JWT");
+			beforeReply.set(() -> {});
+
+			installRenewable("jwt-8");
+			set("lastUsedAtMillis", 0L);
+			var renewedOnSchedule = new java.util.concurrent.CountDownLatch(1);
+			reply.set(renewed("jwt-9", 300, 86_000));
+			beforeReply.set(renewedOnSchedule::countDown);
+			method("scheduleRefreshLocked", long.class).invoke(null, 1L);
+			check(renewedOnSchedule.await(5, TimeUnit.SECONDS), "Idle sessions keep renewing without /pv use");
+			for (int i = 0; i < 100 && !"jwt-9".equals(get("cachedJwt")); i++) Thread.sleep(10L);
+			check(get("cachedJwt").equals("jwt-9"), "Scheduled renewal installs the rotated JWT");
+		} finally {
+			BetterPvSessionAuth.renewTransport = previousTransport;
+			BetterPvSessionAuth.requestSigner = previousSigner;
+			resetRenewalState();
+		}
+	}
+
+	private static Optional<?> refresh() throws Exception {
+		return (Optional<?>) ((CompletableFuture<?>) method("requestToken", boolean.class).invoke(null, true))
+			.get(5, TimeUnit.SECONDS);
+	}
+
+	private static void installRenewable(String token) throws Exception {
+		long now = System.currentTimeMillis();
+		BetterPvSessionAuth.invalidate();
+		installCachedToken(token, now + 60_000L, now - 1L);
+		set("sessionDeadlineMillis", now + 3_600_000L);
+		set("renewFailures", 0);
+	}
+
+	private static BetterPvSessionAuth.RenewReply renewed(String token, int expiresIn, int sessionExpiresIn) {
+		return new BetterPvSessionAuth.RenewReply(200, "{\"success\":true,\"token\":\"" + token + "\",\"expiresIn\":"
+			+ expiresIn + ",\"sessionExpiresIn\":" + sessionExpiresIn + ",\"protocol\":2}", "application");
+	}
+
+	private static void resetRenewalState() throws Exception {
+		BetterPvSessionAuth.invalidate();
+		CompletableFuture<?> active = (CompletableFuture<?>) get("inFlight");
+		if (active != null) active.get(5, TimeUnit.SECONDS);
+		set("inFlight", null);
+		set("nextMojangAuthAttemptAtMillis", 0L);
+		set("renewFailures", 0);
+		method("setFailure", BetterPvSessionAuth.Failure.class, String.class)
+			.invoke(null, BetterPvSessionAuth.Failure.NONE, "");
+	}
+
 	private static void installCachedToken(String token, long expiresAt, long refreshAt) throws Exception {
 		set("cachedJwt", token);
 		set("expiresAtMillis", expiresAt);

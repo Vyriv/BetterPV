@@ -2,6 +2,7 @@ package dev.vy.betterpv.client.gui.pets;
 
 import dev.vy.betterpv.client.data.FormatUtil;
 import dev.vy.betterpv.client.data.InventorySnapshot;
+import dev.vy.betterpv.client.data.PetListRules;
 import dev.vy.betterpv.client.data.PetLoreResolver;
 import dev.vy.betterpv.client.data.PetSnapshot;
 import dev.vy.betterpv.client.gui.PvDraw;
@@ -56,6 +57,7 @@ public final class PetsPage {
 	private List<PvTooltip.Line> autopetTip;
 
 	private enum SortMode {
+		XP("XP"),
 		LEVEL("Lvl"),
 		NAME("Name"),
 		NETWORTH("NW"),
@@ -73,7 +75,8 @@ public final class PetsPage {
 		}
 	}
 
-	private SortMode sortMode = SortMode.LEVEL;
+	private SortMode sortMode = SortMode.XP;
+	private List<PetSnapshot.Entry> sorted = List.of();
 	private int sortHitX;
 	private int sortHitY;
 	private int sortHitW;
@@ -82,7 +85,6 @@ public final class PetsPage {
 	public void apply(PetSnapshot snapshot) {
 		this.snapshot = snapshot == null ? PetSnapshot.empty() : snapshot;
 		this.scroll = 0;
-		this.selected = this.snapshot.isEmpty() ? -1 : 0;
 		SkyBlockItemFactory.prefetchPets(this.snapshot);
 		java.util.Set<String> owned = new java.util.HashSet<>();
 		for (PetSnapshot.Entry pet : this.snapshot.pets()) {
@@ -90,11 +92,13 @@ public final class PetsPage {
 		}
 		List<PetLoreResolver.PetType> missing = new ArrayList<>();
 		for (PetLoreResolver.PetType type : PetLoreResolver.petTypes()) {
-			if (!owned.contains(type.type())) {
+			if (!owned.contains(type.type()) && PetListRules.showAsMissing(type.type(), owned)) {
 				missing.add(type);
 			}
 		}
 		this.missingPets = missing;
+		this.sorted = sortPets(PetListRules.visibleOwned(this.snapshot.pets()), this.sortMode);
+		this.selected = this.sorted.isEmpty() ? -1 : 0;
 	}
 
 	public void render(
@@ -148,7 +152,12 @@ public final class PetsPage {
 	public boolean mouseClicked(double mx, double my) {
 		if (mx >= this.sortHitX && mx < this.sortHitX + this.sortHitW
 			&& my >= this.sortHitY && my < this.sortHitY + this.sortHitH) {
+			PetSnapshot.Entry current = this.selected >= 0 && this.selected < this.sorted.size()
+				? this.sorted.get(this.selected)
+				: null;
 			this.sortMode = this.sortMode.next();
+			this.sorted = sortPets(this.sorted, this.sortMode);
+			this.selected = current == null ? this.selected : this.sorted.indexOf(current);
 			return true;
 		}
 		for (SlotHit hit : this.hits) {
@@ -210,7 +219,7 @@ public final class PetsPage {
 							+ Math.max(this.snapshot.autopetRulesLimit(), this.snapshot.autopetRuleCount()),
 						PvDraw.COLOR_ACCENT));
 					if (this.snapshot.autopetRules().isEmpty()) {
-						tip.add(PvTooltip.Line.meta("No rules configured"));
+						tip.add(PvTooltip.Line.meta("No rules set"));
 					} else {
 						int shown = 0;
 						for (PetSnapshot.AutopetRule rule : this.snapshot.autopetRules()) {
@@ -281,18 +290,27 @@ public final class PetsPage {
 	}
 
 	private List<PetSnapshot.Entry> sortedPets() {
-		List<PetSnapshot.Entry> pets = new ArrayList<>(this.snapshot.pets());
-		pets.sort(switch (this.sortMode) {
-			case NAME -> java.util.Comparator.comparing(
-				(PetSnapshot.Entry p) -> p.displayName().toLowerCase(java.util.Locale.ROOT));
+		return this.sorted;
+	}
+
+	private static List<PetSnapshot.Entry> sortPets(List<PetSnapshot.Entry> source, SortMode mode) {
+		java.util.Comparator<PetSnapshot.Entry> byName = java.util.Comparator.comparing(
+			(PetSnapshot.Entry p) -> p.displayName().toLowerCase(java.util.Locale.ROOT));
+		java.util.Comparator<PetSnapshot.Entry> byXp = java.util.Comparator
+			.comparingDouble(PetSnapshot.Entry::exp).reversed();
+		List<PetSnapshot.Entry> pets = new ArrayList<>(source);
+		pets.sort(switch (mode) {
+			case NAME -> byName;
 			case NETWORTH -> java.util.Comparator.comparingDouble(PetSnapshot.Entry::networth).reversed()
-				.thenComparing((PetSnapshot.Entry p) -> p.displayName().toLowerCase(java.util.Locale.ROOT));
+				.thenComparing(byName);
 			case RARITY -> java.util.Comparator.comparingInt(PetSnapshot.Entry::tierIndex).reversed()
-				.thenComparingInt(PetSnapshot.Entry::level).reversed();
-			default -> java.util.Comparator.comparingInt(PetSnapshot.Entry::level).reversed()
-				.thenComparing((PetSnapshot.Entry p) -> p.displayName().toLowerCase(java.util.Locale.ROOT));
+				.thenComparing(byXp)
+				.thenComparing(byName);
+			case LEVEL -> java.util.Comparator.comparingInt(PetSnapshot.Entry::level).reversed()
+				.thenComparing(byName);
+			case XP -> byXp.thenComparing(byName);
 		});
-		return pets;
+		return List.copyOf(pets);
 	}
 
 	private void drawSlot(
@@ -394,7 +412,7 @@ public final class PetsPage {
 		int contentW = w - PAD * 2;
 		int cx = x + PAD;
 
-		if (this.selected < 0 || this.selected >= this.snapshot.pets().size()) {
+		if (this.selected < 0 || this.selected >= this.sorted.size()) {
 			PvDraw.textCentered(g, font, "Select a pet", x + w / 2, y + h / 2, PvDraw.COLOR_MUTED);
 			return;
 		}

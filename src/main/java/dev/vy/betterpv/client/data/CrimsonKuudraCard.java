@@ -67,6 +67,7 @@ public final class CrimsonKuudraCard {
 	private final List<ImportantItem> importantItems;
 	private final List<ArmorPiece> mageArmor;
 	private final List<ArmorPiece> archerArmor;
+	private final KuudraGearChecks.Result gear;
 
 	private CrimsonKuudraCard(
 		double kuudraScore,
@@ -83,7 +84,8 @@ public final class CrimsonKuudraCard {
 		List<String> vanquisherHover,
 		List<ImportantItem> importantItems,
 		List<ArmorPiece> mageArmor,
-		List<ArmorPiece> archerArmor
+		List<ArmorPiece> archerArmor,
+		KuudraGearChecks.Result gear
 	) {
 		this.kuudraScore = kuudraScore;
 		this.kuudraLevel = kuudraLevel;
@@ -100,13 +102,14 @@ public final class CrimsonKuudraCard {
 		this.importantItems = List.copyOf(importantItems == null ? List.of() : importantItems);
 		this.mageArmor = List.copyOf(mageArmor == null ? List.of() : mageArmor);
 		this.archerArmor = List.copyOf(archerArmor == null ? List.of() : archerArmor);
+		this.gear = gear == null ? KuudraGearChecks.Result.empty() : gear;
 	}
 
 	public static CrimsonKuudraCard empty() {
 		return new CrimsonKuudraCard(
 			0, 0, 0, "", 0, 0, 0, 0, 0, 0, 1.0 / 640.0 * 100.0,
 			List.of("Base 1/640"),
-			List.of(), List.of(), List.of()
+			List.of(), List.of(), List.of(), KuudraGearChecks.Result.empty()
 		);
 	}
 
@@ -140,8 +143,8 @@ public final class CrimsonKuudraCard {
 
 		float cataXp = Leveling.readCatacombsXp(member);
 		int cata = CataXpMath.progress(cataXp).displayLevel();
-		int combat = skillLevel(member, "combat", 60);
-		int foraging = skillLevel(member, "foraging", 60);
+		int combat = Leveling.skillLevel(member, "combat");
+		int foraging = Leveling.skillLevel(member, "foraging");
 		int sb = 0;
 		JsonObject leveling = Leveling.obj(member.get("leveling"));
 		if (leveling != null) {
@@ -162,7 +165,7 @@ public final class CrimsonKuudraCard {
 
 		return new CrimsonKuudraCard(
 			score, level, mp, power, intel, mf, cata, combat, foraging, sb,
-			vanq.pct, vanq.hover, items, mage, archer
+			vanq.pct, vanq.hover, items, mage, archer, KuudraGearChecks.fromMember(member, cats, pets)
 		);
 	}
 
@@ -195,6 +198,7 @@ public final class CrimsonKuudraCard {
 	public List<ImportantItem> importantItems() { return this.importantItems; }
 	public List<ArmorPiece> mageArmor() { return this.mageArmor; }
 	public List<ArmorPiece> archerArmor() { return this.archerArmor; }
+	public KuudraGearChecks.Result gear() { return this.gear; }
 
 	public CrimsonKuudraCard withCombatStats(PlayerStatsSnapshot stats) {
 		if (stats == null) {
@@ -205,7 +209,8 @@ public final class CrimsonKuudraCard {
 		return new CrimsonKuudraCard(
 			this.kuudraScore, this.kuudraLevel, this.magicalPower, this.selectedPower,
 			intel, mf, this.cataLevel, this.combatLevel, this.foragingLevel, this.skyBlockLevel,
-			this.vanquisherChancePct, this.vanquisherHover, this.importantItems, this.mageArmor, this.archerArmor
+			this.vanquisherChancePct, this.vanquisherHover, this.importantItems, this.mageArmor, this.archerArmor,
+			this.gear
 		);
 	}
 
@@ -223,16 +228,10 @@ public final class CrimsonKuudraCard {
 
 	public List<String> scoreHoverLines() {
 		return List.of(
-			"The level in front of your nickname is your Kuudra Level.",
-			"1 level = 100 Kuudra Score.",
-			"Kuudra Score is calculated as follows:",
-			"basic → 0.5, hot → 1, burning → 2, fiery → 4, infernal → 8"
+			"1 level = 100 Kuudra Score",
+			"Score per completion:",
+			"Basic 0.5, Hot 1, Burning 2, Fiery 4, Infernal 8"
 		);
-	}
-
-	private static int skillLevel(JsonObject member, String skill, int cap) {
-		double xp = Leveling.readSkillXpDouble(member, skill);
-		return (int) Math.floor(Leveling.getLevel(RepoData.levelingXp(), xp, cap, false).level());
 	}
 
 	private record Vanq(double pct, List<String> hover) {
@@ -434,7 +433,8 @@ public final class CrimsonKuudraCard {
 		int cubism = enchLevel(ench, "cubism");
 		int power = enchLevel(ench, "power");
 		int rend = enchLevel(ench, "rend", "ultimate_rend");
-		int duplex = enchLevel(ench, "ultimate_duplex", "duplex");
+		// Duplex is stored as ultimate_reiterate in item NBT.
+		int duplex = enchLevel(ench, "ultimate_reiterate", "ultimate_duplex");
 		int fatalTempo = enchLevel(ench, "ultimate_fatal_tempo", "fatal_tempo");
 		if (cubism > 0) details.add("Cubism " + cubism);
 		if (power > 0) details.add("Power " + power);
@@ -526,7 +526,7 @@ public final class CrimsonKuudraCard {
 	}
 
 	/** Append dungeon stars to the colored display name when missing. */
-	private static String withStarsInName(String displayName, int stars) {
+	static String withStarsInName(String displayName, int stars) {
 		if (displayName == null || displayName.isBlank() || stars <= 0) {
 			return displayName == null ? "" : displayName;
 		}
@@ -537,7 +537,7 @@ public final class CrimsonKuudraCard {
 	}
 
 	/** If inventory name lost its § colour, restore from NEU displayname / tier. */
-	private static String ensureColoredName(String name, String itemId) {
+	static String ensureColoredName(String name, String itemId) {
 		if (name != null && name.contains("§")) {
 			return name;
 		}

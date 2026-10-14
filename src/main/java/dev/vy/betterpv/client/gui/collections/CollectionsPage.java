@@ -21,6 +21,7 @@ public final class CollectionsPage {
 	private CollectionSnapshot snapshot = CollectionSnapshot.empty();
 	private final CollectionsListPage list = new CollectionsListPage();
 	private final MinionsPage minions = new MinionsPage();
+	private PvSubTab lastSub;
 
 	public void apply(CollectionSnapshot snapshot) {
 		this.snapshot = snapshot == null ? CollectionSnapshot.empty() : snapshot;
@@ -43,6 +44,10 @@ public final class CollectionsPage {
 		int screenH
 	) {
 		this.snapshot.requestMemberRanks();
+		if (sub != this.lastSub) {
+			this.list.closeDetail();
+		}
+		this.lastSub = sub;
 		if (sub == PvSubTab.COLLECTIONS_MINIONS) {
 			this.minions.render(this.snapshot, g, font, x, y, w, h, mouseX, mouseY);
 		} else {
@@ -51,7 +56,21 @@ public final class CollectionsPage {
 	}
 
 	public void renderTooltip(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH) {
-		this.list.renderTooltip(g, font, mouseX, mouseY, screenW, screenH);
+		if (this.lastSub == PvSubTab.COLLECTIONS_MINIONS) {
+			this.minions.renderTooltip(g, font, mouseX, mouseY, screenW, screenH);
+		} else {
+			this.list.renderTooltip(g, font, mouseX, mouseY, screenW, screenH);
+		}
+	}
+
+	public void renderOverlay(GuiGraphicsExtractor g, Font font, int screenW, int screenH, int mouseX, int mouseY) {
+		if (this.lastSub != PvSubTab.COLLECTIONS_MINIONS) {
+			this.list.renderOverlay(g, font, screenW, screenH, mouseX, mouseY);
+		}
+	}
+
+	public boolean keyPressed(int key, PvSubTab sub) {
+		return sub != PvSubTab.COLLECTIONS_MINIONS && this.list.keyPressed(key);
 	}
 
 	public boolean mouseClicked(double mx, double my, PvSubTab sub) {
@@ -83,6 +102,9 @@ public final class CollectionsPage {
 		for (CollectionSnapshot.MinionEntry minion : this.snapshot.minions()) {
 			ids.add(minion.iconId());
 			ids.add(minion.id() + "_1");
+			if (minion.maxCrafted() < minion.tierCap()) {
+				ids.add(minion.id() + "_" + (minion.maxCrafted() + 1));
+			}
 		}
 		SkyBlockItemFactory.prefetchIds(ids);
 	}

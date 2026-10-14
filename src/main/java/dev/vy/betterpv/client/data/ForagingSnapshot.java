@@ -41,6 +41,14 @@ public final class ForagingSnapshot {
 		String stackId, String name, String iconId, String rarity, String priceId,
 		int level, int maxLevel, int shardsOwned, int shardsForMax, boolean unlocked
 	) {
+		/** Highest rarity first, then alphabetical within a rarity. */
+		public static List<AttributeShardRow> byRarity(List<AttributeShardRow> rows) {
+			List<AttributeShardRow> out = new ArrayList<>(rows);
+			out.sort(Comparator
+				.comparingInt((AttributeShardRow r) -> AttributeShardsData.rarityRank(r.rarity())).reversed()
+				.thenComparing(AttributeShardRow::name, String.CASE_INSENSITIVE_ORDER));
+			return List.copyOf(out);
+		}
 	}
 
 	public record SafariInfo(
@@ -117,28 +125,33 @@ public final class ForagingSnapshot {
 	private final List<CollectionRow> collections;
 	private final List<AttrStack> attributes;
 
+	/**
+	 * {@code whispers.<pool>.total} is lifetime earned; {@code whispers.<pool>.<slot>.spent} is per HOTF
+	 * loadout, so {@code spent} is the selected loadout's spend only.
+	 */
 	public record WhisperPool(
 		String id,
 		String label,
 		long total,
 		long spent,
-		Map<Integer, Long> spentByPage
+		int loadout,
+		Map<Integer, Long> spentByLoadout
 	) {
 		public WhisperPool {
 			id = id == null ? "" : id;
 			label = label == null || label.isBlank() ? prettyWhisperLabel(id) : label;
 			total = Math.max(0L, total);
 			spent = Math.max(0L, spent);
-			spentByPage = Map.copyOf(spentByPage == null ? Map.of() : spentByPage);
+			loadout = Math.max(1, loadout);
+			spentByLoadout = Map.copyOf(spentByLoadout == null ? Map.of() : spentByLoadout);
 		}
 
-		// API "total" is lifetime earned; the spendable balance is what's left after tree spending.
 		public long balance() {
 			return Math.max(0L, total - spent);
 		}
 
 		public boolean present() {
-			return total > 0L || spent > 0L || !spentByPage.isEmpty();
+			return total > 0L || spent > 0L || !spentByLoadout.isEmpty();
 		}
 
 		private static String prettyWhisperLabel(String id) {
@@ -333,7 +346,8 @@ public final class ForagingSnapshot {
 
 		long whispers = longOf(core, "forests_whispers");
 		long whispersSpent = longOf(core, "forests_whispers_spent");
-		List<WhisperPool> whisperPools = parseWhisperPools(core, whispers, whispersSpent);
+		List<WhisperPool> whisperPools = parseWhisperPools(core, whispers, whispersSpent,
+			SkillTreePresets.selectedSlot(skillTree, "foraging"));
 
 		List<String> fish = stringList(foragingObj == null ? null : foragingObj.get("fish_family"));
 		JsonObject hina = Leveling.obj(foragingObj == null ? null : foragingObj.get("hina"));
@@ -365,8 +379,8 @@ public final class ForagingSnapshot {
 
 		JsonObject treeXp = Leveling.obj(skillTree == null ? null : skillTree.get("experience"));
 		double hotfXp = doubleOf(treeXp, "foraging");
-		JsonObject tokens = Leveling.obj(skillTree == null ? null : skillTree.get("tokens_spent"));
-		int forestTokens = (int) longOf(tokens, "forest");
+		Integer selectedTokens = SkillTreePresets.selectedTokensSpent(skillTree, "foraging");
+		int forestTokens = selectedTokens == null ? 0 : selectedTokens;
 		JsonObject lastReset = Leveling.obj(skillTree == null ? null : skillTree.get("last_reset"));
 		long resetMs = longOf(lastReset, "foraging");
 		JsonObject selectedAbility = Leveling.obj(skillTree == null ? null : skillTree.get("selected_ability"));
@@ -385,8 +399,7 @@ public final class ForagingSnapshot {
 		long dailyLogsDay = longOf(core, "daily_log_cut_day");
 
 		JsonObject nodesRoot = Leveling.obj(skillTree == null ? null : skillTree.get("nodes"));
-		JsonObject foragingNodes = Leveling.obj(nodesRoot == null ? null : nodesRoot.get("foraging"));
-		List<HotfNode> nodes = parseHotfNodes(foragingNodes);
+		List<HotfNode> nodes = parseHotfNodes(SkillTreePresets.selectedNodes(skillTree, "foraging"));
 		Map<String, Integer> centers = new LinkedHashMap<>();
 		for (int i = 2; i <= 5; i++) {
 			JsonObject page = Leveling.obj(nodesRoot == null ? null : nodesRoot.get("foraging_" + i));
@@ -429,7 +442,7 @@ public final class ForagingSnapshot {
 		);
 	}
 
-	private static List<WhisperPool> parseWhisperPools(JsonObject core, long legacyBalance, long legacySpent) {
+	static List<WhisperPool> parseWhisperPools(JsonObject core, long legacyBalance, long legacySpent, int loadout) {
 		JsonObject root = Leveling.obj(core == null ? null : core.get("whispers"));
 		if (root != null && !root.entrySet().isEmpty()) {
 			List<WhisperPool> out = new ArrayList<>();
@@ -450,7 +463,7 @@ public final class ForagingSnapshot {
 				}
 			}
 			for (Map.Entry<String, JsonObject> e : ordered.entrySet()) {
-				WhisperPool pool = parseWhisperPool(e.getKey(), e.getValue());
+				WhisperPool pool = parseWhisperPool(e.getKey(), e.getValue(), loadout);
 				if (pool != null) {
 					out.add(pool);
 				}
@@ -460,48 +473,43 @@ public final class ForagingSnapshot {
 			}
 		}
 		if (legacyBalance > 0L || legacySpent > 0L) {
-			return List.of(new WhisperPool("forest", "Forest", legacyBalance + legacySpent, legacySpent, Map.of()));
+			return List.of(new WhisperPool("forest", "Forest", legacyBalance + legacySpent, legacySpent, 1, Map.of()));
 		}
 		return List.of();
 	}
 
-	private static WhisperPool parseWhisperPool(String id, JsonObject pool) {
+	private static WhisperPool parseWhisperPool(String id, JsonObject pool, int loadout) {
 		if (pool == null || pool.entrySet().isEmpty()) {
 			return null;
 		}
 		long total = firstLong(pool, "total");
 		long spentField = firstLong(pool, "spent");
-		Map<Integer, Long> byPage = new LinkedHashMap<>();
-		long spentPages = 0L;
+		Map<Integer, Long> bySlot = new LinkedHashMap<>();
 		for (Map.Entry<String, JsonElement> e : pool.entrySet()) {
 			String key = e.getKey();
 			if (key == null || isWhisperMetaKey(key)) {
 				continue;
 			}
-			Integer page = null;
+			int slot;
 			try {
-				page = Integer.parseInt(key);
-			} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
-				page = null;
-			}
-			JsonObject pageObj = Leveling.obj(e.getValue());
-			long pageSpent = pageObj != null ? longOf(pageObj, "spent") : 0L;
-			if (pageSpent <= 0L && e.getValue().isJsonPrimitive() && e.getValue().getAsJsonPrimitive().isNumber()) {
-				pageSpent = Math.max(0L, (long) e.getValue().getAsDouble());
-			}
-			if (pageSpent <= 0L) {
+				slot = Integer.parseInt(key);
+			} catch (NumberFormatException ignored) {
 				continue;
 			}
-			spentPages += pageSpent;
-			if (page != null) {
-				byPage.put(page, pageSpent);
+			JsonObject slotObj = Leveling.obj(e.getValue());
+			long slotSpent = slotObj != null ? longOf(slotObj, "spent") : 0L;
+			if (slotSpent <= 0L && e.getValue().isJsonPrimitive() && e.getValue().getAsJsonPrimitive().isNumber()) {
+				slotSpent = Math.max(0L, (long) e.getValue().getAsDouble());
+			}
+			if (slotSpent > 0L) {
+				bySlot.put(slot, slotSpent);
 			}
 		}
-		long spent = spentField > 0L ? spentField : spentPages;
-		if (total <= 0L && spent <= 0L) {
+		long spent = bySlot.isEmpty() ? spentField : bySlot.getOrDefault(loadout, 0L);
+		if (total <= 0L && spent <= 0L && bySlot.isEmpty()) {
 			return null;
 		}
-		return new WhisperPool(id, WhisperPool.prettyWhisperLabel(id), total, spent, byPage);
+		return new WhisperPool(id, WhisperPool.prettyWhisperLabel(id), total, spent, loadout, bySlot);
 	}
 
 	private static boolean isWhisperMetaKey(String key) {
@@ -682,13 +690,13 @@ public final class ForagingSnapshot {
 		return out;
 	}
 
-	private static List<TreeGift> parseTreeGifts(JsonObject gifts) {
+	static List<TreeGift> parseTreeGifts(JsonObject gifts) {
 		if (gifts == null) {
 			return List.of();
 		}
 		JsonObject milestones = Leveling.obj(gifts.get("milestone_tier_claimed"));
 		List<TreeGift> out = new ArrayList<>();
-		for (String id : List.of("FIG", "MANGROVE")) {
+		for (String id : List.of("FIG", "MANGROVE", "HELIX")) {
 			long count = longOf(gifts, id);
 			int tier = (int) longOf(milestones, id);
 			if (count > 0L || tier > 0) {
@@ -1231,6 +1239,17 @@ public final class ForagingSnapshot {
 		return dailyLogs;
 	}
 	public List<HotfNode> hotfNodes() { return hotfNodes; }
+
+	/** Perks the API reports that NEU's HOTF layout has no slot for (newer Hypixel perks). */
+	public List<HotfNode> unplacedHotfNodes() {
+		List<HotfNode> out = new ArrayList<>();
+		for (HotfNode node : hotfNodes) {
+			if (ForagingHotfData.perk(node.id()) == null) {
+				out.add(node);
+			}
+		}
+		return out;
+	}
 	public Map<String, Integer> centerPages() { return centerPages; }
 	public String selectedAbility() { return selectedAbility; }
 	public boolean refundAbilityFree() { return refundAbilityFree; }

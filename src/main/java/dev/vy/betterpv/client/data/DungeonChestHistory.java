@@ -3,6 +3,7 @@ package dev.vy.betterpv.client.data;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import dev.vy.betterpv.client.networth.InventoryDecoder;
+import dev.vy.betterpv.client.neu.NeuRepoCache;
 import dev.vy.betterpv.client.price.HypixelItemsCache;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -10,6 +11,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
 
 /** {@code dungeons.treasures}: Hypixel only keeps the most recent runs and their reward chests. */
 public record DungeonChestHistory(List<Run> runs) {
@@ -148,8 +151,12 @@ public record DungeonChestHistory(List<Run> runs) {
 		};
 	}
 
-	/** {@code ESSENCE:UNDEAD:22} → "22x Undead Essence", {@code wise_2} → "Wise II". */
+	/** {@code ESSENCE:UNDEAD:22} → "22x Undead Essence", {@code ultimate_wise_1} → "Ultimate Wise I". */
 	public static String prettyReward(String raw) {
+		return prettyReward(raw, HypixelItemsCache::get, NeuRepoCache::get);
+	}
+
+	static String prettyReward(String raw, Function<String, JsonObject> hypixel, Function<String, JsonObject> neu) {
 		if (raw == null || raw.isBlank()) {
 			return "";
 		}
@@ -165,20 +172,61 @@ public record DungeonChestHistory(List<Run> runs) {
 			return (count > 1 ? count + "x " : "") + type + " Shard";
 		}
 		String id = raw.toLowerCase(Locale.ROOT);
-		String itemName = rewardItemName(id);
+		String itemName = rewardItemName(id, hypixel, neu);
 		if (itemName != null) {
 			return itemName;
 		}
 		if (isBook(raw)) {
 			int us = id.lastIndexOf('_');
 			int level = Integer.parseInt(id.substring(us + 1));
-			String base = id.substring(0, us);
-			if ("master_jerry".equals(base)) {
-				base = "ultimate_jerry";
+			String fromNeu = bookLoreName(bookDef(id, neu), level);
+			if (fromNeu != null) {
+				return fromNeu;
 			}
-			return InventoryDecoder.prettyWords(base) + " " + roman(level);
+			String core = enchantCore(id.substring(0, us));
+			String name = InventoryDecoder.prettyWords(core) + " " + roman(level);
+			return NAMED_ULTIMATES.contains(core) ? "Ultimate " + name : name;
 		}
 		return InventoryDecoder.prettyWords(id);
+	}
+
+	// Ultimate enchants whose in-game name keeps the "Ultimate" word (NEU ULTIMATE_WISE / ULTIMATE_JERRY lore).
+	private static final Set<String> NAMED_ULTIMATES = Set.of("wise", "jerry");
+
+	private static String enchantCore(String base) {
+		if ("master_jerry".equals(base)) {
+			return "jerry";
+		}
+		return base.startsWith("ultimate_") ? base.substring("ultimate_".length()) : base;
+	}
+
+	/** NEU enchanted book ({@code ULTIMATE_WISE;1} / {@code FEATHER_FALLING;6}) for a Croesus book id. */
+	private static JsonObject bookDef(String id, Function<String, JsonObject> neu) {
+		int us = id.lastIndexOf('_');
+		String level = id.substring(us + 1);
+		String core = enchantCore(id.substring(0, us)).toUpperCase(Locale.ROOT);
+		JsonObject def = neu.apply("ULTIMATE_" + core + ";" + level);
+		return def != null ? def : neu.apply(core + ";" + level);
+	}
+
+	private static boolean isUltimateBook(JsonObject def) {
+		return def != null && def.has("internalname")
+			&& def.get("internalname").getAsString().toUpperCase(Locale.ROOT).startsWith("ULTIMATE_");
+	}
+
+	/** The enchant line of a NEU book's lore, e.g. "Ultimate Wise I", with formatting stripped. */
+	private static String bookLoreName(JsonObject def, int level) {
+		if (def == null || !def.has("lore") || !def.get("lore").isJsonArray()) {
+			return null;
+		}
+		String suffix = " " + roman(level);
+		for (JsonElement line : def.getAsJsonArray("lore")) {
+			String text = str(line).replaceAll("\u00a7.", "").trim();
+			if (text.endsWith(suffix)) {
+				return text;
+			}
+		}
+		return null;
 	}
 
 	public static boolean isEssence(String raw) {
@@ -198,7 +246,7 @@ public record DungeonChestHistory(List<Run> runs) {
 		return parseLongOr(raw.substring(us + 1), 0L) <= 10L;
 	}
 
-	// Croesus reward ids that aren't the item's SkyBlock id.
+	// Croesus reward ids that aren't the item's SkyBlock id. Dyes are handled by itemIdFor.
 	private static final Map<String, String> REWARD_ITEM_IDS = Map.of(
 		"shadow_helmet", "SHADOW_ASSASSIN_HELMET",
 		"shadow_chestplate", "SHADOW_ASSASSIN_CHESTPLATE",
@@ -220,6 +268,10 @@ public record DungeonChestHistory(List<Run> runs) {
 	 * {@code ULTIMATE} / {@code BOOK} for enchanted books. Empty when unknown.
 	 */
 	public static String rewardTier(String raw) {
+		return rewardTier(raw, HypixelItemsCache::get, NeuRepoCache::get);
+	}
+
+	static String rewardTier(String raw, Function<String, JsonObject> hypixel, Function<String, JsonObject> neu) {
 		if (raw == null || raw.isBlank()) {
 			return "";
 		}
@@ -231,31 +283,74 @@ public record DungeonChestHistory(List<Run> runs) {
 			String[] parts = raw.split(":");
 			itemId = parts.length > 1 ? "SHARD_" + parts[1].toUpperCase(Locale.ROOT) : "";
 		} else {
-			String id = raw.toLowerCase(Locale.ROOT);
-			String alias = REWARD_ITEM_IDS.get(id);
-			itemId = alias != null ? alias : id.toUpperCase(Locale.ROOT);
+			itemId = itemIdFor(raw.toLowerCase(Locale.ROOT));
 		}
-		JsonObject def = HypixelItemsCache.get(itemId);
+		JsonObject def = hypixel.apply(itemId);
 		if (def != null && def.has("tier") && def.get("tier").isJsonPrimitive()) {
 			return def.get("tier").getAsString().toUpperCase(Locale.ROOT);
 		}
 		if (isBook(raw)) {
-			String base = raw.toLowerCase(Locale.ROOT).substring(0, raw.lastIndexOf('_'));
-			return ULTIMATE_ENCHANTS.contains(base) ? "ULTIMATE" : "BOOK";
+			String id = raw.toLowerCase(Locale.ROOT);
+			JsonObject book = bookDef(id, neu);
+			if (book != null) {
+				return isUltimateBook(book) ? "ULTIMATE" : "BOOK";
+			}
+			String base = id.substring(0, id.lastIndexOf('_'));
+			return ULTIMATE_ENCHANTS.contains(enchantCore(base)) ? "ULTIMATE" : "BOOK";
 		}
-		return "";
+		return neuRarity(neu.apply(itemId));
 	}
 
-	private static String rewardItemName(String id) {
+	private static final List<String> RARITIES = List.of(
+		"COMMON", "UNCOMMON", "RARE", "EPIC", "LEGENDARY", "MYTHIC", "DIVINE", "SPECIAL", "VERY_SPECIAL", "SUPREME"
+	);
+
+	/** Rarity from the last NEU lore line, e.g. "EPIC DYE" → EPIC. */
+	private static String neuRarity(JsonObject def) {
+		if (def == null || !def.has("lore") || !def.get("lore").isJsonArray() || def.getAsJsonArray("lore").isEmpty()) {
+			return "";
+		}
+		var lore = def.getAsJsonArray("lore");
+		String last = str(lore.get(lore.size() - 1)).replaceAll("\u00a7.", "").trim().toUpperCase(Locale.ROOT);
+		String rarity = "";
+		for (String r : RARITIES) {
+			String spaced = r.replace('_', ' ');
+			if ((last.equals(spaced) || last.startsWith(spaced + " ")) && spaced.length() > rarity.length()) {
+				rarity = r;
+			}
+		}
+		return rarity;
+	}
+
+	/** SkyBlock item id for a Croesus reward id: {@code necron_dye} → {@code DYE_NECRON}. */
+	static String itemIdFor(String id) {
 		String alias = REWARD_ITEM_IDS.get(id);
-		String itemId = alias != null ? alias : id.toUpperCase(Locale.ROOT);
-		JsonObject def = HypixelItemsCache.get(itemId);
+		if (alias != null) {
+			return alias;
+		}
+		if (id.endsWith("_dye") && id.length() > 4) {
+			return "DYE_" + id.substring(0, id.length() - 4).toUpperCase(Locale.ROOT);
+		}
+		return id.toUpperCase(Locale.ROOT);
+	}
+
+	private static String rewardItemName(String id, Function<String, JsonObject> hypixel, Function<String, JsonObject> neu) {
+		String itemId = itemIdFor(id);
+		JsonObject def = hypixel.apply(itemId);
 		if (def != null && def.has("name") && def.get("name").isJsonPrimitive()) {
-			String name = def.get("name").getAsString().replaceAll("§.", "").trim();
+			String name = def.get("name").getAsString().replaceAll("\u00a7.", "").trim();
 			if (!name.isBlank()) {
 				return name;
 			}
 		}
+		JsonObject neuDef = neu.apply(itemId);
+		if (neuDef != null && neuDef.has("displayname") && neuDef.get("displayname").isJsonPrimitive()) {
+			String name = neuDef.get("displayname").getAsString().replaceAll("\u00a7.", "").trim();
+			if (!name.isBlank()) {
+				return name;
+			}
+		}
+		String alias = REWARD_ITEM_IDS.get(id);
 		return alias != null ? InventoryDecoder.prettyWords(alias.toLowerCase(Locale.ROOT)) : null;
 	}
 

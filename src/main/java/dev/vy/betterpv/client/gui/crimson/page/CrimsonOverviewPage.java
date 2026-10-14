@@ -22,10 +22,12 @@ import static dev.vy.betterpv.client.gui.crimson.CrimsonUi.trim;
 import dev.vy.betterpv.client.data.CrimsonSnapshot;
 import dev.vy.betterpv.client.data.DungeonSnapshot;
 import dev.vy.betterpv.client.data.FormatUtil;
+import dev.vy.betterpv.client.dungeons.EssencePerkTips;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
 import dev.vy.betterpv.client.gui.crimson.CrimsonUi;
 import dev.vy.betterpv.client.gui.crimson.CrimsonUi.HoverZone;
+import dev.vy.betterpv.client.gui.essence.EssenceIcons;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import java.util.ArrayList;
 import java.util.List;
@@ -154,9 +156,27 @@ public final class CrimsonOverviewPage {
 			ly = statLine(g, font, "Cavity NPCs", String.valueOf(snapshot.cavityNpcs()),
 				lx, ly, lw, PvDraw.COLOR_TEXT);
 		}
+		CrimsonSnapshot.KuudraFollower follower = snapshot.kuudraFollower();
+		int loreY = ly;
 		ly = statLine(g, font, "Kuudra Loremaster",
-			snapshot.kuudraLoremaster() ? "Yes" : "No",
-			lx, ly, lw, snapshot.kuudraLoremaster() ? ENABLED : PvDraw.COLOR_MUTED);
+			follower.loremaster() ? "Completed" : "Not completed",
+			lx, ly, lw, follower.loremaster() ? ENABLED : PvDraw.COLOR_MUTED);
+		List<PvTooltip.Line> loreTip = new ArrayList<>();
+		loreTip.add(PvTooltip.Line.title("Kuudra Follower Armor quests", KUUDRA_COLOR));
+		loreTip.add(PvTooltip.Line.divider());
+		loreTip.add(followerRow("Loremaster (Boots)", follower.loremaster(), "Completed", "Not completed"));
+		loreTip.add(followerRow("Cathedral book", follower.cathedralBook(), "Found", "Not found"));
+		loreTip.add(followerRow("Kuudra Relic", follower.relicClaimedMs() > 0L, "Claimed", "Not claimed"));
+		loreTip.add(followerRow("Follower Leggings", follower.leggings(), "Claimed", "Not claimed"));
+		if (follower.relicClaimedMs() > 0L) {
+			loreTip.add(PvTooltip.Line.blank());
+			loreTip.add(PvTooltip.Line.meta("Relic claimed " + formatAgo(follower.relicClaimedMs())));
+		}
+		this.zones.add(HoverZone.of(lx, loreY, lw, STAT_ROW, loreTip));
+	}
+
+	private static PvTooltip.Line followerRow(String label, boolean done, String yes, String no) {
+		return PvTooltip.Line.row(label, PvDraw.COLOR_MUTED, done ? yes : no, done ? ENABLED : PvDraw.COLOR_MUTED);
 	}
 
 	private static String prettyDailyQuest(String id) {
@@ -458,6 +478,7 @@ public final class CrimsonOverviewPage {
 			int valueColor = perk.maxed() ? ENABLED : PvDraw.COLOR_TEXT;
 			PvDraw.text(g, font, left, perkLabelX, rowAlign.textY(), PvDraw.COLOR_MUTED);
 			PvDraw.textRight(g, font, right, x + w, rowAlign.textY(), valueColor);
+			this.zones.add(HoverZone.of(x, ry, w, rowH, EssencePerkTips.tip(perk)));
 			ry += rowH;
 		}
 	}
@@ -473,19 +494,6 @@ public final class CrimsonOverviewPage {
 
 	/** Crimson essence shop row icons (vanilla stand-ins matching the GUI). */
 	private static ItemStack shopPerkIcon(String perkId) {
-		if (perkId == null) {
-			return new ItemStack(Items.NETHER_STAR);
-		}
-		return switch (perkId) {
-			case "strongarm_kuudra" -> new ItemStack(Items.FISHING_ROD);
-			case "fresh_tools_kuudra" -> new ItemStack(Items.IRON_PICKAXE);
-			case "headstart_kuudra" -> new ItemStack(Items.GOLD_NUGGET);
-			case "master_kuudra" -> new ItemStack(Items.NETHERITE_SWORD);
-			case "fungus_fortuna" -> new ItemStack(Items.RED_MUSHROOM);
-			case "harena_fortuna" -> new ItemStack(Items.RED_SAND);
-			case "crimson_training" -> new ItemStack(Items.BOOK);
-			case "wither_piper" -> new ItemStack(Items.WITHER_SKELETON_SKULL);
-			default -> new ItemStack(Items.NETHER_STAR);
-		};
+		return EssenceIcons.perk(perkId, Items.NETHER_STAR);
 	}
 }

@@ -25,8 +25,21 @@ public final class EventsSnapshot {
 		}
 	}
 
-	/** Years are SkyBlock years. */
+	/** Years are SkyBlock years; 0 means the API didn't record one. */
 	public record Chocobit(int id, int ownedYear, int expiryYear) {
+		public boolean expired(int currentYear) {
+			return expiryYear > 0 && expiryYear < currentYear;
+		}
+
+		public static int active(List<Chocobit> bits, int currentYear) {
+			int n = 0;
+			for (Chocobit bit : bits) {
+				if (!bit.expired(currentYear)) {
+					n++;
+				}
+			}
+			return n;
+		}
 	}
 
 	public record BingoGoal(String id, String name, String lore, long progress, long required, boolean community) {
@@ -62,11 +75,12 @@ public final class EventsSnapshot {
 		String selectedFaction,
 		int factionLevel,
 		List<Chocobit> chocobits,
-		int chocobitsFound
+		int chocobitsFound,
+		boolean chocobitsPresent
 	) {
 		public static Chocolate empty() {
 			return new Chocolate(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0L, List.of(), 0, 0, 0, 0, 0, 0, 0, 0, 0, List.of(),
-				Map.of(), "", 0, List.of(), 0);
+				Map.of(), "", 0, List.of(), 0, false);
 		}
 
 		public Set<String> ownedRabbits() {
@@ -237,20 +251,9 @@ public final class EventsSnapshot {
 		int fortune = shop == null ? 0 : intOf(shop, "cocoa_fortune_upgrades");
 		long spent = shop == null ? 0L : longOf(shop, "chocolate_spent");
 
-		List<Chocobit> chocobits = new ArrayList<>();
 		JsonObject bits = Leveling.obj(easter.get("chocobits"));
 		int bitsFound = bits == null ? 0 : intOf(bits, "total_found");
-		if (bits != null && bits.has("owned") && bits.get("owned").isJsonArray()) {
-			for (JsonElement el : bits.getAsJsonArray("owned")) {
-				JsonObject bit = Leveling.obj(el);
-				int id = bit == null ? 0 : intOf(bit, "id");
-				if (id <= 0) {
-					continue;
-				}
-				chocobits.add(new Chocobit(id, intOf(bit, "owned_year"), intOf(bit, "expiry_year")));
-			}
-			chocobits.sort(Comparator.comparingInt(Chocobit::expiryYear).thenComparingInt(Chocobit::id));
-		}
+		List<Chocobit> chocobits = parseChocobits(bits);
 
 		return new Chocolate(
 			chocolate, total, sincePrestige, level, click, multi, rarity, barn,
@@ -258,8 +261,28 @@ public final class EventsSnapshot {
 			List.copyOf(employees), unique, duplicates,
 			breakfast, lunch, dinner, hitmenSlots, missed, fortune, spent,
 			List.copyOf(top), Map.copyOf(owned), faction, factionLevel,
-			List.copyOf(chocobits), bitsFound
+			List.copyOf(chocobits), bitsFound, bits != null
 		);
+	}
+
+	/** Soonest expiry first; bits without a recorded expiry go last. */
+	static List<Chocobit> parseChocobits(JsonObject bits) {
+		List<Chocobit> out = new ArrayList<>();
+		if (bits == null || !bits.has("owned") || !bits.get("owned").isJsonArray()) {
+			return out;
+		}
+		for (JsonElement el : bits.getAsJsonArray("owned")) {
+			JsonObject bit = Leveling.obj(el);
+			int id = bit == null ? 0 : intOf(bit, "id");
+			if (id <= 0) {
+				continue;
+			}
+			out.add(new Chocobit(id, Math.max(0, intOf(bit, "owned_year")), Math.max(0, intOf(bit, "expiry_year"))));
+		}
+		out.sort(Comparator
+			.comparingInt((Chocobit b) -> b.expiryYear() > 0 ? b.expiryYear() : Integer.MAX_VALUE)
+			.thenComparingInt(Chocobit::id));
+		return out;
 	}
 
 	private static Bingo parseBingoProfile(JsonObject profilesRoot, UUID uuid) {

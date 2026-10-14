@@ -570,6 +570,12 @@ public final class Leveling {
 		return xp == null ? 0F : xp;
 	}
 
+	/** Whole skill level as the skill pages show it, using the profile's own cap. */
+	public static int skillLevel(JsonObject member, String skill) {
+		double xp = readSkillXpDouble(member, skill);
+		return (int) Math.floor(getLevel(skillTable(skill), xp, skillCap(skill, member), false).level());
+	}
+
 	public static int skillCap(String skill, JsonObject member) {
 		int base = RepoData.skillCap(skill);
 		if ("farming".equals(skill)) {

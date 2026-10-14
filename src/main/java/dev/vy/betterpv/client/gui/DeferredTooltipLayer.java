@@ -8,9 +8,11 @@ import dev.vy.betterpv.client.gui.dungeons.DungeonChestsPage;
 import dev.vy.betterpv.client.gui.dungeons.DungeonPage;
 import dev.vy.betterpv.client.gui.events.EventsPage;
 import dev.vy.betterpv.client.gui.fishing.FishingPage;
+import dev.vy.betterpv.client.gui.fishing.FishingTrophyTrialPage;
 import dev.vy.betterpv.client.gui.foraging.ForagingPage;
 import dev.vy.betterpv.client.gui.garden.GardenPage;
 import dev.vy.betterpv.client.gui.home.HomePage;
+import dev.vy.betterpv.client.gui.home.page.EssencePage;
 import dev.vy.betterpv.client.gui.home.page.MiscStatsPage;
 import dev.vy.betterpv.client.gui.home.page.RecordsPage;
 import dev.vy.betterpv.client.gui.inventories.InventoryPage;
@@ -52,6 +54,7 @@ final class DeferredTooltipLayer {
 		HomePage homePage,
 		MiscStatsPage homeMiscPage,
 		RecordsPage homeRecordsPage,
+		EssencePage homeEssencePage,
 		DungeonPage dungeonPage,
 		DungeonChestsPage dungeonChestsPage,
 		PetsPage petsPage,
@@ -61,6 +64,7 @@ final class DeferredTooltipLayer {
 		MiningPage miningPage,
 		ForagingPage foragingPage,
 		FishingPage fishingPage,
+		FishingTrophyTrialPage fishingTrophyTrialPage,
 		CrimsonPage crimsonPage,
 		RiftPage riftPage,
 		MuseumPage museumPage,
@@ -88,6 +92,8 @@ final class DeferredTooltipLayer {
 					homeMiscPage.renderTooltip(g, font, mouseX, mouseY, width, height);
 				} else if (homeSub == PvSubTab.HOME_RECORDS) {
 					homeRecordsPage.renderTooltip(g, font, mouseX, mouseY, width, height);
+				} else if (homeSub == PvSubTab.HOME_ESSENCE) {
+					homeEssencePage.renderTooltip(g, font, mouseX, mouseY, width, height);
 				} else {
 					homePage.renderTooltip(g, font, mouseX, mouseY, width, height);
 				}
@@ -105,7 +111,13 @@ final class DeferredTooltipLayer {
 			case GARDEN -> gardenPage.renderTooltip(g, font, mouseX, mouseY, width, height);
 			case MINING -> miningPage.renderTooltip(g, font, mouseX, mouseY, width, height);
 			case FORAGING -> foragingPage.renderTooltip(g, font, mouseX, mouseY, width, height);
-			case FISHING -> fishingPage.renderTooltip(g, font, mouseX, mouseY, width, height);
+			case FISHING -> {
+				if (homeSub == PvSubTab.FISHING_TROPHIES) {
+					fishingTrophyTrialPage.renderTooltip(g, font, mouseX, mouseY, width, height);
+				} else {
+					fishingPage.renderTooltip(g, font, mouseX, mouseY, width, height);
+				}
+			}
 			case CRIMSON -> crimsonPage.renderTooltip(g, font, mouseX, mouseY, width, height);
 			case RIFT -> riftPage.renderTooltip(g, font, mouseX, mouseY, width, height);
 			case MUSEUM -> museumPage.renderTooltip(g, font, mouseX, mouseY, width, height);

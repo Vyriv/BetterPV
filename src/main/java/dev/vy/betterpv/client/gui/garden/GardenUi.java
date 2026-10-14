@@ -199,10 +199,11 @@ public final class GardenUi {
 			"Milestone " + crop.milestone() + (crop.milestoneMaxed() ? " (MAX)" : ""),
 			PvDraw.COLOR_ACCENT
 		));
+		GardenData.LevelProgress ms = GardenData.cropMilestone(crop.id(), crop.collected());
 		if (crop.milestoneMaxed()) {
-			tip.add(PvTooltip.Line.of("Overflow: " + FormatUtil.commas(crop.collected()), PvDraw.COLOR_MUTED));
+			tip.add(PvTooltip.Line.of("Overflow: " + FormatUtil.commas(ms.intoLevel()), PvDraw.COLOR_MUTED));
+			tip.add(PvTooltip.Line.of("Total: " + FormatUtil.commas(crop.collected()), PvDraw.COLOR_MUTED));
 		} else {
-			GardenData.LevelProgress ms = GardenData.cropMilestone(crop.id(), crop.collected());
 			tip.add(PvTooltip.Line.of(
 				FormatUtil.commas(ms.intoLevel()) + " / " + FormatUtil.commas(ms.needForNext()),
 				PvDraw.COLOR_MUTED
@@ -291,7 +292,7 @@ public final class GardenUi {
 			double coins = remaining.coins();
 			tip.add(PvTooltip.Line.divider());
 			tip.add(PvTooltip.Line.row("Coin cost", PvDraw.COLOR_MUTED,
-				coins > 0D ? FormatUtil.shortCoins(coins) : "-", PvDraw.COLOR_GOLD));
+				coins > 0D ? FormatUtil.shortCoins(coins) : "Unknown", coins > 0D ? PvDraw.COLOR_GOLD : PvDraw.COLOR_MUTED));
 			if (coins > 0D && !remaining.fullyPriced()) {
 				tip.add(PvTooltip.Line.meta("Some items have no bazaar price"));
 			}

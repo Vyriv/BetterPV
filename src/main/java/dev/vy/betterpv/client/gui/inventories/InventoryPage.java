@@ -48,7 +48,8 @@ public final class InventoryPage {
 	private static final int COL_GAP = 4;
 	private static final int META_GAP = 6;
 	private static final int LOADOUT_GAP = 14;
-	private static final int LOADOUTS_PER_PAGE = 2;
+	private static final int LOADOUT_MIN_W = 170;
+	private static final int LOADOUT_ROW_GAP = 8;
 	private static final int SEARCH_HIGHLIGHT = 0xFF55FF55;
 	private static final int PANEL_HOVER = 0x0AFFFFFF;
 	private static final int FLIP_MS = 480;
@@ -60,6 +61,8 @@ public final class InventoryPage {
 	/** When on Sacks: {@code null} = sack menu; otherwise index into {@link InventorySnapshot#sacks()}. */
 	private Integer openSackIndex;
 	private final Map<InventoryPane, Integer> pageIndex = new EnumMap<>(InventoryPane.class);
+	/** Cards per loadout page, recomputed from the preview area each frame. */
+	private int loadoutsPerPage = 2;
 	private String searchQuery = "";
 	private final Set<InventoryPane> searchPanes = EnumSet.noneOf(InventoryPane.class);
 	private final Map<InventoryPane, Set<Integer>> searchPages = new EnumMap<>(InventoryPane.class);
@@ -77,7 +80,7 @@ public final class InventoryPage {
 	private int gemHoverX;
 	private int gemHoverY;
 
-	/** Accessory bag panel flip: bag face ↔ unlocked powers (whole content area). */
+	/** Accessory bag panel flip: bag face ↔ unlocked powers, toggled by the Powers button. */
 	private boolean accessoryPowersFace;
 	private boolean accessoryFlipTarget;
 	private long accessoryFlipStartMs;
@@ -99,6 +102,10 @@ public final class InventoryPage {
 	private int missingScroll;
 	private int missingMaxScroll;
 	private List<Component> missingHoverTip;
+	private List<Component> loadoutHoverTip;
+	private List<Component> sackValueHoverTip;
+	/** Sack menu icons keyed by page so the stack cache doesn't grow every frame. */
+	private final Map<InventorySnapshot.Page, InventorySnapshot.Slot> sackMenuSlots = new IdentityHashMap<>();
 	private final ItemValueOverlay valueOverlay = new ItemValueOverlay();
 
 	public void apply(InventorySnapshot snapshot) {
@@ -107,6 +114,7 @@ public final class InventoryPage {
 		this.openSackIndex = null;
 		this.gemScroll = 0;
 		this.stackCache.clear();
+		this.sackMenuSlots.clear();
 		this.valueOverlay.close();
 		resetAccessoryFlip();
 		this.missingResult = null;
@@ -192,6 +200,8 @@ public final class InventoryPage {
 		this.gemHoverTip = null;
 		this.accessoryTuningsHover = false;
 		this.missingHoverTip = null;
+		this.loadoutHoverTip = null;
+		this.sackValueHoverTip = null;
 
 		if (this.pane == InventoryPane.ACCESSORY_BAG) {
 			renderAccessoryBagPanel(g, font, x, y, w, h, mouseX, mouseY);
@@ -208,15 +218,27 @@ public final class InventoryPage {
 		boolean loadouts = this.pane == InventoryPane.LOADOUTS;
 		List<InventorySnapshot.Page> pages = loadouts ? List.of() : pagesFor(this.pane);
 		List<InventorySnapshot.Loadout> loadoutList = this.snapshot.loadouts();
-		int pageCount = loadouts
-			? Math.max(1, (Math.max(1, loadoutList.size()) + LOADOUTS_PER_PAGE - 1) / LOADOUTS_PER_PAGE)
-			: Math.max(1, pages.size());
+		int headerY = y + 6;
+		if (loadouts) {
+			int gridH = y + h - (PAGE_BTN + 10) - (headerY + font.lineHeight + 4 + PREVIEW_TOP_PAD);
+			int perPage = loadoutGrid(w - 16, gridH, font)[2];
+			if (perPage != this.loadoutsPerPage) {
+				this.loadoutsPerPage = perPage;
+				rebuildSearchIndex();
+			}
+		}
+		int pageCount = loadouts ? loadoutPageCount() : Math.max(1, pages.size());
 		int page = clampPage(this.pane, pageCount);
 		boolean multi = pageCount > 1;
 
 		String title = titleFor(loadouts, loadoutList, pages, page);
-		int headerY = y + 6;
 		PvDraw.text(g, font, title, x + 8, headerY, PvDraw.COLOR_TEXT);
+
+		String unavailable = loadouts ? null : unavailableReason(this.pane);
+		if (unavailable != null) {
+			PvDraw.textCentered(g, font, unavailable, x + w / 2, y + h / 2 - font.lineHeight / 2, PvDraw.COLOR_MUTED);
+			return;
+		}
 
 		int metaTop = headerY + font.lineHeight + 4;
 		int previewTop = metaTop + PREVIEW_TOP_PAD;
@@ -261,6 +283,23 @@ public final class InventoryPage {
 		}
 	}
 
+	/** Why a pane has nothing real to show (so it isn't drawn as a false empty grid), or null. */
+	private String unavailableReason(InventoryPane pane) {
+		return switch (pane) {
+			case PERSONAL_VAULT -> !this.snapshot.inventoryApi()
+				? Component.translatable("betterpv.inv.state.api_off").getString()
+				: !this.snapshot.personalVaultPresent()
+					? Component.translatable("betterpv.inv.state.vault_locked").getString()
+					: null;
+			case TIME_POCKET -> !this.snapshot.inventoryApi()
+				? Component.translatable("betterpv.inv.state.api_off").getString()
+				: !this.snapshot.timePocketPresent()
+					? Component.translatable("betterpv.inv.state.not_in_api").getString()
+					: null;
+			default -> null;
+		};
+	}
+
 	/** Sack menu (NEU sack skulls) or a single opened sack’s contents. */
 	private void renderSacks(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, int mouseX, int mouseY) {
 		List<InventorySnapshot.Page> sackPages = this.snapshot.sacks();
@@ -289,6 +328,7 @@ public final class InventoryPage {
 					current.columns(), current.slots(), false, -1, mouseX, mouseY
 				);
 			}
+			drawSackValueHeader(g, font, x + w - 8, headerY, current, sackValues().get(this.openSackIndex), mouseX, mouseY);
 			int backX = x + 8;
 			int backY = y + h - PAGE_BTN - 6;
 			drawPageButton(g, font, backX, backY, "<", mouseX, mouseY, true, false, () -> this.openSackIndex = null);
@@ -337,7 +377,8 @@ public final class InventoryPage {
 		int mouseY
 	) {
 		if (sackPages.isEmpty()) {
-			PvDraw.textCentered(g, font, "Empty", x + w / 2, y + h / 2, PvDraw.COLOR_MUTED);
+			String key = this.snapshot.inventoryApi() ? "betterpv.inv.state.no_sacks" : "betterpv.inv.state.api_off";
+			PvDraw.textCentered(g, font, Component.translatable(key).getString(), x + w / 2, y + h / 2, PvDraw.COLOR_MUTED);
 			return;
 		}
 		int cols = 9;
@@ -374,13 +415,60 @@ public final class InventoryPage {
 		}
 	}
 
+	private List<SackValue> sackValues() {
+		return SackValue.compute(this.snapshot.sacks(), ItemPricer::materialPrice, SkyBlockItemFactory::plainDisplayName);
+	}
+
+	private void drawSackValueHeader(
+		GuiGraphicsExtractor g,
+		Font font,
+		int right,
+		int y,
+		InventorySnapshot.Page page,
+		SackValue value,
+		int mouseX,
+		int mouseY
+	) {
+		if (value == null || !value.known()) {
+			return;
+		}
+		String label = "Sack value: ";
+		String coins = FormatUtil.shortCoins(Math.round(value.total()));
+		int w = font.width(label) + font.width(coins);
+		int left = right - w;
+		boolean hover = mouseX >= left && mouseX < right && mouseY >= y - 2 && mouseY < y + font.lineHeight + 2;
+		PvDraw.text(g, font, label, left, y, hover ? PvDraw.COLOR_TEXT : PvDraw.COLOR_MUTED);
+		PvDraw.text(g, font, coins, left + font.width(label), y, PvDraw.COLOR_GOLD);
+		if (hover) {
+			this.sackValueHoverTip = ItemTooltipEnricher.sackValueLines(value, true);
+		}
+		InventorySnapshot.Slot icon = sackMenuSlot(page);
+		this.pageHits.add(new RunnableHit(left, y - 2, w, font.lineHeight + 4, () -> this.valueOverlay.open(
+			page.title() + " Sack", cachedStack(icon), icon.id(), value.breakdown(), "Sack value"
+		)));
+	}
+
 	private InventorySnapshot.Slot sackMenuSlot(InventorySnapshot.Page page) {
+		return this.sackMenuSlots.computeIfAbsent(page, this::buildSackMenuSlot);
+	}
+
+	private InventorySnapshot.Slot buildSackMenuSlot(InventorySnapshot.Page page) {
 		String title = page == null || page.title() == null || page.title().isBlank() ? "Sack" : page.title();
 		String itemId = NeuRepoCache.sackItemId(title);
-		if (itemId == null || itemId.isBlank()) {
-			itemId = "POCKET_SACK_IN_A_SACK";
+		if (itemId != null && !itemId.isBlank()) {
+			return new InventorySnapshot.Slot(itemId, 1, List.of(), title, null, null, null);
 		}
-		return new InventorySnapshot.Slot(itemId, 1, List.of(), title, null, null, null);
+		String icon = "CHEST";
+		for (InventorySnapshot.Slot slot : page == null ? List.<InventorySnapshot.Slot>of() : page.slots()) {
+			if (slot != null && !slot.isEmpty()) {
+				icon = slot.id();
+				break;
+			}
+		}
+		return new InventorySnapshot.Slot(icon, 1, List.of(
+			"\u00a77Sack items that aren't in any",
+			"\u00a77known sack list."
+		), "\u00a7f" + title, null, null, null);
 	}
 
 	/** Drawn after the right button panel so tips are never covered by it. */
@@ -396,6 +484,10 @@ public final class InventoryPage {
 			PvTooltip.drawComponents(g, font, this.missingHoverTip, mouseX, mouseY, screenW, screenH);
 			return;
 		}
+		if (this.loadoutHoverTip != null && !this.loadoutHoverTip.isEmpty()) {
+			PvTooltip.drawComponents(g, font, this.loadoutHoverTip, mouseX, mouseY, screenW, screenH);
+			return;
+		}
 		if (this.accessoryTuningsHover) {
 			List<Component> tip = accessoryTuningsTooltip();
 			if (tip != null && !tip.isEmpty()) {
@@ -403,10 +495,34 @@ public final class InventoryPage {
 				return;
 			}
 		}
+		if (this.sackValueHoverTip != null && !this.sackValueHoverTip.isEmpty()) {
+			PvTooltip.drawComponents(g, font, this.sackValueHoverTip, mouseX, mouseY, screenW, screenH);
+			return;
+		}
 		if (this.hoveredSlot != null && !this.hoveredStack.isEmpty()) {
-			List<Component> tip = SkyBlockItemFactory.tooltipLines(this.hoveredSlot, this.hoveredStack);
+			int sackIndex = sackMenuIndex(this.hoveredSlot);
+			List<Component> tip;
+			if (sackIndex >= 0) {
+				tip = new ArrayList<>(SkyBlockItemFactory.tooltipLines(this.hoveredSlot, this.hoveredStack, false));
+				ItemTooltipEnricher.appendSackValue(tip, sackValues().get(sackIndex));
+			} else {
+				tip = SkyBlockItemFactory.tooltipLines(this.hoveredSlot, this.hoveredStack);
+			}
 			PvTooltip.drawComponents(g, font, tip, mouseX, mouseY, screenW, screenH);
 		}
+	}
+
+	private int sackMenuIndex(InventorySnapshot.Slot slot) {
+		if (this.pane != InventoryPane.SACKS || this.openSackIndex != null) {
+			return -1;
+		}
+		List<InventorySnapshot.Page> pages = this.snapshot.sacks();
+		for (int i = 0; i < pages.size(); i++) {
+			if (this.sackMenuSlots.get(pages.get(i)) == slot) {
+				return i;
+			}
+		}
+		return -1;
 	}
 
 	public void renderOverlay(GuiGraphicsExtractor g, Font font, int screenW, int screenH, int mouseX, int mouseY) {
@@ -429,21 +545,15 @@ public final class InventoryPage {
 				return true;
 			}
 		}
-		if (this.pane == InventoryPane.ACCESSORY_BAG
-			&& canFlipAccessoryPowers()
-			&& !this.accessoryMissingView
-			&& this.accessoryFlipW > 0
-			&& mx >= this.accessoryFlipX && mx < this.accessoryFlipX + this.accessoryFlipW
-			&& my >= this.accessoryFlipY && my < this.accessoryFlipY + this.accessoryFlipH
-			&& !overAccessoryTunings(mx, my)) {
-			if (this.accessoryFlipStartMs != 0L) {
-				return true;
-			}
-			this.accessoryFlipTarget = !this.accessoryPowersFace;
-			this.accessoryFlipStartMs = System.currentTimeMillis();
-			return true;
-		}
 		return false;
+	}
+
+	private void toggleAccessoryPowers() {
+		if (this.accessoryFlipStartMs != 0L || !canFlipAccessoryPowers()) {
+			return;
+		}
+		this.accessoryFlipTarget = !this.accessoryPowersFace;
+		this.accessoryFlipStartMs = System.currentTimeMillis();
 	}
 
 	private void openItemValue(InventorySnapshot.Slot slot, ItemStack stack) {
@@ -510,7 +620,7 @@ public final class InventoryPage {
 		}
 		int size;
 		if (this.pane == InventoryPane.LOADOUTS) {
-			size = Math.max(1, (Math.max(1, this.snapshot.loadouts().size()) + LOADOUTS_PER_PAGE - 1) / LOADOUTS_PER_PAGE);
+			size = loadoutPageCount();
 		} else if (this.pane == InventoryPane.SACKS) {
 			size = sackMenuPageCount(this.snapshot.sacks());
 		} else {
@@ -617,12 +727,6 @@ public final class InventoryPage {
 		return lines;
 	}
 
-	private boolean overAccessoryTunings(double mx, double my) {
-		return this.accessoryTuningsW > 0
-			&& mx >= this.accessoryTuningsX && mx < this.accessoryTuningsX + this.accessoryTuningsW
-			&& my >= this.accessoryTuningsY && my < this.accessoryTuningsY + this.accessoryTuningsH;
-	}
-
 	/** Whole left inventory panel flips: border, content, and pager. */
 	private void renderAccessoryBagPanel(
 		GuiGraphicsExtractor g,
@@ -644,12 +748,6 @@ public final class InventoryPage {
 		this.accessoryFlipW = w;
 		this.accessoryFlipH = h;
 
-		boolean canFlip = canFlipAccessoryPowers() && !this.accessoryMissingView;
-		boolean overTunings = overAccessoryTunings(mouseX, mouseY);
-		boolean hovered = canFlip
-			&& !overTunings
-			&& mouseX >= x && mouseX < x + w
-			&& mouseY >= y && mouseY < y + h;
 		float flipProgress = 0F;
 		boolean animating = this.accessoryFlipStartMs != 0L;
 		if (animating) {
@@ -684,9 +782,6 @@ public final class InventoryPage {
 		g.pose().translate(-cxFlip, -cyFlip);
 
 		PvDraw.innerPanel(g, x, y, w, h);
-		if (hovered && !animating) {
-			PvDraw.fill(g, x, y, w, h, PANEL_HOVER);
-		}
 
 		int contentX = x + 8;
 		int contentY = y + 6;
@@ -698,7 +793,9 @@ public final class InventoryPage {
 			this.accessoryTuningsW = 0;
 			this.accessoryTuningsH = 0;
 			this.accessoryTuningsHover = false;
-			drawAccessoryPowersFace(g, font, contentX, contentY, contentW, contentH);
+			int backW = drawPanelButton(g, font, "Accessory Bag", contentX + contentW, contentY,
+				mouseX, mouseY, !animating, this::toggleAccessoryPowers);
+			drawAccessoryPowersFace(g, font, contentX, contentY, contentW, contentH, backW);
 		} else if (this.accessoryMissingView) {
 			int toggleW = drawAccessoryViewToggle(g, font, contentX + contentW, contentY, mouseX, mouseY, !animating);
 			this.accessoryTuningsW = 0;
@@ -707,6 +804,10 @@ public final class InventoryPage {
 			drawAccessoryMissingFace(g, font, contentX, contentY, contentW, contentH, toggleW, mouseX, mouseY);
 		} else {
 			int toggleW = drawAccessoryViewToggle(g, font, contentX + contentW, contentY, mouseX, mouseY, !animating);
+			if (canFlipAccessoryPowers()) {
+				toggleW += 4 + drawPanelButton(g, font, "Powers", contentX + contentW - toggleW - 4, contentY,
+					mouseX, mouseY, !animating, this::toggleAccessoryPowers);
+			}
 			String title = titleFor(false, List.of(), pages, page);
 			PvDraw.text(g, font, trimToWidth(font, title, contentW - toggleW - 6), contentX, contentY, PvDraw.COLOR_TEXT);
 			int metaTop = contentY + font.lineHeight + 4;
@@ -734,14 +835,18 @@ public final class InventoryPage {
 		g.pose().popMatrix();
 	}
 
-	private void drawAccessoryPowersFace(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h) {
+	private void drawAccessoryPowersFace(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, int buttonW) {
 		InventorySnapshot.AccessoryInfo info = this.snapshot.accessoryInfo();
 		List<String> powers = info == null ? List.of() : info.unlockedPowers();
 		String selected = info == null ? "" : info.selectedPower();
 
-		PvDraw.text(g, font, "Unlocked powers", x, y, PvDraw.COLOR_MUTED);
+		String title = "Unlocked powers";
+		PvDraw.text(g, font, trimToWidth(font, title, w - buttonW - 6), x, y, PvDraw.COLOR_MUTED);
 		String count = FormatUtil.commas(powers.size());
-		PvDraw.textRight(g, font, count, x + w, y, PvDraw.COLOR_ACCENT);
+		int countX = x + font.width(title) + 4;
+		if (countX + font.width(count) <= x + w - buttonW - 6) {
+			PvDraw.text(g, font, count, countX, y, PvDraw.COLOR_ACCENT);
+		}
 
 		int listTop = y + font.lineHeight + 4;
 		int listBottom = y + h;
@@ -783,6 +888,13 @@ public final class InventoryPage {
 		GuiGraphicsExtractor g, Font font, int rightX, int y, int mouseX, int mouseY, boolean clickable
 	) {
 		String label = this.accessoryMissingView ? "Accessory Bag" : "Missing";
+		return drawPanelButton(g, font, label, rightX, y, mouseX, mouseY, clickable, this::toggleAccessoryMissingView);
+	}
+
+	private int drawPanelButton(
+		GuiGraphicsExtractor g, Font font, String label, int rightX, int y, int mouseX, int mouseY,
+		boolean clickable, Runnable action
+	) {
 		int bw = font.width(label) + 10;
 		int bh = font.lineHeight + 4;
 		int bx = rightX - bw;
@@ -792,7 +904,7 @@ public final class InventoryPage {
 		g.outline(bx, by, bw, bh, hovered ? PvDraw.COLOR_ACCENT : PvDraw.COLOR_BORDER);
 		PvDraw.textCentered(g, font, label, bx + bw / 2, by + 2, PvDraw.COLOR_TEXT);
 		if (clickable) {
-			this.pageHits.add(new RunnableHit(bx, by, bw, bh, this::toggleAccessoryMissingView));
+			this.pageHits.add(new RunnableHit(bx, by, bw, bh, action));
 		}
 		return bw;
 	}
@@ -836,7 +948,7 @@ public final class InventoryPage {
 		PvDraw.text(g, font, trimToWidth(font, "Missing Accessories", w - toggleW - 6), x, y, PvDraw.COLOR_TEXT);
 		MissingAccessories.Result result = missingAccessories();
 		if (result == null) {
-			PvDraw.textCentered(g, font, "Loading item data…", x + w / 2, y + h / 2, PvDraw.COLOR_MUTED);
+			PvDraw.textCentered(g, font, "Loading item data...", x + w / 2, y + h / 2, PvDraw.COLOR_MUTED);
 			return;
 		}
 
@@ -851,7 +963,7 @@ public final class InventoryPage {
 		int countY = metaY + font.lineHeight + 2;
 		String count = FormatUtil.commas(result.entries().size()) + " missing";
 		if (result.unpricedTop() > 0) {
-			count += "  ·  " + FormatUtil.commas(result.unpricedTop()) + " without a price";
+			count += "  ·  " + FormatUtil.commas(result.unpricedTop()) + " unpriced";
 		}
 		PvDraw.text(g, font, trimToWidth(font, count, w), x, countY, PvDraw.COLOR_MUTED);
 
@@ -970,15 +1082,172 @@ public final class InventoryPage {
 			PvDraw.textCentered(g, font, "Empty", x + w / 2, y + h / 2, PvDraw.COLOR_MUTED);
 			return;
 		}
-		int start = page * LOADOUTS_PER_PAGE;
-		int end = Math.min(all.size(), start + LOADOUTS_PER_PAGE);
-		int count = Math.max(1, end - start);
-		int cardW = (w - LOADOUT_GAP * (count - 1)) / count;
-		for (int i = 0; i < count; i++) {
-			InventorySnapshot.Loadout loadout = all.get(start + i);
-			int cx = x + i * (cardW + LOADOUT_GAP);
-			drawLoadoutCard(g, font, cx, y, cardW, h, loadout, mouseX, mouseY);
+		int[] grid = loadoutGrid(w, h, font);
+		int cols = grid[0];
+		boolean compact = grid[3] != 0;
+		int perPage = this.loadoutsPerPage;
+		int start = page * perPage;
+		int end = Math.min(all.size(), start + perPage);
+		int cardW = (w - LOADOUT_GAP * (cols - 1)) / cols;
+		int cardH = compact ? loadoutCompactHeight(font) : loadoutCardHeight(font);
+		for (int i = start; i < end; i++) {
+			int col = (i - start) % cols;
+			int row = (i - start) / cols;
+			int cx = x + col * (cardW + LOADOUT_GAP);
+			int cy = y + row * (cardH + LOADOUT_ROW_GAP);
+			if (row > 0 && col == 0) {
+				PvDraw.fill(g, x, cy - LOADOUT_ROW_GAP / 2, w, 1, PvDraw.COLOR_DIVIDER);
+			}
+			if (compact) {
+				drawLoadoutCompactCard(g, font, cx, cy, cardW, all.get(i), mouseX, mouseY);
+			} else {
+				drawLoadoutCard(g, font, cx, cy, cardW, cardH, all.get(i), mouseX, mouseY);
+			}
 		}
+	}
+
+	/**
+	 * {cols, rows, perPage, compact}. Callers pass a height that already excludes the pager row.
+	 * Two rows of full cards need ~206px, more than the usual panel gives, so fall back to compact cards there.
+	 */
+	private static int[] loadoutGrid(int w, int h, Font font) {
+		int cols = Math.max(2, Math.min(3, (w + LOADOUT_GAP) / (LOADOUT_MIN_W + LOADOUT_GAP)));
+		int rows = Math.max(1, (h + LOADOUT_ROW_GAP) / (loadoutCardHeight(font) + LOADOUT_ROW_GAP));
+		if (rows < 2) {
+			int compactRows = Math.max(1, (h + LOADOUT_ROW_GAP) / (loadoutCompactHeight(font) + LOADOUT_ROW_GAP));
+			if (compactRows > rows) {
+				return new int[] {cols, compactRows, cols * compactRows, 1};
+			}
+		}
+		return new int[] {cols, rows, cols * rows, 0};
+	}
+
+	private static int loadoutCardHeight(Font font) {
+		return GRID_PAD + font.lineHeight + 4 + 4 * SLOT + 3 * SLOT_GAP + GRID_PAD;
+	}
+
+	private static int loadoutCompactHeight(Font font) {
+		return GRID_PAD + font.lineHeight + 4 + 2 * SLOT + SLOT_GAP + GRID_PAD;
+	}
+
+	private int loadoutPageCount() {
+		int perPage = Math.max(1, this.loadoutsPerPage);
+		return Math.max(1, (Math.max(1, this.snapshot.loadouts().size()) + perPage - 1) / perPage);
+	}
+
+	private static String loadoutTreesLabel(InventorySnapshot.Loadout loadout) {
+		List<String> parts = new ArrayList<>(2);
+		if (loadout.hotmPreset() != null) {
+			parts.add("HOTM " + loadout.hotmPreset());
+		}
+		if (loadout.hotfPreset() != null) {
+			parts.add("HOTF " + loadout.hotfPreset());
+		}
+		return String.join("  ", parts);
+	}
+
+	private static List<Component> loadoutTreesTooltip(InventorySnapshot.Loadout loadout) {
+		List<Component> lines = new ArrayList<>();
+		lines.add(PvDraw.styled("Skill Tree Presets", PvDraw.COLOR_TEXT, true));
+		if (loadout.hotmPreset() != null) {
+			lines.add(treePresetLine("HOTM ", loadout.hotmPreset()));
+		}
+		if (loadout.hotfPreset() != null) {
+			lines.add(treePresetLine("HOTF ", loadout.hotfPreset()));
+		}
+		lines.add(Component.empty());
+		lines.add(PvDraw.styled("HOTM/HOTF tabs show the active preset", PvDraw.COLOR_MUTED, false));
+		return lines;
+	}
+
+	private static List<Component> loadoutSummaryTooltip(InventorySnapshot.Loadout loadout) {
+		List<Component> lines = new ArrayList<>();
+		lines.add(SkyBlockStats.loadoutName(loadout.name()));
+		lines.add(labelledLine("Power ", SkyBlockStats.powerName(loadout.powerStone())));
+		lines.add(labelledLine("Tuning ", SkyBlockStats.tuningStats(loadout.tuning())));
+		lines.add(labelledLine("Pet ", PvDraw.styled(loadout.petLabel().isBlank() ? "-" : loadout.petLabel(), loadoutPetColor(loadout), false)));
+		if (loadout.hotmPreset() != null) {
+			lines.add(treePresetLine("HOTM ", loadout.hotmPreset()));
+		}
+		if (loadout.hotfPreset() != null) {
+			lines.add(treePresetLine("HOTF ", loadout.hotfPreset()));
+		}
+		if (loadout.hotmPreset() == null && loadout.hotfPreset() == null) {
+			lines.add(PvDraw.styled("No HOTM/HOTF preset", PvDraw.COLOR_MUTED, false));
+		}
+		return lines;
+	}
+
+	private static Component labelledLine(String label, Component value) {
+		MutableComponent line = Component.empty();
+		line.append(PvDraw.styled(label, PvDraw.COLOR_MUTED, false));
+		line.append(value);
+		return line;
+	}
+
+	private static int loadoutPetColor(InventorySnapshot.Loadout loadout) {
+		if (loadout.pet() != null && !loadout.pet().isEmpty()) {
+			String tier = SkyBlockItemFactory.resolveTier(loadout.pet().id());
+			if (!tier.isBlank()) {
+				return SkyBlockItemFactory.tierArgb(tier);
+			}
+		}
+		return PvDraw.COLOR_TEXT;
+	}
+
+	/** Two slot rows (equipment, armor) with pet and power beside; details move to the header hover. */
+	private void drawLoadoutCompactCard(
+		GuiGraphicsExtractor g,
+		Font font,
+		int x,
+		int y,
+		int w,
+		InventorySnapshot.Loadout loadout,
+		int mouseX,
+		int mouseY
+	) {
+		int startY = y + GRID_PAD;
+		int left = x + GRID_PAD;
+		String trees = loadoutTreesLabel(loadout);
+		int treesW = trees.isEmpty() ? 0 : font.width(trees);
+		int nameW = Math.max(20, w - GRID_PAD * 2 - (treesW > 0 ? treesW + 6 : 0));
+		Component name = SkyBlockStats.loadoutName(loadout.name());
+		if (font.width(name) > nameW) {
+			name = SkyBlockStats.loadoutName(trimToWidth(font, loadout.name(), nameW - font.width("..")));
+		}
+		PvDraw.text(g, font, name, left, startY);
+		if (treesW > 0) {
+			PvDraw.text(g, font, trees, x + w - GRID_PAD - treesW, startY, PvDraw.COLOR_MUTED);
+		}
+		if (mouseX >= x && mouseX < x + w && mouseY >= startY - 1 && mouseY < startY + font.lineHeight) {
+			this.loadoutHoverTip = loadoutSummaryTooltip(loadout);
+		}
+
+		int eqY = startY + font.lineHeight + 4;
+		int armorY = eqY + SLOT + SLOT_GAP;
+		for (int i = 0; i < 4; i++) {
+			int sx = left + i * (SLOT + SLOT_GAP);
+			drawSlot(g, font, sx, eqY, i < loadout.equipment().size() ? loadout.equipment().get(i) : null, mouseX, mouseY);
+			drawSlot(g, font, sx, armorY, i < loadout.armor().size() ? loadout.armor().get(i) : null, mouseX, mouseY);
+		}
+
+		int sideX = left + 4 * SLOT + 3 * SLOT_GAP + META_GAP;
+		int sideW = Math.max(0, x + w - GRID_PAD - sideX);
+		drawSlot(g, font, sideX, eqY, loadout.pet(), mouseX, mouseY);
+		if (loadout.pet() == null || loadout.pet().isEmpty()) {
+			g.item(new ItemStack(Items.BONE), sideX + 1, eqY + 1);
+		}
+		if (sideW > 8) {
+			PvDraw.text(g, font, trimComponent(font, SkyBlockStats.powerName(loadout.powerStone()), sideW),
+				sideX, armorY + (SLOT - font.lineHeight) / 2);
+		}
+	}
+
+	private static Component treePresetLine(String label, int preset) {
+		MutableComponent line = Component.empty();
+		line.append(PvDraw.styled(label, PvDraw.COLOR_MUTED, false));
+		line.append(PvDraw.styled("Preset " + preset, PvDraw.COLOR_TEXT, false));
+		return line;
 	}
 
 	/** Equipment column left of armor (both top→bottom), metadata under/ beside. */
@@ -995,7 +1264,21 @@ public final class InventoryPage {
 	) {
 		int gearW = SLOT + COL_GAP + SLOT;
 		int startY = y + GRID_PAD;
-		PvDraw.text(g, font, SkyBlockStats.loadoutName(loadout.name()), x + GRID_PAD, startY);
+		String trees = loadoutTreesLabel(loadout);
+		int treesW = trees.isEmpty() ? 0 : font.width(trees);
+		int nameW = Math.max(20, w - GRID_PAD * 2 - (treesW > 0 ? treesW + 6 : 0));
+		Component name = SkyBlockStats.loadoutName(loadout.name());
+		if (font.width(name) > nameW) {
+			name = SkyBlockStats.loadoutName(trimToWidth(font, loadout.name(), nameW - font.width("..")));
+		}
+		PvDraw.text(g, font, name, x + GRID_PAD, startY);
+		if (treesW > 0) {
+			int treesX = x + w - GRID_PAD - treesW;
+			PvDraw.text(g, font, trees, treesX, startY, PvDraw.COLOR_MUTED);
+			if (mouseX >= treesX && mouseX < treesX + treesW && mouseY >= startY - 1 && mouseY < startY + font.lineHeight) {
+				this.loadoutHoverTip = loadoutTreesTooltip(loadout);
+			}
+		}
 		int gearTop = startY + font.lineHeight + 4;
 		int eqX = x + GRID_PAD;
 		int armorX = eqX + SLOT + COL_GAP;
@@ -1460,7 +1743,7 @@ public final class InventoryPage {
 				List<InventorySnapshot.Loadout> loadouts = this.snapshot.loadouts();
 				for (int i = 0; i < loadouts.size(); i++) {
 					if (loadoutMatches(loadouts.get(i))) {
-						int page = i / LOADOUTS_PER_PAGE;
+						int page = i / this.loadoutsPerPage;
 						this.searchPanes.add(pane);
 						this.searchPages.computeIfAbsent(pane, ignored -> new HashSet<>()).add(page);
 					}

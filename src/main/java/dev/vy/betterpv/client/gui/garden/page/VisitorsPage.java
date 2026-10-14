@@ -48,6 +48,7 @@ public final class VisitorsPage {
 		this.scroll = Math.min(this.scroll, this.maxScroll);
 
 		ItemStack grey = new ItemStack(Items.GRAY_DYE);
+		ItemStack yellow = new ItemStack(Items.YELLOW_DYE);
 		ItemStack green = new ItemStack(Items.LIME_DYE);
 
 		g.enableScissor(lx, gridTop, lx + lw, gridTop + gridH);
@@ -64,7 +65,12 @@ public final class VisitorsPage {
 			GardenUi.drawCellBorder(g, bx, by, cellW, cellH);
 			int iconX = bx + (cellW - ICON) / 2;
 			GardenUi.drawIcon(g, v.npcItemId(), iconX, by + 2, ICON, null);
-			ItemStack dye = v.visited() ? green : grey;
+			GardenSnapshot.VisitorState state = v.state();
+			ItemStack dye = switch (state) {
+				case ACCEPTED -> green;
+				case VISITED -> yellow;
+				case NEVER -> grey;
+			};
 			g.item(dye, iconX, by + 2 + ICON + 2);
 			String rarity = GardenData.visitorRarity(v.id());
 			List<PvTooltip.Line> tip = new ArrayList<>();
@@ -72,6 +78,11 @@ public final class VisitorsPage {
 			if (!rarity.isBlank()) {
 				tip.add(PvTooltip.Line.of(GardenData.prettyVisitorRarity(rarity), rarityColor(rarity)));
 			}
+			tip.add(switch (state) {
+				case ACCEPTED -> PvTooltip.Line.of("Offer accepted", COMPLETED_C);
+				case VISITED -> PvTooltip.Line.of("Visited, never accepted", 0xFFFFFF55);
+				case NEVER -> PvTooltip.Line.of("Not encountered", PvDraw.COLOR_MUTED);
+			});
 			tip.add(PvTooltip.Line.of("Visits: " + FormatUtil.commas(v.visits()), VISITS_C));
 			tip.add(PvTooltip.Line.of("Completed: " + FormatUtil.commas(v.completed()), COMPLETED_C));
 			tip.add(PvTooltip.Line.of("Rejected: " + FormatUtil.commas(v.rejected()), REJECTED_C));

@@ -90,7 +90,7 @@ public final class InventorySnapshot {
 
 	/**
 	 * Named loadout preset: equipment column + armor column + metadata.
-	 * HOTM/HOTF are not in the public API loadout object, so they are omitted.
+	 * hotmPreset/hotfPreset are the skill tree preset slots (1-5) the loadout switches to, null when unset.
 	 */
 	public record Loadout(
 		String name,
@@ -100,7 +100,9 @@ public final class InventorySnapshot {
 		Integer tuningSlot,
 		List<StatPoint> tuning,
 		Slot pet,
-		String petLabel
+		String petLabel,
+		Integer hotmPreset,
+		Integer hotfPreset
 	) {
 		public Loadout {
 			name = name == null || name.isBlank() ? "Loadout" : name;
@@ -144,6 +146,9 @@ public final class InventorySnapshot {
 	private final boolean carnivalPresent;
 	private final Page candyBag;
 	private final boolean candyPresent;
+	private final boolean inventoryApi;
+	private final boolean personalVaultPresent;
+	private final boolean timePocketPresent;
 
 	public InventorySnapshot(
 		Page inventory,
@@ -165,15 +170,51 @@ public final class InventorySnapshot {
 		Page candyBag,
 		boolean candyPresent
 	) {
+		this(
+			inventory, enderChest, backpacks, wardrobe, equipmentWardrobe, loadouts, sacks, fishingBag, potionBag,
+			quiver, accessoryBag, accessoryInfo, timePocket, personalVault, carnivalMasks, carnivalPresent, candyBag,
+			candyPresent, true, true, true
+		);
+	}
+
+	/**
+	 * @param inventoryApi false when the member's inventory API is off ({@code inv_contents} missing)
+	 * @param personalVaultPresent false when {@code personal_vault_contents} is absent (vault not unlocked)
+	 * @param timePocketPresent false when no Time Pocket field was found in the API data
+	 */
+	public InventorySnapshot(
+		Page inventory,
+		List<Page> enderChest,
+		List<Page> backpacks,
+		List<Page> wardrobe,
+		List<Page> equipmentWardrobe,
+		List<Loadout> loadouts,
+		List<Page> sacks,
+		Page fishingBag,
+		Page potionBag,
+		Page quiver,
+		List<Page> accessoryBag,
+		AccessoryInfo accessoryInfo,
+		Page timePocket,
+		Page personalVault,
+		Page carnivalMasks,
+		boolean carnivalPresent,
+		Page candyBag,
+		boolean candyPresent,
+		boolean inventoryApi,
+		boolean personalVaultPresent,
+		boolean timePocketPresent
+	) {
+		this.inventoryApi = inventoryApi;
+		this.personalVaultPresent = personalVaultPresent;
+		this.timePocketPresent = timePocketPresent;
 		this.inventory = inventory == null ? emptyPage("Inventory", 9) : inventory;
 		this.enderChest = enderChest == null ? List.of() : List.copyOf(enderChest);
 		this.backpacks = backpacks == null ? List.of() : List.copyOf(backpacks);
 		this.wardrobe = wardrobe == null ? List.of() : List.copyOf(wardrobe);
 		this.equipmentWardrobe = equipmentWardrobe == null ? List.of() : List.copyOf(equipmentWardrobe);
 		this.loadouts = loadouts == null ? List.of() : List.copyOf(loadouts);
-		this.sacks = sacks == null || sacks.isEmpty()
-			? List.of(emptyPage("Sacks", 9))
-			: List.copyOf(sacks);
+		this.sacks = sacks == null ? List.of() : List.copyOf(sacks);
 		this.fishingBag = fishingBag == null ? emptyPage("Fishing Bag", 9) : fishingBag;
 		this.potionBag = potionBag == null ? emptyPage("Potion Bag", 9) : potionBag;
 		this.quiver = quiver == null ? emptyPage("Quiver", 9) : quiver;
@@ -270,6 +311,18 @@ public final class InventorySnapshot {
 
 	public Page personalVault() {
 		return this.personalVault;
+	}
+
+	public boolean inventoryApi() {
+		return this.inventoryApi;
+	}
+
+	public boolean personalVaultPresent() {
+		return this.personalVaultPresent;
+	}
+
+	public boolean timePocketPresent() {
+		return this.timePocketPresent;
 	}
 
 	public Page carnivalMasks() {

@@ -6,18 +6,15 @@ import dev.vy.betterpv.client.dungeons.CataXpCalculator;
 import dev.vy.betterpv.client.dungeons.CataXpMath;
 import dev.vy.betterpv.client.dungeons.ClassLevelQuery;
 import dev.vy.betterpv.client.dungeons.ClassXpCalculator;
-import dev.vy.betterpv.client.dungeons.EssencePerkTips;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
-import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
+import dev.vy.betterpv.client.gui.essence.EssenceShopColumn;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 
 public final class DungeonPage {
 	private enum FieldFocus {
@@ -847,10 +844,6 @@ public final class DungeonPage {
 		drawEssenceColumnFit(g, font, this.data.dragonShop(), c2, y, colW, h, DRAGON_COLOR, 0, registerHovers);
 	}
 
-	/**
-	 * Full-size perk text. Packs rows into the panel instead of shrinking the font.
-	 * Long names clip in-column; hover still shows the full perk.
-	 */
 	private void drawEssenceColumnFit(
 		GuiGraphicsExtractor g,
 		Font font,
@@ -863,86 +856,10 @@ public final class DungeonPage {
 		int rowGap,
 		boolean registerHovers
 	) {
-		if (w <= 0 || h <= 0 || shop == null) {
-			return;
-		}
-		List<DungeonSnapshot.EssencePerk> perks = shop.perks();
-		int headerH = Math.max(16, font.lineHeight + 2);
-		int n = perks.size();
-		int bodyH = Math.max(1, h - headerH - 2);
-		int packed = n <= 0 ? font.lineHeight + 2 : bodyH / n;
-		int rowH = Math.min(16 + Math.max(0, rowGap), Math.max(font.lineHeight, packed));
-
-		g.enableScissor(x, y, x + w, y + h);
-
-		String name = shop.name() == null ? "" : shop.name();
-		String bal = essenceBalance(shop.balance());
-		int headerLabelX = 16 + 3;
-		int avail = Math.max(1, w - headerLabelX);
-		int nameW = PvDraw.widthBold(font, name);
-		int balW = PvDraw.widthBold(font, bal);
-		int gapNameBal = 4;
-		float headerScale = 1F;
-		float needed = (nameW + gapNameBal + balW) * headerScale;
-		if (needed > avail) {
-			headerScale = Math.max(0.7F, avail / (float) (nameW + gapNameBal + balW));
-		}
-		int textH = Math.max(1, Math.round(font.lineHeight * headerScale));
-		PvDraw.IconTextAlign headerAlign = PvDraw.IconTextAlign.of(0, headerH, 16, textH);
-		g.item(essenceIcon(shop.iconId()), x, y + headerAlign.iconY());
-		int drawBalW = Math.max(1, Math.round(balW * headerScale));
-		if (headerScale >= 0.999F) {
-			PvDraw.textBold(g, font, name, x + headerLabelX, y + headerAlign.textY(), headerColor);
-			PvDraw.textBold(g, font, bal, x + w - balW, y + headerAlign.textY(), headerColor);
-		} else {
-			PvDraw.textBoldScaled(g, font, name, x + headerLabelX, y + headerAlign.textY(), headerColor, headerScale);
-			PvDraw.textBoldScaled(g, font, bal, x + w - drawBalW, y + headerAlign.textY(), headerColor, headerScale);
-		}
-
-		int ly = y + headerH + 2;
-		int labelX = 16 + 2;
-		for (DungeonSnapshot.EssencePerk perk : perks) {
-			int iconSize = Math.min(16, rowH);
-			int iconY = ly + Math.max(0, (rowH - iconSize) / 2);
-			if (iconSize >= 16) {
-				g.item(essencePerkIcon(perk.id()), x, iconY);
-			} else {
-				g.pose().pushMatrix();
-				g.pose().translate(x, iconY);
-				float s = iconSize / 16F;
-				g.pose().scale(s, s);
-				g.item(essencePerkIcon(perk.id()), 0, 0);
-				g.pose().popMatrix();
-			}
-			String right = perk.level() + "/" + perk.maxLevel();
-			int rightW = font.width(right);
-			String left = perk.name();
-			int nameAvail = Math.max(4, w - labelX - rightW - 2);
-			if (font.width(left) > nameAvail) {
-				left = trimToWidth(font, left, nameAvail);
-			}
-			int textY = ly + Math.max(0, (rowH - font.lineHeight) / 2);
-			int valueColor = perk.maxed() ? COLOR_COMPLETIONS : PvDraw.COLOR_TEXT;
-			PvDraw.text(g, font, left, x + labelX, textY, PvDraw.COLOR_MUTED);
-			PvDraw.textRight(g, font, right, x + w, textY, valueColor);
-			if (registerHovers) {
-				this.zones.add(new HoverZone(x, ly, w, rowH, EssencePerkTips.tip(perk)));
-			}
-			ly += rowH;
-		}
-
-		g.disableScissor();
-	}
-
-	private static String essenceBalance(long balance) {
-		if (balance < 1000L) {
-			return FormatUtil.commas(balance);
-		}
-		String k = FormatUtil.oneDecimal(balance / 1000D);
-		if (k.endsWith(".0")) {
-			k = k.substring(0, k.length() - 2);
-		}
-		return k + "k";
+		EssenceShopColumn.draw(
+			g, font, shop, x, y, w, h, headerColor, rowGap,
+			registerHovers ? (zx, zy, zw, zh, lines) -> this.zones.add(new HoverZone(zx, zy, zw, zh, lines)) : null
+		);
 	}
 
 	private void drawRunsPanel(
@@ -1031,50 +948,6 @@ public final class DungeonPage {
 
 		drawTotalLine(g, font, leftCol, floors.totalY(), colW, normalTotal);
 		drawTotalLine(g, font, rightCol, floors.totalY(), colW, masterTotal);
-	}
-
-	private static ItemStack essenceIcon(String skyblockId) {
-		ItemStack stack = SkyBlockItemFactory.iconStack(skyblockId == null ? "" : skyblockId);
-		return stack == null || stack.isEmpty() ? new ItemStack(Items.PLAYER_HEAD) : stack;
-	}
-
-	/** Malik essence-shop row icons (vanilla stand-ins matching the GUI). */
-	private static ItemStack essencePerkIcon(String perkId) {
-		if (perkId == null) {
-			return new ItemStack(Items.PAPER);
-		}
-		return switch (perkId) {
-			case "permanent_health", "catacombs_health" -> new ItemStack(Items.GOLDEN_APPLE);
-			case "permanent_defense", "catacombs_defense" -> new ItemStack(Items.IRON_CHESTPLATE);
-			case "permanent_speed" -> new ItemStack(Items.SUGAR);
-			case "permanent_intelligence", "catacombs_intelligence" -> new ItemStack(Items.ENCHANTED_BOOK);
-			case "permanent_strength", "catacombs_strength" -> new ItemStack(Items.BLAZE_POWDER);
-			case "forbidden_blessing" -> new ItemStack(Items.GOLD_INGOT);
-			case "catacombs_boss_luck" -> new ItemStack(Items.RABBIT_FOOT);
-			case "catacombs_looting" -> new ItemStack(Items.GOLDEN_SWORD);
-			case "revive_stone", "help_of_the_fairies" -> new ItemStack(Items.TOTEM_OF_UNDYING);
-			case "catacombs_crit_damage" -> new ItemStack(Items.DIAMOND_SWORD);
-			case "cold_efficiency" -> new ItemStack(Items.IRON_PICKAXE);
-			case "cooled_forges" -> new ItemStack(Items.BLAST_FURNACE);
-			case "frozen_skin" -> new ItemStack(Items.LEATHER_CHESTPLATE);
-			case "season_of_joy" -> new ItemStack(Items.SNOWBALL);
-			case "drake_piper" -> new ItemStack(Items.EGG);
-			case "empowered_agility" -> new ItemStack(Items.FEATHER);
-			case "vermin_control" -> new ItemStack(Items.SPIDER_EYE);
-			case "bane" -> new ItemStack(Items.IRON_SWORD);
-			case "spider_training" -> new ItemStack(Items.BOOK);
-			case "toxophilite" -> new ItemStack(Items.BOW);
-			case "flat_damage_vs_ender" -> new ItemStack(Items.DIAMOND_SWORD);
-			case "mana_after_ender_kill" -> new ItemStack(Items.EXPERIENCE_BOTTLE);
-			case "fero_vs_dragons" -> new ItemStack(Items.DRAGON_BREATH);
-			case "inc_zealots_odds" -> new ItemStack(Items.ENDER_PEARL);
-			case "combat_wisdom_in_end" -> new ItemStack(Items.BOOK);
-			case "edrag_cd" -> new ItemStack(Items.DRAGON_HEAD);
-			case "dragon_reforges_buff" -> new ItemStack(Items.ANVIL);
-			case "increased_sup_chances" -> new ItemStack(Items.EGG);
-			case "unbridled_rage" -> new ItemStack(Items.BLAZE_POWDER);
-			default -> new ItemStack(Items.PAPER);
-		};
 	}
 
 	private static float easeInOutCubic(float t) {
@@ -1175,7 +1048,7 @@ public final class DungeonPage {
 	private static final int COLOR_HEALER = 0xFFFF8EC8;
 	private static final int COLOR_TANK = 0xFFC0C0D0;
 
-	private static List<PvTooltip.Line> floorStatsTip(String title, DungeonSnapshot.FloorEntry floor) {
+	static List<PvTooltip.Line> floorStatsTip(String title, DungeonSnapshot.FloorEntry floor) {
 		List<PvTooltip.Line> lines = new ArrayList<>();
 		lines.add(PvTooltip.Line.bold(title, PvDraw.COLOR_GOLD));
 		lines.add(statLine("Tier Completions", FormatUtil.commas(floor.completions()), COLOR_COMPLETIONS));
@@ -1189,9 +1062,7 @@ public final class DungeonPage {
 		lines.add(statLine("Most Mobs Killed", FormatUtil.commas(floor.mostMobsKilled()), COLOR_MOBS));
 		lines.add(timeLine("Fastest Time", floor.fastestMs(), COLOR_TIME));
 		lines.add(timeLine("Fastest Time S", floor.fastestSMs(), COLOR_TIME_S));
-		if (floor.fastestSPlusMs() > 0L) {
-			lines.add(timeLine("Fastest Time S Plus", floor.fastestSPlusMs(), COLOR_TIME_S_PLUS));
-		}
+		lines.add(timeLine("Fastest Time S+", floor.fastestSPlusMs(), COLOR_TIME_S_PLUS));
 		if (floor.mostHealing() > 0D) {
 			lines.add(statLine("Most Healing", FormatUtil.shortXp(floor.mostHealing()), COLOR_HEALING));
 		}
@@ -1217,6 +1088,12 @@ public final class DungeonPage {
 	}
 
 	private static PvTooltip.Line timeLine(String label, long ms, int color) {
+		if (ms <= 0L) {
+			return new PvTooltip.Line(List.of(
+				PvTooltip.Span.bold(label + ": ", color),
+				PvTooltip.Span.of("N/A", color)
+			));
+		}
 		return new PvTooltip.Line(List.of(
 			PvTooltip.Span.bold(label + ": ", color),
 			PvTooltip.Span.bold(FormatUtil.prettyTime(ms), color)

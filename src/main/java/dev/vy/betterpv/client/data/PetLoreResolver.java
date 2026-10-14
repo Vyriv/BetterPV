@@ -67,7 +67,7 @@ public final class PetLoreResolver {
 	public record PetType(String type, String name, String tier, String neuId) {
 	}
 
-	private static final String[] PET_TIERS = {"COMMON", "UNCOMMON", "RARE", "EPIC", "LEGENDARY", "MYTHIC"};
+	private static final String[] PET_TIERS = {"COMMON", "UNCOMMON", "RARE", "EPIC", "LEGENDARY", "MYTHIC", "DIVINE", "SPECIAL", "VERY_SPECIAL"};
 
 	/** Every pet type in NEU petnums.json at its highest tier, sorted by name. */
 	public static List<PetType> petTypes() {

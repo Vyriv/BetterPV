@@ -141,6 +141,39 @@ final class ItemTooltipEnricher {
 		lines.add(insertAt + 1, hint);
 	}
 
+	/** Sack contents value in place of the sack item's own price; nothing when no contents are priced. */
+	static void appendSackValue(List<Component> lines, SackValue value) {
+		if (lines == null || value == null || !value.known()) {
+			return;
+		}
+		int rarityIndex = findRarityLineIndex(lines);
+		int insertAt = rarityIndex >= 0 ? rarityIndex + 1 : lines.size();
+		for (Component line : sackValueLines(value, false)) {
+			lines.add(insertAt++, line);
+		}
+	}
+
+	static List<Component> sackValueLines(SackValue value, boolean clickHint) {
+		List<Component> out = new ArrayList<>();
+		if (value == null || !value.known()) {
+			return out;
+		}
+		out.add(Component.literal("Sack value: ")
+			.withStyle(Style.EMPTY.withColor(ChatFormatting.GRAY).withItalic(false))
+			.append(Component.literal(FormatUtil.shortCoins(Math.round(value.total())))
+				.withStyle(Style.EMPTY.withColor(ChatFormatting.GOLD).withItalic(false))));
+		if (!value.unpriced().isEmpty()) {
+			int n = value.unpriced().size();
+			out.add(Component.literal(n + (n == 1 ? " item has" : " items have") + " no price")
+				.withStyle(Style.EMPTY.withColor(ChatFormatting.DARK_GRAY).withItalic(false)));
+		}
+		if (clickHint) {
+			out.add(Component.literal("Click to view value breakdown")
+				.withStyle(Style.EMPTY.withColor(ChatFormatting.DARK_GRAY).withItalic(true)));
+		}
+		return out;
+	}
+
 	/** Rarity / item-name colour for recombobulated rarity lines. */
 	static int estimatedHeaderColor(List<Component> lines, InventorySnapshot.Slot slot) {
 		int rarityIndex = findRarityLineIndex(lines);

@@ -86,6 +86,26 @@ public final class CrimsonSnapshot {
 	) {
 	}
 
+	/**
+	 * Kuudra Follower Armor quest flags from {@code nether_island_player_data.quests}. Hypixel only
+	 * writes these once set, so a missing key reads as not done.
+	 */
+	public record KuudraFollower(boolean loremaster, boolean cathedralBook, long relicClaimedMs, boolean leggings) {
+		public static final KuudraFollower NONE = new KuudraFollower(false, false, 0L, false);
+
+		static KuudraFollower from(JsonObject quests) {
+			if (quests == null) {
+				return NONE;
+			}
+			return new KuudraFollower(
+				bool(quests.get("kuudra_loremaster")),
+				bool(quests.get("found_kuudra_book")),
+				Math.max(0L, (long) num(quests.get("last_kuudra_relic"))),
+				bool(quests.get("found_kuudra_leggings"))
+			);
+		}
+	}
+
 	private static final String[] MINIBOSSES = {
 		"BLADESOUL",
 		"MAGE_OUTLAW",
@@ -108,7 +128,7 @@ public final class CrimsonSnapshot {
 	private final List<String> lastMinibossesKilled;
 	private final List<String> dailyQuests;
 	private final int cavityNpcs;
-	private final boolean kuudraLoremaster;
+	private final KuudraFollower kuudraFollower;
 	private final List<AbiphoneContact> abiphoneContacts;
 	private final int abiphoneActive;
 	private final String abiphoneRingtone;
@@ -136,7 +156,7 @@ public final class CrimsonSnapshot {
 		List<String> lastMinibossesKilled,
 		List<String> dailyQuests,
 		int cavityNpcs,
-		boolean kuudraLoremaster,
+		KuudraFollower kuudraFollower,
 		List<AbiphoneContact> abiphoneContacts,
 		int abiphoneActive,
 		String abiphoneRingtone,
@@ -163,7 +183,7 @@ public final class CrimsonSnapshot {
 		this.lastMinibossesKilled = List.copyOf(lastMinibossesKilled == null ? List.of() : lastMinibossesKilled);
 		this.dailyQuests = List.copyOf(dailyQuests == null ? List.of() : dailyQuests);
 		this.cavityNpcs = Math.max(0, cavityNpcs);
-		this.kuudraLoremaster = kuudraLoremaster;
+		this.kuudraFollower = kuudraFollower == null ? KuudraFollower.NONE : kuudraFollower;
 		this.abiphoneContacts = List.copyOf(abiphoneContacts == null ? List.of() : abiphoneContacts);
 		this.abiphoneActive = Math.max(0, abiphoneActive);
 		this.abiphoneRingtone = abiphoneRingtone == null ? "" : abiphoneRingtone;
@@ -194,7 +214,7 @@ public final class CrimsonSnapshot {
 		}
 		return new CrimsonSnapshot(
 			"", 0, 0, 0, 0, 0L, 0, 0L,
-			bosses, kuudra, dojo, List.of(), List.of(), 0, false,
+			bosses, kuudra, dojo, List.of(), List.of(), 0, KuudraFollower.NONE,
 			List.of(), 0, "", 0, 0, 0, 0, 0, "",
 			CrimsonKuudraCard.empty(),
 			DungeonSnapshot.EssenceShop.empty("crimson", "Crimson")
@@ -223,7 +243,7 @@ public final class CrimsonSnapshot {
 				base.lastMinibossesKilled,
 				base.dailyQuests,
 				base.cavityNpcs,
-				base.kuudraLoremaster,
+				base.kuudraFollower,
 				base.abiphoneContacts,
 				base.abiphoneActive,
 				base.abiphoneRingtone,
@@ -250,7 +270,7 @@ public final class CrimsonSnapshot {
 		for (String id : MINIBOSSES) {
 			bosses.put(id, minibossData != null && bool(minibossData.get(id)));
 		}
-		boolean loremaster = quests != null && bool(quests.get("kuudra_loremaster"));
+		KuudraFollower follower = KuudraFollower.from(quests);
 		int cavity = 0;
 		if (quests != null && quests.get("unlocked_cavity_npcs") instanceof JsonArray arr) {
 			cavity = arr.size();
@@ -304,9 +324,10 @@ public final class CrimsonSnapshot {
 				String npcKey = AbiphoneNpcs.neuId(id);
 				AbiphoneContact prev = byNpc.get(npcKey);
 				if (prev == null) {
+					String neuName = AbiphoneNpcs.displayName(id);
 					byNpc.put(npcKey, new AbiphoneContact(
 						id,
-						prettyContact(id),
+						neuName != null ? neuName : prettyContact(id),
 						talked,
 						done,
 						isActive,
@@ -355,7 +376,7 @@ public final class CrimsonSnapshot {
 			lastBosses,
 			dailies,
 			cavity,
-			loremaster,
+			follower,
 			contacts,
 			active.size(),
 			ringtone,
@@ -390,7 +411,7 @@ public final class CrimsonSnapshot {
 			this.lastMinibossesKilled,
 			this.dailyQuests,
 			this.cavityNpcs,
-			this.kuudraLoremaster,
+			this.kuudraFollower,
 			this.abiphoneContacts,
 			this.abiphoneActive,
 			this.abiphoneRingtone,
@@ -536,7 +557,11 @@ public final class CrimsonSnapshot {
 	}
 
 	public boolean kuudraLoremaster() {
-		return this.kuudraLoremaster;
+		return this.kuudraFollower.loremaster();
+	}
+
+	public KuudraFollower kuudraFollower() {
+		return this.kuudraFollower;
 	}
 
 	public List<AbiphoneContact> abiphoneContacts() {

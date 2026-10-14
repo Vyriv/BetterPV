@@ -43,6 +43,7 @@ import net.minecraft.network.chat.Style;
 public final class BetterPvSessionAuth {
 	private static final URI AUTH_CHALLENGE_URI = URI.create("https://api.vyriv.dev/hypixel/auth/v2/challenge");
 	private static final URI AUTH_URI = URI.create("https://api.vyriv.dev/hypixel/auth/v2");
+	private static final URI AUTH_REFRESH_URI = URI.create("https://api.vyriv.dev/hypixel/auth/v2/refresh");
 	private static final Duration TIMEOUT = Duration.ofSeconds(12);
 	private static final long REFRESH_SKEW_MILLIS = 60_000L;
 	private static final long TOKEN_EXPIRY_SAFETY_MILLIS = 5_000L;
@@ -57,6 +58,8 @@ public final class BetterPvSessionAuth {
 		return t;
 	});
 
+	// Only limits Mojang re-proofs. Renewing through the API continues until the session deadline,
+	// so /pv still works after the launcher's token expires mid-game.
 	private static final long REFRESH_WHILE_USED_MILLIS = 30L * 60L * 1000L;
 	private static final ScheduledExecutorService REFRESH_SCHEDULER = Executors.newSingleThreadScheduledExecutor(r -> {
 		Thread t = new Thread(r, "BetterPV-SessionAuthRefresh");
@@ -64,9 +67,31 @@ public final class BetterPvSessionAuth {
 		return t;
 	});
 
+	interface RenewTransport {
+		RenewReply send(HttpRequest request) throws Exception;
+	}
+
+	interface RequestSigner {
+		String sign(String transcript) throws Exception;
+	}
+
+	record RenewReply(int status, String body, String origin) {
+		static final RenewReply NO_RESPONSE = new RenewReply(-1, "", "none");
+	}
+
+	static volatile RenewTransport renewTransport = request -> {
+		HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
+		return new RenewReply(response.statusCode(), response.body() == null ? "" : response.body(), responseOrigin(response));
+	};
+	static volatile RequestSigner requestSigner = transcript -> BetterPvInstallKey.load().sign(transcript);
+
 	private static volatile String cachedJwt;
 	private static volatile long expiresAtMillis;
 	private static volatile long usableUntilMillis;
+	private static volatile UUID cachedProfileId;
+	private static volatile long sessionDeadlineMillis;
+	private static int renewFailures;
+	private static final SessionAuthPolicy.CredentialBackoff CREDENTIAL_BACKOFF = new SessionAuthPolicy.CredentialBackoff();
 	private static volatile long nextMojangAuthAttemptAtMillis;
 	private static Failure cooldownFailure = Failure.NONE;
 	private static String cooldownDetail = "";
@@ -84,11 +109,11 @@ public final class BetterPvSessionAuth {
 		MISSING_SESSION("BetterPV could not authenticate /pv (missing Minecraft session)"),
 		OFFLINE_SESSION("BetterPV could not authenticate /pv (offline / Fabric session)"),
 		JOIN_SERVER_FAILED("BetterPV could not authenticate /pv (Minecraft session service failed). Wait a minute before retrying."),
-		INVALID_CREDENTIALS("BetterPV could not authenticate /pv (Minecraft session expired). Re-login to Microsoft in your launcher."),
-		MOJANG_RATE_LIMITED("BetterPV authentication is temporarily rate-limited by Minecraft. Wait a minute before retrying /pv. BetterPV will not retry authentication until the cooldown expires."),
-		SERVER_CONNECTING("BetterPV authentication deferred until your Minecraft server connection is ready."),
+		INVALID_CREDENTIALS("BetterPV could not verify your Minecraft login because it expired during this session. Restart Minecraft from your launcher (sign in again if asked), then use /pv."),
+		MOJANG_RATE_LIMITED("BetterPV authentication is rate-limited by Minecraft. Wait a minute before retrying /pv."),
+		SERVER_CONNECTING("BetterPV authentication will start once your server connection is ready."),
 		SERVER_AUTH_UNAVAILABLE("BetterPV could not authenticate /pv (auth service unavailable)"),
-		AUTH_COOLDOWN("BetterPV authentication is temporarily paused. Wait a minute before retrying /pv."),
+		AUTH_COOLDOWN("BetterPV authentication is paused. Wait a minute before retrying /pv."),
 		AUTH_REJECTED("BetterPV could not authenticate /pv (session proof rejected)"),
 		AUTH_HTTP("BetterPV could not authenticate /pv (auth HTTP error)"),
 		MISSING_JWT("BetterPV could not authenticate /pv (missing JWT)");
@@ -117,6 +142,8 @@ public final class BetterPvSessionAuth {
 		cachedJwt = null;
 		expiresAtMillis = 0L;
 		usableUntilMillis = 0L;
+		cachedProfileId = null;
+		sessionDeadlineMillis = 0L;
 		// Never detach an active attempt or clear its cooldown.
 		cancelRefreshLocked();
 	}
@@ -205,6 +232,12 @@ public final class BetterPvSessionAuth {
 	private static boolean cooldownActive() {
 		synchronized (LOCK) {
 			long remaining = remainingAuthCooldownMillis();
+			if (remaining > 0L && cooldownFailure == Failure.INVALID_CREDENTIALS
+				&& !CREDENTIAL_BACKOFF.appliesTo(currentCredentialKey())) {
+				BetterPV.LOGGER.info("BetterPV Minecraft login changed; session proof may resume");
+				nextMojangAuthAttemptAtMillis = 0L;
+				remaining = 0L;
+			}
 			if (remaining > 0L) {
 				// Keep a more useful exchange failure visible while still blocking another
 				// Mojang proof. A successful joinServer followed by a backend 502 used to
@@ -225,8 +258,12 @@ public final class BetterPvSessionAuth {
 	}
 
 	private static void pauseAuth(Failure failure, String detail) {
+		pauseAuth(failure, detail, MOJANG_COOLDOWN_MILLIS);
+	}
+
+	private static void pauseAuth(Failure failure, String detail, long pauseMillis) {
 		synchronized (LOCK) {
-			nextMojangAuthAttemptAtMillis = System.currentTimeMillis() + MOJANG_COOLDOWN_MILLIS;
+			nextMojangAuthAttemptAtMillis = System.currentTimeMillis() + pauseMillis;
 			cooldownFailure = failure;
 			cooldownDetail = detail;
 			setFailure(failure, detail);
@@ -259,20 +296,7 @@ public final class BetterPvSessionAuth {
 		Optional<String> bearer = ensureBearerToken();
 		if (bearer.isPresent()) {
 			try {
-				String token = bearer.get();
-				String timestamp = Long.toString(Instant.now().getEpochSecond());
-				byte[] nonceBytes = new byte[18];
-				RANDOM.nextBytes(nonceBytes);
-				String nonce = Base64.getUrlEncoder().withoutPadding().encodeToString(nonceBytes);
-				String path = uri.getRawPath();
-				if (uri.getRawQuery() != null && !uri.getRawQuery().isBlank()) path += "?" + uri.getRawQuery();
-				String transcript = requestTranscript("GET", path, timestamp, nonce, token);
-				String signature = BetterPvInstallKey.load().sign(transcript);
-				builder.header("Authorization", "Bearer " + token)
-					.header("X-BetterPV-Timestamp", timestamp)
-					.header("X-BetterPV-Nonce", nonce)
-					.header("X-BetterPV-Signature", signature)
-					.header("X-BetterPV-Correlation-ID", UUID.randomUUID().toString());
+				signRequest(builder, "GET", uri, bearer.get(), UUID.randomUUID().toString());
 				return true;
 			} catch (Exception exception) {
 				BetterPV.LOGGER.warn("BetterPV request proof failed", exception);
@@ -284,6 +308,22 @@ public final class BetterPvSessionAuth {
 			lastFailure = Failure.MISSING_JWT;
 		}
 		return false;
+	}
+
+	private static void signRequest(HttpRequest.Builder builder, String method, URI uri, String token, String correlationId)
+		throws Exception {
+		String timestamp = Long.toString(Instant.now().getEpochSecond());
+		byte[] nonceBytes = new byte[18];
+		RANDOM.nextBytes(nonceBytes);
+		String nonce = Base64.getUrlEncoder().withoutPadding().encodeToString(nonceBytes);
+		String path = uri.getRawPath();
+		if (uri.getRawQuery() != null && !uri.getRawQuery().isBlank()) path += "?" + uri.getRawQuery();
+		String signature = requestSigner.sign(requestTranscript(method, path, timestamp, nonce, token));
+		builder.header("Authorization", "Bearer " + token)
+			.header("X-BetterPV-Timestamp", timestamp)
+			.header("X-BetterPV-Nonce", nonce)
+			.header("X-BetterPV-Signature", signature)
+			.header("X-BetterPV-Correlation-ID", correlationId);
 	}
 
 	/** Posts a throttled in-game chat line for the current auth failure. */
@@ -361,13 +401,18 @@ public final class BetterPvSessionAuth {
 
 	private static CompletableFuture<Optional<String>> requestToken(boolean refresh) {
 		synchronized (LOCK) {
-			if (!refresh && isTokenValid()) {
+			dropTokenForOtherAccountLocked();
+			SessionAuthPolicy.Action action = SessionAuthPolicy.nextAction(
+				isTokenValid(), refresh, sessionDeadlineMillis - System.currentTimeMillis());
+			if (action == SessionAuthPolicy.Action.USE_CACHED) {
 				setFailure(Failure.NONE, "");
 				return CompletableFuture.completedFuture(Optional.of(cachedJwt));
 			}
 			if (inFlight != null && !inFlight.isDone()) return inFlight;
-			if (cooldownActive()) return CompletableFuture.completedFuture(Optional.empty());
-			inFlight = CompletableFuture.supplyAsync(BetterPvSessionAuth::authenticateOnce, AUTH_EXECUTOR)
+			boolean renew = action == SessionAuthPolicy.Action.RENEW;
+			if (!renew && cooldownActive()) return CompletableFuture.completedFuture(Optional.empty());
+			inFlight = CompletableFuture.supplyAsync(
+					renew ? BetterPvSessionAuth::renewOnce : BetterPvSessionAuth::authenticateOnce, AUTH_EXECUTOR)
 				.exceptionally(error -> {
 					BetterPV.LOGGER.warn("BetterPV session auth failed", error);
 					setFailure(Failure.AUTH_HTTP, "Unexpected session authentication failure");
@@ -403,8 +448,10 @@ public final class BetterPvSessionAuth {
 			synchronized (LOCK) {
 				if (generation != refreshGeneration) return;
 				pendingRefresh = null;
-				if (System.currentTimeMillis() - lastUsedAtMillis > REFRESH_WHILE_USED_MILLIS) return;
-				long cooldownMillis = remainingAuthCooldownMillis();
+				boolean renewable = isTokenValid()
+					&& sessionDeadlineMillis - System.currentTimeMillis() >= SessionAuthPolicy.MIN_RENEWABLE_MILLIS;
+				if (!renewable && System.currentTimeMillis() - lastUsedAtMillis > REFRESH_WHILE_USED_MILLIS) return;
+				long cooldownMillis = renewable ? 0L : remainingAuthCooldownMillis();
 				if (cooldownMillis > 0L) {
 					BetterPV.LOGGER.info(
 						"BetterPV session refresh deferred proofCooldownMs={} tokenValidForMs={}",
@@ -422,6 +469,134 @@ public final class BetterPvSessionAuth {
 	private static boolean isTokenValid() {
 		return cachedJwt != null && !cachedJwt.isBlank()
 			&& System.currentTimeMillis() < expiresAtMillis - TOKEN_EXPIRY_SAFETY_MILLIS;
+	}
+
+	// Account switchers can replace the Minecraft user mid-game; never send one account's JWT for another.
+	private static void dropTokenForOtherAccountLocked() {
+		UUID owner = cachedProfileId;
+		if (cachedJwt == null || owner == null) return;
+		UUID current = currentProfileId();
+		if (current == null || current.equals(owner)) return;
+		BetterPV.LOGGER.info("BetterPV Minecraft account changed; dropping the previous account's session token");
+		invalidateLocked();
+	}
+
+	private static UUID currentProfileId() {
+		Minecraft mc = Minecraft.getInstance();
+		User user = mc == null ? null : mc.getUser();
+		return user == null ? null : user.getProfileId();
+	}
+
+	private static String currentCredentialKey() {
+		Minecraft mc = Minecraft.getInstance();
+		User user = mc == null ? null : mc.getUser();
+		return user == null ? null : SessionAuthPolicy.credentialKey(user.getProfileId(), user.getAccessToken());
+	}
+
+	private static void installTokenLocked(String token, long expiresInSeconds, long sessionExpiresInSeconds, UUID profileId) {
+		long now = System.currentTimeMillis();
+		cachedJwt = token;
+		expiresAtMillis = now + (expiresInSeconds * 1000L);
+		usableUntilMillis = expiresAtMillis - Math.min(REFRESH_SKEW_MILLIS, expiresInSeconds * 1000L / 2L);
+		cachedProfileId = profileId;
+		sessionDeadlineMillis = sessionExpiresInSeconds > 0L ? now + (sessionExpiresInSeconds * 1000L) : 0L;
+		renewFailures = 0;
+		scheduleRefresh();
+	}
+
+	private static long positiveLong(JsonObject root, String key, long fallback) {
+		return root.has(key) && root.get(key).isJsonPrimitive() ? Math.max(1L, root.get(key).getAsLong()) : fallback;
+	}
+
+	/** Swaps the current JWT for a new one through the API. Falls back to a Mojang proof only when it must. */
+	private static Optional<String> renewOnce() {
+		String source;
+		UUID profileId;
+		synchronized (LOCK) {
+			source = isTokenValid() ? cachedJwt : null;
+			profileId = cachedProfileId;
+		}
+		if (source == null) return authenticateOnce();
+		String correlationId = UUID.randomUUID().toString();
+		long startedAtMillis = System.currentTimeMillis();
+		RenewReply reply;
+		try {
+			HttpRequest.Builder builder = HttpRequest.newBuilder(AUTH_REFRESH_URI)
+				.timeout(TIMEOUT)
+				.header("Content-Type", "application/json")
+				.header("Accept", "application/json")
+				.POST(HttpRequest.BodyPublishers.ofString("{}", StandardCharsets.UTF_8));
+			signRequest(builder, "POST", AUTH_REFRESH_URI, source, correlationId);
+			logAuthStage(correlationId, "refresh_request_started", startedAtMillis, null);
+			reply = renewTransport.send(builder.build());
+		} catch (InterruptedException exception) {
+			Thread.currentThread().interrupt();
+			reply = RenewReply.NO_RESPONSE;
+		} catch (Exception exception) {
+			BetterPV.LOGGER.warn("BetterPV session refresh request failed: {}", exception.toString());
+			reply = RenewReply.NO_RESPONSE;
+		}
+		logAuthStage(correlationId, "refresh_response", startedAtMillis, reply.status() > 0 ? reply.status() : null, reply.origin());
+		String cause = unauthorizedCause(reply.body());
+		SessionAuthPolicy.RenewOutcome outcome = SessionAuthPolicy.classifyRenewal(reply.status(), cause);
+		if (outcome == SessionAuthPolicy.RenewOutcome.RENEWED) {
+			try {
+				JsonObject root = JsonParser.parseString(reply.body()).getAsJsonObject();
+				String token = requiredString(root, "token");
+				long expiresInSeconds = positiveLong(root, "expiresIn", 300L);
+				long sessionExpiresInSeconds = positiveLong(root, "sessionExpiresIn", 0L);
+				synchronized (LOCK) {
+					// A new proof or invalidation won the race; keep whatever replaced the source token.
+					if (!source.equals(cachedJwt)) return Optional.ofNullable(isTokenValid() ? cachedJwt : null);
+					installTokenLocked(token, expiresInSeconds, sessionExpiresInSeconds, profileId);
+				}
+				setFailure(Failure.NONE, "");
+				logAuthStage(correlationId, "refresh_succeeded", startedAtMillis, reply.status());
+				return Optional.of(token);
+			} catch (RuntimeException exception) {
+				outcome = SessionAuthPolicy.RenewOutcome.RETRY;
+			}
+		}
+		BetterPV.LOGGER.info(
+			"BetterPV auth correlationId={} stage=refresh_not_renewed outcome={} httpStatus={} cause={}",
+			correlationId, outcome, reply.status() > 0 ? reply.status() : "none", cause
+		);
+		switch (outcome) {
+			case NEEDS_PROOF -> {
+				synchronized (LOCK) {
+					if (source.equals(cachedJwt)) sessionDeadlineMillis = 0L;
+				}
+				return authenticateOnce();
+			}
+			case SESSION_DEAD -> {
+				synchronized (LOCK) {
+					if (source.equals(cachedJwt)) invalidateLocked();
+				}
+				return authenticateOnce();
+			}
+			case BLOCKED -> {
+				synchronized (LOCK) {
+					if (source.equals(cachedJwt)) sessionDeadlineMillis = 0L;
+				}
+				setFailure(Failure.AUTH_REJECTED, "refresh status=" + reply.status() + " cause=" + cause);
+				return Optional.empty();
+			}
+			default -> {
+				synchronized (LOCK) {
+					if (!source.equals(cachedJwt)) return Optional.ofNullable(isTokenValid() ? cachedJwt : null);
+					renewFailures++;
+					long delay = SessionAuthPolicy.renewRetryDelayMillis(
+						renewFailures, expiresAtMillis - System.currentTimeMillis());
+					if (delay > 0L) {
+						scheduleRefreshLocked(delay);
+					} else {
+						BetterPV.LOGGER.warn("BetterPV session refresh gave up after {} attempts; the next /pv needs a new session proof",
+							renewFailures);
+					}
+					return isTokenValid() ? Optional.of(cachedJwt) : Optional.empty();
+				}
+			}
+		}
 	}
 
 	private static Optional<String> authenticateOnce() {
@@ -515,10 +690,28 @@ public final class BetterPvSessionAuth {
 
 			if (joinError.isPresent()) {
 				logAuthStage(correlationId, "mojang_join_failed", authStartedAtMillis, null);
-				pauseAuth(classifyJoinFailure(joinError.get()), joinError.get());
+				Failure failure = classifyJoinFailure(joinError.get());
+				if (failure == Failure.INVALID_CREDENTIALS) {
+					long pauseMillis;
+					int attempts;
+					synchronized (LOCK) {
+						pauseMillis = CREDENTIAL_BACKOFF.recordInvalid(SessionAuthPolicy.credentialKey(profileId, accessToken));
+						attempts = CREDENTIAL_BACKOFF.failures();
+					}
+					BetterPV.LOGGER.warn(
+						"BetterPV Minecraft login rejected by Mojang attempts={} nextProofInSeconds={}; the launcher must sign in again",
+						attempts, pauseMillis / 1000L
+					);
+					pauseAuth(failure, joinError.get(), pauseMillis);
+				} else {
+					pauseAuth(failure, joinError.get());
+				}
 				return Optional.empty();
 			}
 			logAuthStage(correlationId, "mojang_join_succeeded", authStartedAtMillis, null);
+			synchronized (LOCK) {
+				CREDENTIAL_BACKOFF.reset();
+			}
 			// Also space successful proofs, including repeated backend 401 re-authentication.
 			pauseAuth(Failure.AUTH_COOLDOWN, "Waiting before another Minecraft session proof");
 			if (!sameConnection) {
@@ -587,20 +780,17 @@ public final class BetterPvSessionAuth {
 			}
 
 			String token = root.get("token").getAsString();
-			long expiresInSeconds = root.has("expiresIn") && root.get("expiresIn").isJsonPrimitive()
-				? Math.max(1L, root.get("expiresIn").getAsLong())
-				: 300L;
+			long expiresInSeconds = positiveLong(root, "expiresIn", 300L);
+			long sessionExpiresInSeconds = positiveLong(root, "sessionExpiresIn", 0L);
 			synchronized (LOCK) {
-				cachedJwt = token;
-				expiresAtMillis = System.currentTimeMillis() + (expiresInSeconds * 1000L);
-				usableUntilMillis = expiresAtMillis - Math.min(REFRESH_SKEW_MILLIS, expiresInSeconds * 1000L / 2L);
-				scheduleRefresh();
+				installTokenLocked(token, expiresInSeconds, sessionExpiresInSeconds, profileId);
 			}
 			setFailure(Failure.NONE, "");
 			BetterPV.LOGGER.info(
-				"BetterPV session token installed ttlSeconds={} refreshInMs={} proofCooldownMs={}",
+				"BetterPV session token installed ttlSeconds={} refreshInMs={} renewableForSeconds={} proofCooldownMs={}",
 				expiresInSeconds,
 				Math.max(0L, usableUntilMillis - System.currentTimeMillis()),
+				sessionExpiresInSeconds,
 				remainingAuthCooldownMillis()
 			);
 			logAuthStage(correlationId, "authentication_succeeded", authStartedAtMillis, status);

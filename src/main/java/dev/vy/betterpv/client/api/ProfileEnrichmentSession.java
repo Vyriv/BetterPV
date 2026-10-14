@@ -11,6 +11,7 @@ import dev.vy.betterpv.client.data.CollectionSnapshot;
 import dev.vy.betterpv.client.data.CrimsonSnapshot;
 import dev.vy.betterpv.client.data.DungeonSnapshot;
 import dev.vy.betterpv.client.data.EventsSnapshot;
+import dev.vy.betterpv.client.data.FarmingFortuneEstimate;
 import dev.vy.betterpv.client.data.FishingSnapshot;
 import dev.vy.betterpv.client.data.ForagingSnapshot;
 import dev.vy.betterpv.client.data.FormatUtil;
@@ -332,7 +333,9 @@ final class ProfileEnrichmentSession {
 				BetterPV.LOGGER.warn("Inventory decode failed for {}", this.name, exception);
 				inventories = InventorySnapshot.empty();
 			}
-			PlayerStatsSnapshot stats = PlayerStatsCalculator.fromMember(this.member, this.inventoryCategories);
+			PlayerStatsSnapshot stats = FarmingFortuneEstimate.attach(
+				PlayerStatsCalculator.fromMember(this.member), this.member, this.inventoryCategories
+			);
 			CrimsonSnapshot crimson = this.current.crimson() == null
 				? CrimsonSnapshot.empty().withPlayerStats(stats)
 				: this.current.crimson().withPlayerStats(stats);
@@ -642,7 +645,7 @@ final class ProfileEnrichmentSession {
 		);
 
 		String nwText = !pricesReady
-			? "…"
+			? "..."
 			: normal.total() > 0 ? FormatUtil.shortCoins(normal.total()) : "-";
 		ProfileSnapshot snapshot = this.current.snapshot().withNetworthText(nwText);
 		ProfileFetcher.LoadedProfile next = merge(

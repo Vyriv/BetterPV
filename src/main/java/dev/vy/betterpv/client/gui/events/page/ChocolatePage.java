@@ -395,7 +395,14 @@ public final class ChocolatePage {
 			FormatUtil.commas(ready) + " ready, " + hitmen.slots() + "/" + hitmen.maxSlots() + " slots",
 			ready > 0 ? COLOR_COMPLETE : PvDraw.COLOR_TEXT, x, gy, w, clipY, clipH, hitmenTip(choc));
 
-		String bitsValue = choc.chocobits().size() + " / " + FormatUtil.commas(choc.chocobitsFound());
+		if (!choc.chocobitsPresent()) {
+			return scrollStat(ui, g, font, "Chocobits", PvDraw.COLOR_MUTED, "No data", PvDraw.COLOR_MUTED,
+				x, gy, w, clipY, clipH, tipTitle("Chocobits", COLOR_CHOCOLATE,
+					PvTooltip.Line.meta("No Chocobit data in the API")));
+		}
+		int year = ChocolateFactoryData.currentSkyBlockYear(System.currentTimeMillis());
+		String bitsValue = EventsSnapshot.Chocobit.active(choc.chocobits(), year) + " active, "
+			+ FormatUtil.commas(choc.chocobitsFound()) + " found";
 		return scrollStat(ui, g, font, "Chocobits", PvDraw.COLOR_MUTED, bitsValue, COLOR_CHOCOLATE,
 			x, gy, w, clipY, clipH, chocobitsTip(choc));
 	}
@@ -489,13 +496,17 @@ public final class ChocolatePage {
 
 	private static List<PvTooltip.Line> chocobitsTip(EventsSnapshot.Chocolate choc) {
 		List<EventsSnapshot.Chocobit> bits = choc.chocobits();
+		int year = ChocolateFactoryData.currentSkyBlockYear(System.currentTimeMillis());
+		int active = EventsSnapshot.Chocobit.active(bits, year);
 		List<PvTooltip.Line> tip = tipTitle("Chocobits", COLOR_CHOCOLATE,
-			PvTooltip.Line.row("Owned", PvDraw.COLOR_MUTED, FormatUtil.commas(bits.size()), COLOR_CHOCOLATE),
+			PvTooltip.Line.row("Active", PvDraw.COLOR_MUTED, FormatUtil.commas(active), COLOR_CHOCOLATE),
+			bits.size() > active
+				? PvTooltip.Line.row("Expired", PvDraw.COLOR_MUTED, FormatUtil.commas(bits.size() - active), 0xFFFF8888)
+				: null,
 			PvTooltip.Line.row("Total found", PvDraw.COLOR_MUTED, FormatUtil.commas(choc.chocobitsFound()), PvDraw.COLOR_TEXT));
 		if (bits.isEmpty()) {
 			return tip;
 		}
-		int year = ChocolateFactoryData.currentSkyBlockYear(System.currentTimeMillis());
 		tip.add(PvTooltip.Line.divider());
 		int shown = 0;
 		for (EventsSnapshot.Chocobit bit : bits) {
@@ -503,12 +514,16 @@ public final class ChocolatePage {
 				tip.add(PvTooltip.Line.meta("+" + (bits.size() - shown) + " more"));
 				break;
 			}
-			boolean expired = bit.expiryYear() > 0 && bit.expiryYear() < year;
-			String value = "Year " + bit.ownedYear() + " to " + bit.expiryYear() + (expired ? " (expired)" : "");
-			tip.add(PvTooltip.Line.row("#" + bit.id(), PvDraw.COLOR_MUTED, value, expired ? 0xFFFF8888 : PvDraw.COLOR_TEXT));
+			boolean expired = bit.expired(year);
+			String obtained = bit.ownedYear() > 0 ? "Year " + bit.ownedYear() : "Year unknown";
+			String expiry = bit.expiryYear() <= 0 ? ", expiry unknown"
+				: expired ? ", expired Year " + bit.expiryYear()
+				: ", expires Year " + bit.expiryYear();
+			tip.add(PvTooltip.Line.row("#" + bit.id(), PvDraw.COLOR_MUTED, obtained + expiry,
+				expired ? 0xFFFF8888 : PvDraw.COLOR_TEXT));
 			shown++;
 		}
-		tip.add(PvTooltip.Line.meta("Obtained and expiry SkyBlock years"));
+		tip.add(PvTooltip.Line.meta("Current year: " + year));
 		return tip;
 	}
 

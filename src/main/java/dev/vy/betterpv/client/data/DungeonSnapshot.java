@@ -352,9 +352,9 @@ public final class DungeonSnapshot {
 
 	public static DungeonSnapshot empty() {
 		return new DungeonSnapshot(
-			0, 0F, 0F, false, "Loading…",
+			0, 0F, 0F, false, "Loading...",
 			0L, 0D,
-			0F, 0F, false, "Loading…",
+			0F, 0F, false, "Loading...",
 			List.of(),
 			ModeStats.empty(),
 			ModeStats.empty(),

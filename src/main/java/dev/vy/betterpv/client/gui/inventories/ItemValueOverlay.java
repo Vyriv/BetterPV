@@ -36,6 +36,7 @@ public final class ItemValueOverlay {
 	private boolean open;
 	private ItemWorth.Breakdown breakdown;
 	private String title = "Item value";
+	private String totalLabel = "Estimated value";
 	private ItemStack icon = ItemStack.EMPTY;
 	private String skyblockId = "";
 	private int panelX;
@@ -56,6 +57,11 @@ public final class ItemValueOverlay {
 	}
 
 	public void open(String title, ItemStack icon, String skyblockId, ItemWorth.Breakdown breakdown) {
+		open(title, icon, skyblockId, breakdown, "Estimated value");
+	}
+
+	public void open(String title, ItemStack icon, String skyblockId, ItemWorth.Breakdown breakdown, String totalLabel) {
+		this.totalLabel = totalLabel == null || totalLabel.isBlank() ? "Estimated value" : totalLabel;
 		this.title = title == null || title.isBlank() ? "Item value" : title;
 		this.icon = icon == null ? ItemStack.EMPTY : icon;
 		this.skyblockId = skyblockId == null ? "" : skyblockId;
@@ -96,7 +102,7 @@ public final class ItemValueOverlay {
 
 		PvDraw.fill(g, 0, 0, screenW, screenH, 0x88000000);
 
-		List<Row> rows = buildRows(this.breakdown, font);
+		List<Row> rows = buildRows(this.breakdown, this.totalLabel, font);
 		int contentH = PAD + 16 + 6;
 		for (Row row : rows) {
 			contentH += row.height;
@@ -161,17 +167,17 @@ public final class ItemValueOverlay {
 		return true;
 	}
 
-	private static List<Row> buildRows(ItemWorth.Breakdown breakdown, Font font) {
+	private static List<Row> buildRows(ItemWorth.Breakdown breakdown, String totalLabel, Font font) {
 		List<Row> rows = new ArrayList<>();
 		int lineH = font.lineHeight + 2;
 
 		if (breakdown.parts().isEmpty()) {
-			rows.add(Row.text("No priced components.", COLOR_MUTED, lineH));
+			rows.add(Row.text("No priced components", COLOR_MUTED, lineH));
 			return rows;
 		}
 
 		rows.add(Row.total(
-			"Estimated value",
+			totalLabel,
 			FormatUtil.shortCoins(Math.round(breakdown.total())) + " coins",
 			headerColor(breakdown),
 			lineH + 4
@@ -280,7 +286,7 @@ public final class ItemValueOverlay {
 			case UPGRADES -> COLOR_UPGRADE;
 			case GEMSTONES -> COLOR_GEM;
 			case ENCHANTMENTS -> COLOR_ENCHANT;
-			case OTHER -> COLOR_MUTED;
+			case CONTENTS, OTHER -> COLOR_MUTED;
 			case BASE -> COLOR_MUTED;
 		};
 	}
@@ -299,7 +305,7 @@ public final class ItemValueOverlay {
 			case UPGRADES -> COLOR_UPGRADE;
 			case GEMSTONES -> COLOR_GEM;
 			case ENCHANTMENTS -> COLOR_ENCHANT;
-			case OTHER -> COLOR_LABEL;
+			case CONTENTS, OTHER -> COLOR_LABEL;
 			case BASE -> COLOR_LABEL;
 		};
 	}

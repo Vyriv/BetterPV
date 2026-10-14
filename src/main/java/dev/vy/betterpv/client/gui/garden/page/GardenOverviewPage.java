@@ -5,14 +5,19 @@ import dev.vy.betterpv.client.data.GardenCosts;
 import dev.vy.betterpv.client.data.GardenData;
 import dev.vy.betterpv.client.data.GardenSnapshot;
 import dev.vy.betterpv.client.data.InventorySnapshot;
+import dev.vy.betterpv.client.data.PlayerStatsSnapshot;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
 import dev.vy.betterpv.client.gui.garden.GardenUi;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
+import dev.vy.betterpv.client.gui.overview.SkillStatRows;
+import dev.vy.betterpv.client.gui.overview.SummaryCards;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.world.item.ItemStack;
@@ -21,12 +26,24 @@ import net.minecraft.world.item.Items;
 import static dev.vy.betterpv.client.gui.garden.GardenUi.*;
 
 public final class GardenOverviewPage {
+	private static final List<String> FORTUNE_EXCLUSIONS = List.of(
+		"Excludes held tool, crop-specific fortune,",
+		"set bonuses and temporary buffs."
+	);
+
 	private int scroll;
 	private int maxScroll;
 	private int scrollTop;
 	private int scrollH;
+	private int[] fortuneRow;
 
-	public void render(GardenSnapshot snap, GardenUi ui, 
+	/** True when the click lands on the Farming Fortune row and its breakdown is available. */
+	public boolean fortuneRowHit(double mx, double my) {
+		int[] r = this.fortuneRow;
+		return r != null && mx >= r[0] && mx < r[0] + r[2] && my >= r[1] && my < r[1] + r[3];
+	}
+
+	public void render(GardenSnapshot snap, PlayerStatsSnapshot stats, GardenUi ui, 
 		GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, int mx, int my, boolean partial
 	) {
 		int rightW = Math.max(200, w * 55 / 100);
@@ -39,7 +56,11 @@ public final class GardenOverviewPage {
 		int lw = leftW - PAD * 2;
 		int rowH = GardenUi.barRowH(font);
 
-		ly = ui.drawBar(g, font, "Garden", String.valueOf(snap.gardenLevel()),
+		int gardenOverflow = snap.gardenOverflowLevel();
+		String gardenValue = gardenOverflow > snap.gardenLevel()
+			? snap.gardenLevel() + " (" + gardenOverflow + ")"
+			: String.valueOf(snap.gardenLevel());
+		ly = ui.drawBar(g, font, "Garden", gardenValue,
 			snap.gardenFill(), snap.gardenMaxed(), BAR_GARDEN,
 			snap.gardenHover(), lx, ly, lw, mx, my) + BAR_AFTER;
 		ly = ui.drawBar(g, font, "Farming", String.valueOf(snap.farmingLevel()),
@@ -67,6 +88,19 @@ public final class GardenOverviewPage {
 		} else {
 			ly += 2;
 		}
+		SummaryCards.Stat fortune = FarmingFortuneTip.row(stats, snap);
+		this.fortuneRow = null;
+		if (fortune == null) {
+			fortune = SkillStatRows.row(stats, "farming_fortune", FORTUNE_EXCLUSIONS);
+		} else {
+			this.fortuneRow = new int[] {lx - 2, ly - 1, lw + 4, STAT_ROW};
+			if (mx >= lx - 2 && mx < lx + lw + 2 && my >= ly - 1 && my < ly - 1 + STAT_ROW) {
+				PvDraw.fill(g, lx - 2, ly - 1, lw + 4, STAT_ROW, 0x14FFFFFF);
+			}
+		}
+		ui.zones.add(new GardenUi.HoverZone(lx, ly, lw, STAT_ROW, fortune.tip()));
+		GardenUi.drawPair(g, font, fortune.label(), fortune.value(), lx, ly, lw, fortune.labelColor(), fortune.valueColor());
+		ly += STAT_ROW + 2;
 
 		if (!snap.islandLoaded() && partial) {
 			PvDraw.text(g, font, GardenUi.trim(font, snap.islandLoading() || snap.islandError().isBlank()
@@ -121,6 +155,17 @@ public final class GardenOverviewPage {
 		int ry = y + PAD;
 		int rw = rightW - PAD * 2;
 		PvDraw.text(g, font, "Crop milestones", rx, ry, PvDraw.COLOR_MUTED);
+		if (snap.islandLoaded() && !snap.crops().isEmpty()) {
+			int[] totals = milestoneTotals(snap.crops());
+			String maxed = totals[0] + "/" + snap.crops().size() + " maxed";
+			boolean allMaxed = totals[0] == snap.crops().size();
+			PvDraw.textRight(g, font, maxed, rx + rw, ry, allMaxed ? COMPLETED_C : PvDraw.COLOR_MUTED);
+			ui.zones.add(new GardenUi.HoverZone(rx + rw - font.width(maxed), ry, font.width(maxed), font.lineHeight, List.of(
+				PvTooltip.Line.row("Crops maxed", PvDraw.COLOR_MUTED, totals[0] + "/" + snap.crops().size(),
+					allMaxed ? COMPLETED_C : PvDraw.COLOR_TEXT),
+				PvTooltip.Line.row("Milestone levels", PvDraw.COLOR_MUTED, FormatUtil.commas(totals[1]), PvDraw.COLOR_TEXT)
+			)));
+		}
 		ry += font.lineHeight + 4;
 
 		if (!snap.islandLoaded()) {
@@ -164,6 +209,19 @@ public final class GardenOverviewPage {
 	}
 
 
+	/** {maxed crops, summed milestone levels}. */
+	static int[] milestoneTotals(List<GardenSnapshot.CropRow> crops) {
+		int maxed = 0;
+		int levels = 0;
+		for (GardenSnapshot.CropRow crop : crops) {
+			if (crop.milestoneMaxed()) {
+				maxed++;
+			}
+			levels += Math.max(0, crop.milestone());
+		}
+		return new int[] { maxed, levels };
+	}
+
 	public void resetScroll() {
 		this.scroll = 0;
 	}
@@ -187,6 +245,21 @@ public final class GardenOverviewPage {
 		return true;
 	}
 
+	/** Crops holding a tool, crop sections in the toolkit, and filled slots. */
+	static int[] stockedCrops(List<GardenSnapshot.FarmingToolkitSlot> slots) {
+		Set<String> sections = new HashSet<>();
+		Set<String> stocked = new HashSet<>();
+		int tools = 0;
+		for (GardenSnapshot.FarmingToolkitSlot slot : slots) {
+			sections.add(slot.cropId());
+			if (slot.item() != null && !slot.item().isEmpty()) {
+				stocked.add(slot.cropId());
+				tools++;
+			}
+		}
+		return new int[] {stocked.size(), sections.size(), tools};
+	}
+
 	private static void drawFarmingToolkit(
 		GardenSnapshot snap, GardenUi ui, GuiGraphicsExtractor g, Font font,
 		int x, int y, int w, int bottom, int mx, int my
@@ -201,11 +274,14 @@ public final class GardenOverviewPage {
 		y += font.lineHeight + 3;
 		y = GardenUi.statLine(g, font, "Unlocked", snap.farmingToolkitUnlocked() ? "Yes" : "No",
 			x, y, w, snap.farmingToolkitUnlocked() ? 0xFF55FF55 : PvDraw.COLOR_MUTED) + 1;
-		long cropKits = snap.farmingToolkitSlots().stream()
-			.map(GardenSnapshot.FarmingToolkitSlot::cropId)
-			.distinct()
-			.count();
-		y = GardenUi.statLine(g, font, "Crop kits", String.valueOf(cropKits),
+		int[] stocked = stockedCrops(snap.farmingToolkitSlots());
+		ui.zones.add(new GardenUi.HoverZone(x, y, w, STAT_ROW, List.of(
+			PvTooltip.Line.title("Crops with tools", PvDraw.COLOR_TEXT),
+			PvTooltip.Line.divider(),
+			PvTooltip.Line.of("Crop sections holding at least one tool.", PvDraw.COLOR_TEXT),
+			PvTooltip.Line.row("Tools stored", PvDraw.COLOR_MUTED, String.valueOf(stocked[2]), PvDraw.COLOR_TEXT)
+		)));
+		y = GardenUi.statLine(g, font, "Crops with tools", stocked[0] + " / " + stocked[1],
 			x, y, w, PvDraw.COLOR_ACCENT) + 3;
 
 		List<GardenSnapshot.FarmingToolkitSlot> slots = snap.farmingToolkitSlots();
@@ -287,7 +363,7 @@ public final class GardenOverviewPage {
 		return "hypixel_skyblock:item/island_relevant/garden/chips/" + file;
 	}
 
-	private static List<PvTooltip.Line> farmingWeightHover(GardenSnapshot.FarmingWeightInfo weight) {
+	static List<PvTooltip.Line> farmingWeightHover(GardenSnapshot.FarmingWeightInfo weight) {
 		List<PvTooltip.Line> tip = new ArrayList<>();
 		tip.add(PvTooltip.Line.of("Farming weight", PvDraw.COLOR_GOLD));
 		tip.add(PvTooltip.Line.of("Total: " + FormatUtil.oneDecimal(weight.displayTotal()), PvDraw.COLOR_TEXT));

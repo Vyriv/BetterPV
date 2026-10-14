@@ -34,11 +34,20 @@ public final class GardenSnapshot {
 		}
 	}
 
+	public enum VisitorState { ACCEPTED, VISITED, NEVER }
+
 	public record VisitorRow(
 		String id, String name, String npcItemId, long visits, long completed, long rejected
 	) {
 		public boolean visited() {
 			return visits > 0L;
+		}
+
+		public VisitorState state() {
+			if (completed > 0L) {
+				return VisitorState.ACCEPTED;
+			}
+			return visits > 0L ? VisitorState.VISITED : VisitorState.NEVER;
 		}
 	}
 
@@ -101,10 +110,19 @@ public final class GardenSnapshot {
 	public record PersonalBest(String id, String name, long amount) {
 	}
 
+	/** {@code position} is Hypixel's 0-based claimed position; -1 when the contest was never claimed. */
 	public record ContestEntry(
 		String crop, String cropName, String iconId, long collected, String medal,
 		int position, int participants, long timestampSeconds
 	) {
+		/** 1-based placement, or 0 when none was recorded. */
+		public int placement() {
+			return position >= 0 ? position + 1 : 0;
+		}
+	}
+
+	/** Best recorded 1-based placement (0 = none); unplaced contests were never claimed, so their rank is unknown. */
+	public record CropPlacement(int best, int participants, int contests, int unplaced) {
 	}
 
 	public record ChipEntry(String id, String name, String iconId, int level) {
@@ -253,6 +271,7 @@ public final class GardenSnapshot {
 	private final List<PersonalBest> personalBests;
 	private final Map<String, Integer> perks;
 	private final List<ContestEntry> contests;
+	private Map<String, CropPlacement> placements;
 	private final List<ChipEntry> gardenChips;
 	private final List<GreenhouseRow> greenhouse;
 	private final GreenhouseMeta greenhouseMeta;
@@ -385,7 +404,7 @@ public final class GardenSnapshot {
 	}
 
 	public GardenSnapshot withIslandError(String error) {
-		return copy(false, false, error == null ? "Garden load failed" : error, contestsLoaded, contestsLoading, contestsError);
+		return copy(false, false, error == null ? "Couldn't load garden" : error, contestsLoaded, contestsLoading, contestsError);
 	}
 
 	public GardenSnapshot withContestsLoading() {
@@ -444,10 +463,7 @@ public final class GardenSnapshot {
 		}
 		double xp = doubleOf(garden, "garden_experience");
 		GardenData.LevelProgress gl = GardenData.gardenLevel(xp);
-		String gardenHover = gl.maxed()
-			? "Garden " + gl.level() + " - MAX (" + FormatUtil.commas(Math.round(xp)) + " XP)"
-			: "Garden " + gl.level() + " - " + FormatUtil.commas(gl.intoLevel()) + " / " + FormatUtil.commas(gl.needForNext())
-				+ " (" + FormatUtil.oneDecimal(gl.fill() * 100) + "%)";
+		String gardenHover = gardenHover(gl, GardenData.gardenOverflow(xp), xp);
 
 		List<CropRow> cropRows = buildCrops(
 			Leveling.obj(garden.get("resources_collected")),
@@ -568,11 +584,28 @@ public final class GardenSnapshot {
 		return 0L;
 	}
 
+	static String gardenHover(GardenData.LevelProgress gl, GardenData.LevelProgress overflow, double xp) {
+		if (!gl.maxed()) {
+			return "Garden " + gl.level() + " - " + FormatUtil.commas(gl.intoLevel()) + " / " + FormatUtil.commas(gl.needForNext())
+				+ " (" + FormatUtil.oneDecimal(gl.fill() * 100) + "%)";
+		}
+		StringBuilder out = new StringBuilder("Garden " + gl.level() + " - MAX");
+		if (overflow != null && gl.intoLevel() > 0L) {
+			out.append("\nOverflow Level\t").append(overflow.level());
+			out.append("\nNext Level\t").append(FormatUtil.commas(overflow.intoLevel())).append(" / ")
+				.append(FormatUtil.commas(overflow.needForNext()))
+				.append(" (").append(FormatUtil.oneDecimal(overflow.fill() * 100)).append("%)");
+			out.append("\nOverflow XP\t").append(FormatUtil.commas(gl.intoLevel()));
+		}
+		out.append("\nTotal XP\t").append(FormatUtil.commas(Math.round(xp)));
+		return out.toString();
+	}
+
 	private static CropRow cropRow(String id, long amount, JsonObject upgrades) {
 		GardenData.LevelProgress ms = GardenData.cropMilestone(id, amount);
 		int upgrade = upgradeOf(upgrades, id);
 		String hover = ms.maxed()
-			? "Overflow: " + FormatUtil.commas(amount)
+			? "Overflow: " + FormatUtil.commas(ms.intoLevel())
 			: FormatUtil.commas(ms.intoLevel()) + " / " + FormatUtil.commas(ms.needForNext());
 		return new CropRow(
 			id, GardenData.prettyCrop(id), GardenData.cropIconId(id), amount,
@@ -924,7 +957,7 @@ public final class GardenSnapshot {
 				medal = "none";
 			}
 			out.add(contestEntry(crop, longOf(c, "collected"), medal.toLowerCase(Locale.ROOT),
-				intOf(c, "claimed_position"), intOf(c, "claimed_participants"), 0L));
+				positionOf(c, "claimed_position"), intOf(c, "claimed_participants"), 0L));
 		}
 		return out;
 	}
@@ -945,7 +978,7 @@ public final class GardenSnapshot {
 				crop,
 				longOf(c, "collected"),
 				medal,
-				intOf(c, "position"),
+				positionOf(c, "position"),
 				intOf(c, "participants"),
 				longOf(c, "timestamp")
 			));
@@ -1016,7 +1049,7 @@ public final class GardenSnapshot {
 		return second >= 0 ? key.substring(second + 1) : key.substring(first + 1);
 	}
 
-	private static List<GreenhouseRow> buildGreenhouse(List<String> discovered, List<String> analyzed) {
+	static List<GreenhouseRow> buildGreenhouse(List<String> discovered, List<String> analyzed) {
 		Set<String> analyzedSet = new LinkedHashSet<>();
 		for (String id : analyzed) {
 			if (id != null && !id.isBlank()) {
@@ -1030,6 +1063,8 @@ public final class GardenSnapshot {
 			}
 		}
 		ids.addAll(analyzedSet);
+		// Dead Plant is what a failed mutation leaves behind; the API lists it as discovered but it can't be analyzed.
+		ids.remove("DEAD_PLANT");
 		List<GreenhouseRow> rows = new ArrayList<>();
 		for (String id : ids) {
 			rows.add(new GreenhouseRow(
@@ -1073,12 +1108,21 @@ public final class GardenSnapshot {
 		if (obj == null || !obj.has(key)) {
 			return 0;
 		}
-		Float n = Leveling.num(obj.get(key));
+		Double n = Leveling.numDouble(obj.get(key));
 		return n == null ? 0 : n;
 	}
 
 	private static int intOf(JsonObject obj, String key) {
 		return (int) longOf(obj, key);
+	}
+
+	// Elite sends position -1 for unclaimed contests; longOf clamps negatives to 0, which would read as first place.
+	static int positionOf(JsonObject obj, String key) {
+		Double n = obj == null || !obj.has(key) ? null : Leveling.numDouble(obj.get(key));
+		if (n == null || n.isNaN() || n.isInfinite() || n < 0) {
+			return -1;
+		}
+		return (int) Math.round(n);
 	}
 
 	private static String stringOf(JsonObject obj, String key) {
@@ -1106,6 +1150,10 @@ public final class GardenSnapshot {
 	public boolean contestsLoading() { return contestsLoading; }
 	public String contestsError() { return contestsError; }
 	public int gardenLevel() { return gardenLevel; }
+	public int gardenOverflowLevel() {
+		GardenData.LevelProgress overflow = GardenData.gardenOverflow(gardenXp);
+		return overflow == null ? gardenLevel : overflow.level();
+	}
 	public float gardenFill() { return gardenFill; }
 	public boolean gardenMaxed() { return gardenMaxed; }
 	public String gardenHover() { return gardenHover; }
@@ -1254,6 +1302,38 @@ public final class GardenSnapshot {
 	public List<PersonalBest> personalBests() { return personalBests; }
 	public Map<String, Integer> perks() { return perks; }
 	public List<ContestEntry> contests() { return contests; }
+
+	/** Keyed by {@link GardenData#normalizeCropKey}. */
+	public Map<String, CropPlacement> placements() {
+		if (placements == null) {
+			placements = placementsByCrop(contests);
+		}
+		return placements;
+	}
+
+	public CropPlacement placement(String cropId) {
+		return placements().get(GardenData.normalizeCropKey(cropId));
+	}
+
+	static Map<String, CropPlacement> placementsByCrop(List<ContestEntry> contests) {
+		Map<String, CropPlacement> out = new LinkedHashMap<>();
+		for (ContestEntry c : contests) {
+			String key = GardenData.normalizeCropKey(c.crop());
+			if (key.isBlank()) {
+				continue;
+			}
+			CropPlacement prev = out.getOrDefault(key, new CropPlacement(0, 0, 0, 0));
+			int place = c.placement();
+			boolean better = place > 0 && (prev.best() == 0 || place < prev.best());
+			out.put(key, new CropPlacement(
+				better ? place : prev.best(),
+				better ? c.participants() : prev.participants(),
+				prev.contests() + 1,
+				prev.unplaced() + (place > 0 ? 0 : 1)
+			));
+		}
+		return out;
+	}
 	public List<ChipEntry> gardenChips() { return gardenChips; }
 	public List<GreenhouseRow> greenhouse() { return greenhouse; }
 	public GreenhouseMeta greenhouseMeta() { return greenhouseMeta; }
@@ -1266,28 +1346,11 @@ public final class GardenSnapshot {
 			return List.of();
 		}
 		List<FarmingToolkitSlot> out = new ArrayList<>();
-		for (Map.Entry<String, JsonElement> e : toolkit.entrySet()) {
-			String key = e.getKey();
-			if (key == null || "IS_UNLOCKED".equalsIgnoreCase(key) || "IN_USE".equalsIgnoreCase(key)) {
-				continue;
-			}
-			JsonElement val = e.getValue();
-			if (val != null && val.isJsonArray()) {
-				JsonArray arr = val.getAsJsonArray();
-				for (int i = 0; i < arr.size(); i++) {
-					JsonElement item = arr.get(i);
-					InventorySnapshot.Slot slot = null;
-					if (item != null && !item.isJsonNull()) {
-						slot = InventoryDecoder.slotFromItemBytes(item);
-					}
-					out.add(new FarmingToolkitSlot(key, GardenData.prettyCrop(key), i, slot));
-				}
-				continue;
-			}
-			if (val != null && val.isJsonObject()) {
-				InventorySnapshot.Slot slot = InventoryDecoder.slotFromItemBytes(val);
-				out.add(new FarmingToolkitSlot(key, GardenData.prettyCrop(key), 0, slot));
-			}
+		for (InventoryDecoder.ToolkitItem item : InventoryDecoder.parseToolkit(toolkit)) {
+			InventorySnapshot.Slot slot = item.stack() == null ? null : new InventorySnapshot.Slot(
+				item.stack().id(), 1, item.stack().lore(), null, null, null, null, item.stack().extraAttributes(), false
+			);
+			out.add(new FarmingToolkitSlot(item.category(), GardenData.prettyCrop(item.category()), item.index(), slot));
 		}
 		return out;
 	}

@@ -155,7 +155,7 @@ final class ProfileHomeParser {
 			sbLevel,
 			sbXp,
 			FormatUtil.weight(senither.total()),
-			"…",
+			"...",
 			purseCoins,
 			bankCoins,
 			bankTransactions,

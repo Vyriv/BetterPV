@@ -126,6 +126,31 @@ public final class FormatUtil {
 		return value < 10L ? "0" + value : Long.toString(value);
 	}
 
+	/** Three significant figures with a lowercase suffix: 1.23m, 12.3m, 123m. */
+	public static String compactCoins(double value) {
+		double abs = Math.abs(value);
+		if (abs < 1_000) {
+			return COMMAS.format(Math.round(value));
+		}
+		String[] suffixes = {"k", "m", "b", "t"};
+		double scaled = value / 1_000;
+		int unit = 0;
+		while (unit < suffixes.length - 1 && Math.abs(Double.parseDouble(sigFigs(scaled))) >= 1_000) {
+			scaled /= 1_000;
+			unit++;
+		}
+		return sigFigs(scaled) + suffixes[unit];
+	}
+
+	private static String sigFigs(double value) {
+		double abs = Math.abs(value);
+		String s = String.format(Locale.US, abs < 10 ? "%.2f" : abs < 100 ? "%.1f" : "%.0f", value);
+		while (s.contains(".") && (s.endsWith("0") || s.endsWith("."))) {
+			s = s.substring(0, s.length() - 1);
+		}
+		return s;
+	}
+
 	private static String shortCompact(double value, boolean upperSuffix) {
 		double abs = Math.abs(value);
 		if (abs >= 1_000_000_000_000L) {

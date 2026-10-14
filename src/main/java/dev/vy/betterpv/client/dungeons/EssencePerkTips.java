@@ -1,6 +1,7 @@
 package dev.vy.betterpv.client.dungeons;
 
 import dev.vy.betterpv.client.data.DungeonSnapshot;
+import dev.vy.betterpv.client.data.FormatUtil;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
 import dev.vy.betterpv.client.gui.SkyBlockStats;
@@ -36,7 +37,21 @@ public final class EssencePerkTips {
 		));
 		lines.add(PvTooltip.Line.divider());
 		lines.addAll(effectLines(id, perk.level()));
+		lines.addAll(costLines(EssenceShopCosts.costs(id), perk.level()));
 		return lines;
+	}
+
+	private static List<PvTooltip.Line> costLines(int[] costs, int level) {
+		if (costs == null || level >= costs.length) {
+			return List.of();
+		}
+		List<PvTooltip.Line> out = new ArrayList<>();
+		out.add(PvTooltip.Line.blank());
+		out.add(PvTooltip.Line.row("Next tier", PvDraw.COLOR_MUTED,
+			FormatUtil.commas(EssenceShopCosts.nextTier(costs, level)) + " essence", PvDraw.COLOR_ACCENT));
+		out.add(PvTooltip.Line.row("To max", PvDraw.COLOR_MUTED,
+			FormatUtil.commas(EssenceShopCosts.toMax(costs, level)) + " essence", PvDraw.COLOR_TEXT));
+		return out;
 	}
 
 	private static String displayName(String id, String fallback) {
@@ -47,6 +62,7 @@ public final class EssencePerkTips {
 			case "permanent_intelligence" -> "Forbidden Intelligence";
 			case "permanent_strength" -> "Forbidden Strength";
 			case "forbidden_blessing" -> "Forbidden Blessing";
+			case "dungeonbreaker_secrets" -> "Echoes of the Lost";
 			case "catacombs_boss_luck" -> "Boss Luck";
 			case "catacombs_looting" -> "Looting";
 			case "revive_stone", "help_of_the_fairies" -> "Help of the Fairies";
@@ -98,6 +114,19 @@ public final class EssencePerkTips {
 				),
 				level
 			);
+			case "dungeonbreaker_secrets" -> {
+				int charges = at(level, 1, 2, 3, 4, 5);
+				yield plainEffect(
+					List.of(
+						PvTooltip.Span.of("Restore ", PvDraw.COLOR_TEXT),
+						PvTooltip.Span.bold(charges + (charges == 1 ? " charge" : " charges"), COLOR_UNLOCKED),
+						PvTooltip.Span.of(" on your ", PvDraw.COLOR_TEXT),
+						PvTooltip.Span.of("Dungeonbreaker", 0xFFFF5555),
+						PvTooltip.Span.of(" after collecting a secret.", PvDraw.COLOR_TEXT)
+					),
+					level
+				);
+			}
 			case "catacombs_boss_luck" -> plainEffect(
 				List.of(
 					PvTooltip.Span.of("Increases the quality of boss rewards in ", PvDraw.COLOR_TEXT),

@@ -43,6 +43,32 @@ public final class TrophyFishData {
 		}
 	}
 
+	/**
+	 * Obtain hint from trophy item lore. Obfuscated 1/2 double as bait, so their lore opens with
+	 * "Fishing Bait" before the real "Caught with ..." line; scan everything before falling back.
+	 */
+	public static String howtoFromLore(List<String> lore) {
+		if (lore == null) {
+			return null;
+		}
+		String first = null;
+		for (String raw : lore) {
+			String plain = raw == null ? "" : raw.replaceAll("§.", "").trim();
+			if (plain.isBlank()) {
+				continue;
+			}
+			if (first == null) {
+				first = plain;
+			}
+			String lower = plain.toLowerCase(Locale.ROOT);
+			if (lower.startsWith("caught") || lower.contains("near ") || lower.contains("found ")
+				|| lower.contains("obtain") || lower.startsWith("can be") || lower.contains("fished")) {
+				return plain;
+			}
+		}
+		return first;
+	}
+
 	private static final List<String> FALLBACK_ORDER = List.of(
 		"SULPHUR_SKITTER", "OBFUSCATED_FISH_1", "OBFUSCATED_FISH_2", "OBFUSCATED_FISH_3",
 		"GUSHER", "BLOBFISH", "STEAMING_HOT_FLOUNDER", "SLUGFISH", "FLYFISH", "LAVA_HORSE",

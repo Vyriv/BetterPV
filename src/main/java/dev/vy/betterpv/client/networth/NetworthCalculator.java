@@ -105,29 +105,25 @@ public final class NetworthCalculator {
 					continue;
 				}
 				sum += worth;
-				if (sacksCategory) {
-					items.add(new NetworthBreakdown.ItemLine(
-						stack.id(),
-						prettyItem(stack.id()),
-						Math.max(0L, stack.count()),
-						worth
-					));
-				}
+				items.add(new NetworthBreakdown.ItemLine(
+					stack.id(),
+					sacksCategory ? prettyItem(stack.id()) : itemLabel(stack),
+					Math.max(0L, stack.count()),
+					worth
+				));
 			}
 			if (sum > 0) {
-				if (sacksCategory && !items.isEmpty()) {
-					items.sort((a, b) -> Double.compare(b.value(), a.value()));
-					lines.add(new NetworthBreakdown.Line(entry.getKey(), sum, items));
-				} else {
-					lines.add(new NetworthBreakdown.Line(entry.getKey(), sum));
-				}
+				items.sort((a, b) -> Double.compare(b.value(), a.value()));
+				lines.add(new NetworthBreakdown.Line(entry.getKey(), sum, items));
 				total += sum;
 			}
 		}
 
-		double pets = petsValue(member, includeCosmetics, filter);
+		List<NetworthBreakdown.ItemLine> petItems = new ArrayList<>();
+		double pets = petsValue(member, includeCosmetics, filter, petItems);
 		if (pets > 0) {
-			lines.add(new NetworthBreakdown.Line("pets", pets));
+			petItems.sort((a, b) -> Double.compare(b.value(), a.value()));
+			lines.add(new NetworthBreakdown.Line("pets", pets, petItems));
 			total += pets;
 		}
 
@@ -147,7 +143,7 @@ public final class NetworthCalculator {
 		String note = "";
 		boolean anyItems = categories.values().stream().anyMatch(list -> !list.isEmpty());
 		if (!anyItems && pets <= 0) {
-			note = "Inventory API may be disabled";
+			note = "Inventory API may be off";
 		}
 		lines.sort((a, b) -> Double.compare(b.value(), a.value()));
 		return new NetworthBreakdown(total, lines, note);
@@ -156,7 +152,8 @@ public final class NetworthCalculator {
 	private static double petsValue(
 		JsonObject member,
 		boolean includeCosmetics,
-		NetworthMode.SoulboundFilter filter
+		NetworthMode.SoulboundFilter filter,
+		List<NetworthBreakdown.ItemLine> items
 	) {
 		JsonObject petsData = obj(member.get("pets_data"));
 		JsonArray pets = petsData != null && petsData.has("pets") && petsData.get("pets").isJsonArray()
@@ -174,9 +171,27 @@ public final class NetworthCalculator {
 			if (!filter.accepts(PetWorth.isSoulbound(pet))) {
 				continue;
 			}
-			total += PetWorth.value(pet, includeCosmetics);
+			double worth = PetWorth.value(pet, includeCosmetics);
+			total += worth;
+			if (worth > 0) {
+				String type = pet.has("type") && pet.get("type").isJsonPrimitive() ? pet.get("type").getAsString() : "";
+				String tier = pet.has("tier") && pet.get("tier").isJsonPrimitive() ? pet.get("tier").getAsString() : "";
+				String label = (tier.isBlank() ? "" : prettyItem(tier) + " ") + prettyItem(type);
+				items.add(new NetworthBreakdown.ItemLine(type, label, 1L, worth));
+			}
 		}
 		return total;
+	}
+
+	private static String itemLabel(InventoryDecoder.Stack stack) {
+		String name = stack.displayName();
+		if (name != null && !name.isBlank()) {
+			String plain = name.replaceAll("§.", "").trim();
+			if (!plain.isBlank()) {
+				return plain;
+			}
+		}
+		return prettyItem(stack.id());
 	}
 
 	public static double purse(JsonObject member) {

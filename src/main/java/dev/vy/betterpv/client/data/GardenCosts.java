@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.ToDoubleFunction;
 
 /**
  * Garden upgrade cost tables from {@code garden_costs.json} (NEU {@code constants/garden.json} plot, crop upgrade and
@@ -46,30 +47,43 @@ public final class GardenCosts {
 			return copper <= 0L && crops.isEmpty() && rare.isEmpty();
 		}
 
+		public boolean needsItems() {
+			return !crops.isEmpty() || !rare.isEmpty();
+		}
+
 		/** Bazaar coin value of the remaining crops; copper has no coin price. */
 		public double coins() {
+			return coins(ItemPricer::materialPrice);
+		}
+
+		public double coins(ToDoubleFunction<String> price) {
 			double total = 0D;
 			for (var e : crops.entrySet()) {
-				total += itemCoins(e.getKey(), e.getValue());
+				total += Math.max(0D, price.applyAsDouble(e.getKey())) * Math.max(0L, e.getValue());
 			}
 			for (var e : rare.entrySet()) {
-				total += itemCoins(e.getKey(), e.getValue());
+				total += Math.max(0D, price.applyAsDouble(e.getKey())) * Math.max(0L, e.getValue());
 			}
 			return total;
 		}
 
 		public boolean fullyPriced() {
+			return unpriced(ItemPricer::materialPrice) == 0;
+		}
+
+		public int unpriced(ToDoubleFunction<String> price) {
+			int missing = 0;
 			for (String id : crops.keySet()) {
-				if (ItemPricer.materialPrice(id) <= 0D) {
-					return false;
+				if (price.applyAsDouble(id) <= 0D) {
+					missing++;
 				}
 			}
 			for (String id : rare.keySet()) {
-				if (ItemPricer.materialPrice(id) <= 0D) {
-					return false;
+				if (price.applyAsDouble(id) <= 0D) {
+					missing++;
 				}
 			}
-			return true;
+			return missing;
 		}
 	}
 

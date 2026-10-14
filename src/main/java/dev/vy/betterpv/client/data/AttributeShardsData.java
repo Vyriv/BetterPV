@@ -105,6 +105,15 @@ public final class AttributeShardsData {
 		return null;
 	}
 
+	private static final List<String> RARITY_ORDER = List.of(
+		"COMMON", "UNCOMMON", "RARE", "EPIC", "LEGENDARY", "MYTHIC", "DIVINE"
+	);
+
+	/** Higher is rarer; unknown rarities sort below COMMON. */
+	public static int rarityRank(String rarity) {
+		return rarity == null ? -1 : RARITY_ORDER.indexOf(rarity.toUpperCase(Locale.ROOT));
+	}
+
 	public static int maxLevel(String rarity) {
 		int[] costs = costs(rarity);
 		return costs.length;

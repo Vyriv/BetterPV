@@ -8,12 +8,17 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.UUID;
 import net.fabricmc.loader.api.FabricLoader;
 
 public final class BetterPVConfig {
 	private static final String FILE_NAME = "betterpv.json";
 	private static final String PROFILE_SCALE_KEY = "profileViewerScalePercent";
+	// Finished layout trials; drop their old keys from existing configs.
+	static final String[] REMOVED_TRIAL_KEYS = { "trialEssenceTab", "trialSkillOverviews", "trialFishingTrophies" };
+	private static final String SEARCH_HISTORY_KEY = "searchHistory";
 	private static volatile int profileViewerScalePercent = 100;
+	private static volatile SearchHistory searchHistory = SearchHistory.empty();
 	private static JsonObject document = new JsonObject();
 
 	private BetterPVConfig() {
@@ -28,11 +33,16 @@ public final class BetterPVConfig {
 				if (loaded.has(PROFILE_SCALE_KEY) && loaded.get(PROFILE_SCALE_KEY).isJsonPrimitive()) {
 					profileViewerScalePercent = normalizeProfileScale(loaded.get(PROFILE_SCALE_KEY).getAsInt());
 				}
+				searchHistory = readSearchHistory(loaded);
 			} catch (Exception exception) {
 				BetterPV.LOGGER.warn("Could not load BetterPV config", exception);
 				document = new JsonObject();
 				profileViewerScalePercent = 100;
+				searchHistory = SearchHistory.empty();
 			}
+		}
+		if (dropRemovedTrialKeys(document)) {
+			save();
 		}
 		BetterPV.LOGGER.info("Hypixel: api.vyriv.dev via Minecraft session JWT");
 	}
@@ -49,6 +59,36 @@ public final class BetterPVConfig {
 		profileViewerScalePercent = normalized;
 		document.addProperty(PROFILE_SCALE_KEY, normalized);
 		save();
+	}
+
+	public static SearchHistory searchHistory() {
+		return searchHistory;
+	}
+
+	public static synchronized void recordSearch(UUID uuid, String name) {
+		SearchHistory next = searchHistory.record(uuid, name);
+		if (next.entries().equals(searchHistory.entries())) {
+			return;
+		}
+		searchHistory = next;
+		writeSearchHistory(document, next);
+		save();
+	}
+
+	static SearchHistory readSearchHistory(JsonObject doc) {
+		return SearchHistory.fromJson(doc.get(SEARCH_HISTORY_KEY));
+	}
+
+	static void writeSearchHistory(JsonObject doc, SearchHistory history) {
+		doc.add(SEARCH_HISTORY_KEY, history.toJson());
+	}
+
+	static boolean dropRemovedTrialKeys(JsonObject doc) {
+		boolean removed = false;
+		for (String key : REMOVED_TRIAL_KEYS) {
+			removed |= doc.remove(key) != null;
+		}
+		return removed;
 	}
 
 	static int normalizeProfileScale(int percent) {

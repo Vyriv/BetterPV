@@ -7,8 +7,11 @@ import dev.vy.betterpv.client.data.GardenSnapshot;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
 import dev.vy.betterpv.client.gui.garden.GardenUi;
+import dev.vy.betterpv.client.price.ItemPricer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.ToDoubleFunction;
+import java.util.function.ToIntFunction;
 import java.util.Locale;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -175,20 +178,40 @@ public final class CropsPage {
 		}
 	}
 
+	// Header totals the coin value of the crops still needed; Copper can't be bought so it stays in the tooltip.
+	// A "+" marks a lower bound when some items have no price, "?" when none do.
+	static String costToMaxLabel(GardenCosts.ComposterRemaining total, ToDoubleFunction<String> price, ToIntFunction<String> width, int avail) {
+		if (total.none()) {
+			return "Maxed";
+		}
+		if (!total.needsItems()) {
+			return fit(List.of("To max: Copper only", "Copper only"), width, avail);
+		}
+		double coins = total.coins(price);
+		String amount = coins <= 0D ? "?" : FormatUtil.shortCoins(coins) + (total.unpriced(price) > 0 ? "+" : "");
+		return fit(List.of("To max: " + amount + " coins", amount + " coins", amount), width, avail);
+	}
+
+	private static String fit(List<String> labels, ToIntFunction<String> width, int avail) {
+		for (String label : labels) {
+			if (width.applyAsInt(label) <= avail) {
+				return label;
+			}
+		}
+		return labels.get(labels.size() - 1);
+	}
+
 	private static void drawCostToMax(GardenSnapshot snap, GardenUi ui, GuiGraphicsExtractor g, Font font, int x, int y, int w) {
 		GardenCosts.ComposterRemaining total = snap.composterCostToMax();
-		String label = total.none() ? "Maxed" : "To max: " + FormatUtil.shortCoins(total.copper());
-		if (font.width("Upgrades") + 8 + font.width(label) > w) {
-			label = total.none() ? "Maxed" : FormatUtil.shortCoins(total.copper());
-		}
+		String label = costToMaxLabel(total, ItemPricer::materialPrice, font::width, w - font.width("Upgrades") - 8);
 		int labelW = font.width(label);
-		PvDraw.textRight(g, font, label, x + w, y, total.none() ? COMPLETED_C : COPPER);
+		PvDraw.textRight(g, font, label, x + w, y, total.none() ? COMPLETED_C : total.needsItems() ? PvDraw.COLOR_GOLD : COPPER);
 		List<PvTooltip.Line> tip = new ArrayList<>();
 		tip.add(PvTooltip.Line.title("Composter cost to max", PvDraw.COLOR_TEXT));
 		tip.add(PvTooltip.Line.divider());
 		GardenUi.addComposterRemaining(tip, total);
 		tip.add(PvTooltip.Line.blank());
-		tip.add(PvTooltip.Line.meta("Unpurchased levels only, all upgrades"));
+		tip.add(PvTooltip.Line.meta("Remaining levels, all upgrades"));
 		ui.zones.add(new GardenUi.HoverZone(x + w - labelW, y, labelW, font.lineHeight, tip));
 	}
 
@@ -232,7 +255,7 @@ public final class CropsPage {
 			if (cost != null) {
 				tip.add(PvTooltip.Line.row("Unlock cost", PvDraw.COLOR_MUTED,
 					FormatUtil.commas(cost.amount()) + "x " + GardenUi.costItemName(cost.itemId()), BAR_COMPOST));
-				tip.add(PvTooltip.Line.meta("Price depends on " + GardenUi.title(plot.tier()) + " plots owned"));
+				tip.add(PvTooltip.Line.meta("Cost scales with " + GardenUi.title(plot.tier()) + " plots owned"));
 			}
 			ui.zones.add(new GardenUi.HoverZone(cx, cy, cell, cell, tip));
 		}

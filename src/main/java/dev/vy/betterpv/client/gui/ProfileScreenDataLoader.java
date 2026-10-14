@@ -28,6 +28,8 @@ import net.minecraft.client.Minecraft;
  * and the generation matches.
  */
 final class ProfileScreenDataLoader {
+	private static final long STATUS_PLAYER_MAX_AGE_MS = 60_000L;
+
 	private final ProfileViewerScreen screen;
 
 	private boolean gardenFetchStarted;
@@ -207,7 +209,7 @@ final class ProfileScreenDataLoader {
 				boolean online = session.has("online") && session.get("online").isJsonPrimitive()
 					&& session.get("online").getAsBoolean();
 				if (!online) {
-					this.screen.homePage().applyPlayerStatus(PlayerStatus.offline());
+					applyOfflineStatus(uuid, generation);
 					return;
 				}
 				String game = session.has("gameType") && session.get("gameType").isJsonPrimitive()
@@ -217,6 +219,30 @@ final class ProfileScreenDataLoader {
 				String map = session.has("map") && session.get("map").isJsonPrimitive()
 					? session.get("map").getAsString() : "";
 				this.screen.homePage().applyPlayerStatus(PlayerStatus.online(game, mode, map));
+			});
+		});
+	}
+
+	private void applyOfflineStatus(UUID uuid, int generation) {
+		HypixelApiClient.player(uuid, STATUS_PLAYER_MAX_AGE_MS).whenComplete((opt, error) -> {
+			Minecraft client = Minecraft.getInstance();
+			if (client == null) {
+				return;
+			}
+			client.execute(() -> {
+				if (!stillCurrent(client, generation)) {
+					return;
+				}
+				JsonObject player = error == null && opt != null && opt.isPresent() ? opt.get() : null;
+				PlayerStatus status = PlayerStatus.offlineFromPlayer(player, System.currentTimeMillis());
+				BetterPV.LOGGER.debug(
+					"[PV status] {} offline: {} -> {}",
+					HypixelApiClient.undashed(uuid),
+					PlayerStatus.timestampDiagnostics(player),
+					status.lastOnlineMs() > 0L ? "lastOnline=" + status.lastOnlineMs()
+						: status.sessionHidden() ? "online status hidden" : "no timestamp"
+				);
+				this.screen.homePage().applyPlayerStatus(status);
 			});
 		});
 	}
@@ -231,7 +257,7 @@ final class ProfileScreenDataLoader {
 		}
 		String id = this.screen.profileId();
 		if (id == null || id.isBlank()) {
-			this.screen.gardenPage().apply(current.withIslandError("Missing profile id"));
+			this.screen.gardenPage().apply(current.withIslandError("No profile selected"));
 			this.gardenFetchStarted = true;
 			return;
 		}
@@ -251,7 +277,7 @@ final class ProfileScreenDataLoader {
 				if (error != null) {
 					BetterPV.LOGGER.warn("Garden fetch failed for profile {}", id, error);
 					this.screen.gardenPage().apply(base.withIslandError(
-						error.getMessage() == null ? "Garden fetch failed" : error.getMessage()
+						error.getMessage() == null ? "Couldn't load garden" : error.getMessage()
 					));
 					return;
 				}
@@ -263,7 +289,7 @@ final class ProfileScreenDataLoader {
 					this.screen.gardenPage().apply(base.withIsland(opt.get()));
 				} catch (Exception exception) {
 					BetterPV.LOGGER.warn("Garden parse failed for profile {}", id, exception);
-					this.screen.gardenPage().apply(base.withIslandError("Garden parse failed"));
+					this.screen.gardenPage().apply(base.withIslandError("Couldn't load garden"));
 				}
 			});
 		});
@@ -277,7 +303,7 @@ final class ProfileScreenDataLoader {
 		UUID uuid = this.screen.playerUuid();
 		String id = this.screen.profileId();
 		if (uuid == null || id == null || id.isBlank()) {
-			this.screen.gardenPage().apply(current.withContestsError("Missing profile id"));
+			this.screen.gardenPage().apply(current.withContestsError("No profile selected"));
 			this.gardenContestsFetchStarted = true;
 			return;
 		}
@@ -318,7 +344,7 @@ final class ProfileScreenDataLoader {
 					this.screen.gardenPage().patch(base.withEliteContests(opt.get()));
 				} catch (Exception exception) {
 					BetterPV.LOGGER.warn("Elite contests parse failed for {}", id, exception);
-					this.screen.gardenPage().patch(base.withContestsError("Contest parse failed"));
+					this.screen.gardenPage().patch(base.withContestsError("Couldn't load contests"));
 				}
 			});
 		});
@@ -332,7 +358,7 @@ final class ProfileScreenDataLoader {
 		UUID uuid = this.screen.playerUuid();
 		String id = this.screen.profileId();
 		if (uuid == null || id == null || id.isBlank()) {
-			this.screen.gardenPage().apply(current.withFarmingWeight(GardenSnapshot.FarmingWeightInfo.failed("Missing profile id")));
+			this.screen.gardenPage().apply(current.withFarmingWeight(GardenSnapshot.FarmingWeightInfo.failed("No profile selected")));
 			this.gardenWeightFetchStarted = true;
 			return;
 		}
@@ -364,7 +390,7 @@ final class ProfileScreenDataLoader {
 					this.screen.gardenPage().patch(base.withFarmingWeight(GardenSnapshot.FarmingWeightInfo.fromElite(opt.get())));
 				} catch (Exception exception) {
 					BetterPV.LOGGER.warn("Elite weight parse failed for {}", id, exception);
-					this.screen.gardenPage().patch(base.withFarmingWeight(GardenSnapshot.FarmingWeightInfo.failed("Weight parse failed")));
+					this.screen.gardenPage().patch(base.withFarmingWeight(GardenSnapshot.FarmingWeightInfo.failed("Couldn't load weight")));
 				}
 			});
 		});
@@ -374,7 +400,7 @@ final class ProfileScreenDataLoader {
 		UUID uuid = this.screen.playerUuid();
 		String id = this.screen.profileId();
 		if (uuid == null || id == null || id.isBlank()) {
-			this.screen.museumPage().applyError("Missing profile id");
+			this.screen.museumPage().applyError("No profile selected");
 			this.museumFetchStarted = true;
 			return;
 		}
@@ -424,7 +450,7 @@ final class ProfileScreenDataLoader {
 					ProfileFetcher.museumLoaded(uuid, id, member);
 				} catch (Exception exception) {
 					BetterPV.LOGGER.warn("Museum parse failed for {}", id, exception);
-					this.screen.museumPage().applyError("Museum parse failed");
+					this.screen.museumPage().applyError("Couldn't load museum");
 				}
 			});
 		});
@@ -482,7 +508,7 @@ final class ProfileScreenDataLoader {
 					BetterPV.LOGGER.warn("Bingo fetch failed for {}", uuid, error);
 					if (!historyOnly) {
 						this.screen.eventsPage().applyBingoError(
-							error.getMessage() == null ? "Bingo fetch failed" : error.getMessage());
+							error.getMessage() == null ? "Couldn't load bingo" : error.getMessage());
 						this.bingoRetryAtMs = System.currentTimeMillis() + 5_000L;
 					} else {
 						this.bingoRetryAtMs = System.currentTimeMillis() + 15_000L;
@@ -516,7 +542,7 @@ final class ProfileScreenDataLoader {
 				} catch (Exception exception) {
 					BetterPV.LOGGER.warn("Bingo parse failed for {}", uuid, exception);
 					if (!historyOnly) {
-						this.screen.eventsPage().applyBingoError("Bingo parse failed");
+						this.screen.eventsPage().applyBingoError("Couldn't load bingo");
 						this.bingoRetryAtMs = System.currentTimeMillis() + 5_000L;
 					} else {
 						this.bingoRetryAtMs = System.currentTimeMillis() + 15_000L;

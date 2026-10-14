@@ -29,8 +29,9 @@ public enum PvSubTab {
 	FORAGING_OVERVIEW(Items.IRON_AXE, "betterpv.sub.foraging_overview"),
 	FORAGING_HOTF(Items.OAK_SAPLING, "betterpv.sub.hotf"),
 	FORAGING_HUNTING(Items.LEAD, "betterpv.sub.hunting"),
-	FORAGING_SAFARI(Items.SPYGLASS, "betterpv.sub.safari"),
 	FORAGING_ATTRIBUTE_SHARDS(Items.PRISMARINE_SHARD, "betterpv.sub.attribute_shards"),
+	FISHING_MAIN(Items.FISHING_ROD, "betterpv.sub.fishing_main"),
+	FISHING_TROPHIES(Items.TROPICAL_FISH, "betterpv.sub.fishing_trophies"),
 	CRIMSON_OVERVIEW(Items.NETHERRACK, "betterpv.sub.crimson_overview"),
 	CRIMSON_KUUDRA(Items.NETHERITE_SCRAP, "betterpv.sub.kuudra"),
 	CRIMSON_ABIPHONE(Items.NOTE_BLOCK, "betterpv.sub.abiphone"),
@@ -40,7 +41,8 @@ public enum PvSubTab {
 	EVENTS_CHOCOLATE(Items.COOKIE, "betterpv.sub.chocolate"),
 	HOME_OVERVIEW(Items.PAPER, "betterpv.sub.home_overview"),
 	HOME_MISC(Items.BOOK, "betterpv.sub.home_misc"),
-	HOME_RECORDS(Items.DRAGON_HEAD, "betterpv.sub.home_records");
+	HOME_RECORDS(Items.DRAGON_HEAD, "betterpv.sub.home_records"),
+	HOME_ESSENCE(Items.NETHER_STAR, "betterpv.sub.home_essence");
 
 	public static final PvSubTab[] NONE = new PvSubTab[0];
 

@@ -2,8 +2,10 @@ package dev.vy.betterpv.client.gui.garden;
 
 import dev.vy.betterpv.client.data.GardenData;
 import dev.vy.betterpv.client.data.GardenSnapshot;
+import dev.vy.betterpv.client.data.PlayerStatsSnapshot;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.garden.page.CropsPage;
+import dev.vy.betterpv.client.gui.garden.page.FarmingFortunePage;
 import dev.vy.betterpv.client.gui.garden.page.GardenOverviewPage;
 import dev.vy.betterpv.client.gui.garden.page.GreenhousePage;
 import dev.vy.betterpv.client.gui.garden.page.JacobPage;
@@ -21,10 +23,12 @@ public final class GardenPage {
 	private PvSubTab lastSub;
 	private final GardenUi ui = new GardenUi();
 	private final GardenOverviewPage overview = new GardenOverviewPage();
+	private final FarmingFortunePage fortune = new FarmingFortunePage();
 	private final VisitorsPage visitors = new VisitorsPage();
 	private final CropsPage crops = new CropsPage();
 	private final GreenhousePage greenhouse = new GreenhousePage();
 	private final JacobPage jacob = new JacobPage();
+	private PlayerStatsSnapshot playerStats = PlayerStatsSnapshot.empty();
 
 	public void apply(GardenSnapshot snapshot) {
 		this.snapshot = snapshot == null ? GardenSnapshot.empty() : snapshot;
@@ -34,8 +38,13 @@ public final class GardenPage {
 		this.greenhouse.resetScroll();
 		this.jacob.resetScroll();
 		this.jacob.resetFlip();
+		this.fortune.close();
 		this.ui.clearZones();
 		prefetch();
+	}
+
+	public void setPlayerStats(PlayerStatsSnapshot stats) {
+		this.playerStats = stats == null ? PlayerStatsSnapshot.empty() : stats;
 	}
 
 	/** Update data without resetting scroll (async weight / contests). */
@@ -56,7 +65,12 @@ public final class GardenPage {
 		PvSubTab mode = sub == null ? PvSubTab.GARDEN_OVERVIEW : sub;
 		if (mode != this.lastSub) {
 			this.lastSub = mode;
+			this.fortune.close();
 			resetActiveScroll(mode);
+		}
+		if (mode == PvSubTab.GARDEN_OVERVIEW && this.fortune.isOpen()) {
+			this.fortune.render(this.snapshot, this.playerStats, this.ui, g, font, x, y, w, h, mouseX, mouseY);
+			return;
 		}
 
 		boolean islandReady = this.snapshot.islandLoaded();
@@ -65,7 +79,7 @@ public final class GardenPage {
 
 		if (!islandReady && needsIsland) {
 			if (mode == PvSubTab.GARDEN_OVERVIEW) {
-				this.overview.render(this.snapshot, this.ui, g, font, x, y, w, h, mouseX, mouseY, true);
+				this.overview.render(this.snapshot, this.playerStats, this.ui, g, font, x, y, w, h, mouseX, mouseY, true);
 			} else {
 				clearActiveScrollExtents(mode);
 				PvDraw.innerPanel(g, x, y, w, h);
@@ -82,7 +96,7 @@ public final class GardenPage {
 			case GARDEN_CROPS, GARDEN_COMPOSTER -> this.crops.render(this.snapshot, this.ui, g, font, x, y, w, h, mouseX, mouseY);
 			case GARDEN_GREENHOUSE -> this.greenhouse.render(this.snapshot, this.ui, g, font, x, y, w, h, mouseX, mouseY);
 			case GARDEN_JACOB -> this.jacob.render(this.snapshot, this.ui, g, font, x, y, w, h, mouseX, mouseY);
-			default -> this.overview.render(this.snapshot, this.ui, g, font, x, y, w, h, mouseX, mouseY, false);
+			default -> this.overview.render(this.snapshot, this.playerStats, this.ui, g, font, x, y, w, h, mouseX, mouseY, false);
 		}
 	}
 
@@ -95,6 +109,9 @@ public final class GardenPage {
 		if (mode == null) {
 			mode = PvSubTab.GARDEN_OVERVIEW;
 		}
+		if (mode == PvSubTab.GARDEN_OVERVIEW && this.fortune.isOpen()) {
+			return this.fortune.mouseScrolled(mouseY, scrollY);
+		}
 		return switch (mode) {
 			case GARDEN_VISITORS -> this.visitors.mouseScrolled(mouseX, mouseY, scrollY);
 			case GARDEN_CROPS, GARDEN_COMPOSTER -> this.crops.mouseScrolled(mouseX, mouseY, scrollY);
@@ -105,6 +122,16 @@ public final class GardenPage {
 	}
 
 	public boolean mouseClicked(double mx, double my) {
+		if (this.lastSub == null || this.lastSub == PvSubTab.GARDEN_OVERVIEW) {
+			if (this.fortune.isOpen()) {
+				return this.fortune.mouseClicked(mx, my);
+			}
+			if (this.overview.fortuneRowHit(mx, my)) {
+				this.fortune.open();
+				return true;
+			}
+			return false;
+		}
 		if (this.lastSub != PvSubTab.GARDEN_JACOB) {
 			return false;
 		}

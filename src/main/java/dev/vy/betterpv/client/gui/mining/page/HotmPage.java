@@ -21,6 +21,7 @@ public final class HotmPage {
 	private static final int SIDE_MIN = 118;
 	private static final int FLIP_MS = 480;
 	private static final int PANEL_HOVER = 0x0AFFFFFF;
+	private static final float MIN_TREE_SCALE = 0.7f;
 
 	private int scroll;
 	private int maxScroll;
@@ -31,6 +32,12 @@ public final class HotmPage {
 	private int hotmUnlockedScrollW;
 	private int hotmUnlockedScrollH;
 	private int hotmUnlockedMaxScroll;
+	private int treeScroll;
+	private int treeMaxScroll;
+	private int treeLeft;
+	private int treeTop;
+	private int treeW;
+	private int treeH;
 
 	/** false = forge face, true = unlocked perks face. */
 	private boolean unlockedFace;
@@ -44,6 +51,10 @@ public final class HotmPage {
 	public void reset() {
 		this.scroll = 0;
 		this.maxScroll = 0;
+		this.treeScroll = 0;
+		this.treeMaxScroll = 0;
+		this.treeW = 0;
+		this.treeH = 0;
 		this.hotmUnlockedScrollLeft = 0;
 		this.hotmUnlockedScrollTop = 0;
 		this.hotmUnlockedScrollW = 0;
@@ -57,6 +68,7 @@ public final class HotmPage {
 
 	public void onEnter() {
 		this.scroll = 0;
+		this.treeScroll = 0;
 	}
 
 	public boolean mouseClicked(double mx, double my) {
@@ -76,6 +88,16 @@ public final class HotmPage {
 	}
 
 	public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
+		if (this.treeMaxScroll > 0
+			&& mouseX >= this.treeLeft && mouseX < this.treeLeft + this.treeW
+			&& mouseY >= this.treeTop && mouseY < this.treeTop + this.treeH) {
+			int next = Math.max(0, Math.min(this.treeMaxScroll, this.treeScroll + (scrollY > 0 ? -14 : 14)));
+			if (next == this.treeScroll) {
+				return false;
+			}
+			this.treeScroll = next;
+			return true;
+		}
 		if (this.hotmUnlockedMaxScroll <= 0) {
 			return false;
 		}
@@ -374,47 +396,46 @@ public final class HotmPage {
 		int rows = MiningHotmData.maxY() + 1;
 		int innerW = w - MiningUi.PAD * 2;
 		int innerH = h - MiningUi.PAD * 2;
-		int baseIcon = 16;
-		int basePad = 2;
-		int baseCell = baseIcon + basePad * 2;
-		int baseGap = 2;
-		int baseGridW = cols * baseCell + Math.max(0, cols - 1) * baseGap;
-		int baseGridH = rows * baseCell + Math.max(0, rows - 1) * baseGap;
-		// Integer zoom only - fractional scale softens item textures.
-		int zoom = 1;
-		if (baseGridW > 0 && baseGridH > 0) {
-			zoom = Math.max(1, Math.min(innerW / baseGridW, innerH / baseGridH));
-			zoom = Math.min(3, zoom);
-		}
-		int cell = baseCell * zoom;
-		int cellGap = baseGap * zoom;
-		int iconDraw = baseIcon * zoom;
-		int gridW = cols * cell + Math.max(0, cols - 1) * cellGap;
-		int gridH = rows * cell + Math.max(0, rows - 1) * cellGap;
-		int gridX = x + MiningUi.PAD + Math.max(0, (innerW - gridW) / 2);
-		int gridY = y + MiningUi.PAD + Math.max(0, (innerH - gridH) / 2);
+		TreeLayout layout = treeLayout(cols, rows, innerW, innerH);
+		int cell = layout.cell();
+		int cellGap = layout.gap();
+		this.treeMaxScroll = layout.maxScroll();
+		this.treeScroll = Math.max(0, Math.min(this.treeScroll, this.treeMaxScroll));
+		this.treeLeft = x;
+		this.treeTop = y;
+		this.treeW = w;
+		this.treeH = h;
+		int gridX = x + MiningUi.PAD + Math.max(0, (innerW - layout.gridW()) / 2);
+		int gridY = y + MiningUi.PAD + Math.max(0, (innerH - layout.gridH()) / 2) - this.treeScroll;
+		int clipTop = y + 1;
+		int clipBottom = y + h - 1;
 
 		this.scrollTop = y + MiningUi.PAD;
 		this.scrollH = innerH;
 
-		g.enableScissor(x + 1, y + 1, x + w - 1, y + h - 1);
+		g.enableScissor(x + 1, clipTop, x + w - 1, clipBottom);
 		for (MiningHotmData.PerkDef perk : perks) {
 			int cx = gridX + perk.x() * (cell + cellGap);
 			int cy = gridY + perk.y() * (cell + cellGap);
+			if (cy + cell <= clipTop || cy >= clipBottom) {
+				continue;
+			}
 			int level = snapshot.nodeLevel(perk.id());
 
 			PvDraw.fill(g, cx, cy, cell, cell, MiningUi.ITEM_SLOT_BG);
 			g.outline(cx, cy, cell, cell, MiningUi.ITEM_SLOT_BORDER);
 
 			ItemStack stack = perkIcon(perk, level);
+			float iconScale = layout.iconScale();
+			int iconDraw = Math.round(16 * iconScale);
 			int ix = cx + Math.max(0, (cell - iconDraw) / 2);
 			int iy = cy + Math.max(0, (cell - iconDraw) / 2);
-			if (zoom == 1) {
+			if (iconScale == 1f) {
 				g.item(stack, ix, iy);
 			} else {
 				g.pose().pushMatrix();
 				g.pose().translate(ix, iy);
-				g.pose().scale(zoom, zoom);
+				g.pose().scale(iconScale, iconScale);
 				g.item(stack, 0, 0);
 				g.pose().popMatrix();
 			}
@@ -428,9 +449,54 @@ public final class HotmPage {
 			if (perk.powder() != null && !perk.powder().isBlank() && !perk.powder().startsWith("(")) {
 				tip.add(PvTooltip.Line.of(prettyPowder(perk.powder()) + " powder", powderColor(perk.powder())));
 			}
-			zones.add(HoverZone.of(cx, cy, cell, cell, tip));
+			int zoneTop = Math.max(cy, clipTop);
+			int zoneBottom = Math.min(cy + cell, clipBottom);
+			zones.add(HoverZone.of(cx, zoneTop, cell, zoneBottom - zoneTop, tip));
 		}
 		g.disableScissor();
+		if (this.treeMaxScroll > 0) {
+			int trackH = h - 4;
+			int thumbH = Math.max(12, trackH * innerH / Math.max(1, layout.gridH()));
+			int thumbY = y + 2 + (trackH - thumbH) * this.treeScroll / this.treeMaxScroll;
+			PvDraw.fill(g, x + w - 4, thumbY, 2, thumbH, PvDraw.COLOR_BORDER);
+		}
+	}
+
+	record TreeLayout(int cell, int gap, float iconScale, int gridW, int gridH, int maxScroll) {
+	}
+
+	/**
+	 * Integer zoom when the tree fits (fractional scale softens item textures). Otherwise tighter cells, then
+	 * a scaled-down grid, then vertical scrolling, so every node stays reachable at any GUI scale.
+	 */
+	static TreeLayout treeLayout(int cols, int rows, int innerW, int innerH) {
+		int baseCell = 20;
+		int baseGap = 2;
+		int baseW = gridSize(cols, baseCell, baseGap);
+		int baseH = gridSize(rows, baseCell, baseGap);
+		if (baseW <= innerW && baseH <= innerH) {
+			int zoom = Math.max(1, Math.min(3, Math.min(innerW / baseW, innerH / baseH)));
+			return new TreeLayout(baseCell * zoom, baseGap * zoom, zoom,
+				gridSize(cols, baseCell * zoom, baseGap * zoom), gridSize(rows, baseCell * zoom, baseGap * zoom), 0);
+		}
+		int tightCell = 18;
+		int tightGap = 1;
+		int tightW = gridSize(cols, tightCell, tightGap);
+		int tightH = gridSize(rows, tightCell, tightGap);
+		if (tightW <= innerW && tightH <= innerH) {
+			return new TreeLayout(tightCell, tightGap, 1f, tightW, tightH, 0);
+		}
+		float fit = Math.min((float) innerW / tightW, (float) innerH / tightH);
+		float scale = Math.max(MIN_TREE_SCALE, Math.min(1f, fit));
+		int cell = Math.max(8, (int) Math.floor(tightCell * scale));
+		float iconScale = Math.min(1f, (cell - 1) / 16f);
+		int gridW = gridSize(cols, cell, tightGap);
+		int gridH = gridSize(rows, cell, tightGap);
+		return new TreeLayout(cell, tightGap, iconScale, gridW, gridH, Math.max(0, gridH - innerH));
+	}
+
+	private static int gridSize(int count, int cell, int gap) {
+		return count * cell + Math.max(0, count - 1) * gap;
 	}
 
 	/**

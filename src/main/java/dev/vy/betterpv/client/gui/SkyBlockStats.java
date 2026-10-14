@@ -72,6 +72,19 @@ public final class SkyBlockStats {
 		return STATS.getOrDefault(id.toLowerCase(Locale.ROOT), new StatStyle("•", "Unknown", PvDraw.COLOR_TEXT));
 	}
 
+	/** Style for a display name like "Mining Fortune", or null when it isn't a known stat. */
+	public static StatStyle byName(String fullName) {
+		if (fullName == null || fullName.isBlank()) {
+			return null;
+		}
+		for (StatStyle style : STATS.values()) {
+			if (style.fullName().equalsIgnoreCase(fullName.trim())) {
+				return style;
+			}
+		}
+		return null;
+	}
+
 	/** Hover tip: coloured full name, then coloured symbol + full number. */
 	public static List<PvTooltip.Line> tooltipLines(String id, String formattedValue) {
 		StatStyle style = stat(id);

@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import dev.vy.betterpv.client.networth.InventoryDecoder;
 import dev.vy.betterpv.client.networth.PetWorth;
+import dev.vy.betterpv.client.neu.NeuRepoCache;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -231,7 +232,7 @@ public final class PetSnapshot {
 		String type = pet.get("type").getAsString();
 		String tier = pet.has("tier") && pet.get("tier").isJsonPrimitive() ? pet.get("tier").getAsString() : "COMMON";
 		int tierIndex = petTierIndex(tier);
-		String neuId = type.toUpperCase(Locale.ROOT) + ";" + tierIndex;
+		String neuId = neuIdFor(type, tierIndex);
 		PetWorth.LevelInfo info = PetWorth.levelInfo(pet);
 		boolean active = pet.has("active") && pet.get("active").isJsonPrimitive() && pet.get("active").getAsBoolean();
 		String heldItem = pet.has("heldItem") && pet.get("heldItem").isJsonPrimitive() ? pet.get("heldItem").getAsString() : "";
@@ -277,8 +278,29 @@ public final class PetSnapshot {
 			case "EPIC" -> 3;
 			case "LEGENDARY" -> 4;
 			case "MYTHIC" -> 5;
+			case "DIVINE" -> 6;
+			case "SPECIAL" -> 7;
+			case "VERY_SPECIAL" -> 8;
 			default -> 4;
 		};
+	}
+
+	// NEU only ships some pets at a few tiers (Phoenix is SPECIAL/VERY_SPECIAL there), so fall back to
+	// the closest tier NEU actually has when the API rarity isn't in the repo.
+	static String neuIdFor(String type, int tierIndex) {
+		String base = type.toUpperCase(Locale.ROOT);
+		String exact = base + ";" + tierIndex;
+		if (!NeuRepoCache.isReady() || NeuRepoCache.get(exact) != null) {
+			return exact;
+		}
+		for (int d = 1; d <= 8; d++) {
+			for (int idx : new int[] { tierIndex + d, tierIndex - d }) {
+				if (idx >= 0 && idx <= 8 && NeuRepoCache.get(base + ";" + idx) != null) {
+					return base + ";" + idx;
+				}
+			}
+		}
+		return exact;
 	}
 
 	private static int intOf(JsonObject obj, String key) {

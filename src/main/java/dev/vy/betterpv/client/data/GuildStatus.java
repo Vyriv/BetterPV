@@ -123,7 +123,7 @@ public final class GuildStatus {
 	public String buttonLabel() {
 		return switch (this.state) {
 			case IDLE -> "Load Guild";
-			case LOADING -> "…";
+			case LOADING -> "...";
 			case READY -> {
 				String label = this.name;
 				if (!this.tag.isBlank()) {

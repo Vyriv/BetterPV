@@ -66,7 +66,7 @@ public final class BingoPage {
 
 		if (bingoState == EventsPage.BingoLoadState.LOADING) {
 			cy = sectionSeparator(g, lx, cy, leftW);
-			PvDraw.text(g, font, "Loading…", cx, cy, PvDraw.COLOR_MUTED);
+			PvDraw.text(g, font, "Loading...", cx, cy, PvDraw.COLOR_MUTED);
 		} else if (bingoState == EventsPage.BingoLoadState.ERROR) {
 			cy = sectionSeparator(g, lx, cy, leftW);
 			PvDraw.text(g, font, trim(font, bingoError, cw), cx, cy, 0xFFFF8888);
@@ -80,12 +80,12 @@ public final class BingoPage {
 			cy = ui.tipStat(g, font, "Total points", FormatUtil.commas(bingo.totalPoints()), PvDraw.COLOR_GOLD,
 				cx, cy, cw, mx, my,
 				tipTitle("Total points", PvDraw.COLOR_GOLD,
-					PvTooltip.Line.meta("Sum across all bingo events")));
+					PvTooltip.Line.meta("All bingo events")));
 		} else if (bingoState == EventsPage.BingoLoadState.READY && bingoHistoryMissing && cy + SEP_GAP + font.lineHeight <= bottom) {
 			cy = sectionSeparator(g, lx, cy, leftW);
 			PvDraw.text(g, font, "History unavailable", cx, cy, PvDraw.COLOR_MUTED);
 			cy += font.lineHeight + 2;
-			PvDraw.text(g, font, trim(font, "Retrying in background…", cw), cx, cy, PvDraw.COLOR_MUTED);
+			PvDraw.text(g, font, trim(font, "Retrying in background...", cw), cx, cy, PvDraw.COLOR_MUTED);
 		}
 
 		List<EventsSnapshot.BingoEvent> history = bingo.history();
@@ -114,7 +114,7 @@ public final class BingoPage {
 		int rcw = rightW - PAD * 2;
 		boolean hasEvent = bingo.currentEventId() > 0 || !bingo.currentEventName().isBlank();
 		if (bingoState == EventsPage.BingoLoadState.LOADING) {
-			PvDraw.textCentered(g, font, "Loading bingo…", rx + rightW / 2, y + h / 2 - font.lineHeight / 2, PvDraw.COLOR_MUTED);
+			PvDraw.textCentered(g, font, "Loading bingo...", rx + rightW / 2, y + h / 2 - font.lineHeight / 2, PvDraw.COLOR_MUTED);
 			return;
 		}
 		if (bingoState == EventsPage.BingoLoadState.ERROR) {

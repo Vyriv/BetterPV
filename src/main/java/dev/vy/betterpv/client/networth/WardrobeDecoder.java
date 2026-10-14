@@ -55,6 +55,43 @@ final class WardrobeDecoder {
 		return packWardrobeSetPages(padWardrobeSets(byId), "Wardrobe");
 	}
 
+	static List<InventoryDecoder.WardrobePreset> armorPresets(JsonObject inventory, JsonObject loadout) {
+		JsonObject armorLayouts = loadout == null ? null : InventoryDecodeSupport.obj(loadout.get("armor"));
+		if (armorLayouts == null) {
+			return List.of();
+		}
+		Integer equippedId = InventoryDecodeSupport.jsonInt(armorLayouts, "equipped_set");
+		List<InventoryDecoder.WardrobePreset> out = new ArrayList<>();
+		for (String key : armorLayouts.keySet()) {
+			if ("equipped_set".equals(key)) {
+				continue;
+			}
+			Integer setId = layoutSetId(armorLayouts.get(key), key);
+			if (setId == null) {
+				continue;
+			}
+			JsonObject page = findLayout(armorLayouts, setId, key);
+			List<InventoryDecoder.Stack> pieces = new ArrayList<>(4);
+			for (String slot : List.of("HELMET", "CHESTPLATE", "LEGGINGS", "BOOTS")) {
+				List<InventoryDecoder.Stack> decoded = page == null
+					? List.of()
+					: InventoryDecodeCache.decodeDataElement(page.get(slot));
+				pieces.add(decoded.isEmpty() ? null : decoded.get(0));
+			}
+			boolean equipped = equippedId != null && equippedId.equals(setId);
+			if (equipped && pieces.stream().allMatch(java.util.Objects::isNull)) {
+				List<InventoryDecoder.Stack> live = InventoryDecodeCache.decodeFieldKeepingEmpty(inventory, "inv_armor", 4);
+				pieces = new ArrayList<>(4);
+				for (int i = 3; i >= 0; i--) {
+					pieces.add(i < live.size() ? live.get(i) : null);
+				}
+			}
+			out.add(new InventoryDecoder.WardrobePreset(setId, equipped, pieces));
+		}
+		out.sort(java.util.Comparator.comparingInt(InventoryDecoder.WardrobePreset::slot));
+		return out;
+	}
+
 	static List<InventorySnapshot.Page> parseEquipmentWardrobePages(JsonObject inventory, JsonObject loadout) {
 		Map<Integer, WardrobeSet> byId = new LinkedHashMap<>();
 		JsonObject equipLayouts = loadout == null ? null : InventoryDecodeSupport.obj(loadout.get("equipment"));

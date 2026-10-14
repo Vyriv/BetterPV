@@ -18,9 +18,24 @@ public final class PlayerStatsSnapshot {
 	}
 
 	private final List<Entry> entries;
+	private final FarmingFortuneEstimate farmingFortune;
 
 	public PlayerStatsSnapshot(List<Entry> entries) {
+		this(entries, null);
+	}
+
+	private PlayerStatsSnapshot(List<Entry> entries, FarmingFortuneEstimate farmingFortune) {
 		this.entries = entries == null || entries.isEmpty() ? List.of() : List.copyOf(entries);
+		this.farmingFortune = farmingFortune;
+	}
+
+	public PlayerStatsSnapshot withFarmingFortune(FarmingFortuneEstimate estimate) {
+		return new PlayerStatsSnapshot(this.entries, estimate);
+	}
+
+	/** Null until full inventories have been parsed. */
+	public FarmingFortuneEstimate farmingFortune() {
+		return this.farmingFortune;
 	}
 
 	public static PlayerStatsSnapshot empty() {

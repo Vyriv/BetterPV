@@ -1,6 +1,7 @@
 package dev.vy.betterpv.client.gui.inventories;
 
 import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
 import dev.vy.betterpv.client.price.HypixelItemsCache;
 import java.util.Locale;
 import net.minecraft.world.item.Item;
@@ -25,9 +26,9 @@ final class HypixelItemResolver {
 			: null;
 		int durability = 0;
 		if (def != null && def.has("durability") && def.get("durability").isJsonPrimitive()) {
-			durability = def.get("durability").getAsInt();
+			durability = intOrZero(def.get("durability").getAsJsonPrimitive());
 		} else if (def != null && def.has("damage") && def.get("damage").isJsonPrimitive()) {
-			durability = def.get("damage").getAsInt();
+			durability = intOrZero(def.get("damage").getAsJsonPrimitive());
 		}
 		String skinValue = extractHypixelSkinValue(def);
 		String skinSignature = extractHypixelSkinSignature(def);
@@ -35,10 +36,11 @@ final class HypixelItemResolver {
 			skinValue = null;
 			skinSignature = null;
 		}
-		boolean skullMaterial = material != null && (
-			material.equalsIgnoreCase("SKULL_ITEM")
-				|| material.equalsIgnoreCase("SKULL")
-				|| material.equalsIgnoreCase("PLAYER_HEAD")
+		LegacyMaterialMap.Material parsed = LegacyMaterialMap.parseMaterial(material, durability);
+		boolean skullMaterial = parsed != null && (
+			parsed.name().equals("SKULL_ITEM")
+				|| parsed.name().equals("SKULL")
+				|| parsed.name().equals("PLAYER_HEAD")
 		);
 		if (skinValue != null) {
 			ItemStack skull = new ItemStack(Items.PLAYER_HEAD);
@@ -52,6 +54,14 @@ final class HypixelItemResolver {
 		}
 		Item item = LegacyMaterialMap.resolveMaterial(material, key, durability);
 		return new ItemStack(item);
+	}
+
+	private static int intOrZero(JsonPrimitive value) {
+		try {
+			return value.isNumber() ? value.getAsInt() : Integer.parseInt(value.getAsString().trim());
+		} catch (NumberFormatException ignored) {
+			return 0;
+		}
 	}
 
 	static String extractHypixelSkinValue(JsonObject def) {

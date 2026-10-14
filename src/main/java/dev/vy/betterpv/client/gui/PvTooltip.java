@@ -1,5 +1,6 @@
 package dev.vy.betterpv.client.gui;
 
+import dev.vy.betterpv.client.gui.inventories.SkyBlockIconRenderer;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
@@ -84,22 +85,32 @@ public final class PvTooltip {
 		}
 	}
 
-	public record Line(Kind kind, List<Span> left, List<Span> value, List<Span> meta, ItemStack icon) {
+	public record Line(Kind kind, List<Span> left, List<Span> value, List<Span> meta, ItemStack icon, String iconId) {
 		public Line {
 			kind = kind == null ? Kind.TEXT : kind;
 			left = left == null ? List.of() : List.copyOf(left);
 			value = value == null ? List.of() : List.copyOf(value);
 			meta = meta == null ? List.of() : List.copyOf(meta);
 			icon = icon == null || icon.isEmpty() ? null : icon;
+			iconId = iconId == null || iconId.isBlank() ? null : iconId;
 		}
 
 		public Line(Kind kind, List<Span> left, List<Span> value, List<Span> meta) {
-			this(kind, left, value, meta, null);
+			this(kind, left, value, meta, null, null);
 		}
 
 		/** Small item icon drawn before the label (ROW / TEXT lines). */
 		public Line withIcon(ItemStack stack) {
-			return new Line(this.kind, this.left, this.value, this.meta, stack);
+			return new Line(this.kind, this.left, this.value, this.meta, stack, null);
+		}
+
+		/** Icon drawn by SkyBlock id, so items NEU only has as paper still get their real texture. */
+		public Line withIcon(ItemStack stack, String skyblockId) {
+			return new Line(this.kind, this.left, this.value, this.meta, stack, skyblockId);
+		}
+
+		boolean hasIcon() {
+			return this.icon != null || this.iconId != null;
 		}
 
 		public Line(List<Span> spans) {
@@ -558,15 +569,19 @@ public final class PvTooltip {
 	}
 
 	private static int iconOffset(Line line) {
-		return line.icon() == null ? 0 : ICON_W;
+		return line.hasIcon() ? ICON_W : 0;
 	}
 
 	private static void drawIcon(GuiGraphicsExtractor g, Font font, Line line, int x, int ty) {
-		if (line.icon() == null) {
+		if (!line.hasIcon()) {
+			return;
+		}
+		int iy = ty + (font.lineHeight - ICON_SIZE) / 2 - 1;
+		if (line.iconId() != null) {
+			SkyBlockIconRenderer.draw(g, line.icon(), line.iconId(), x, iy, ICON_SIZE);
 			return;
 		}
 		float scale = ICON_SIZE / 16F;
-		int iy = ty + (font.lineHeight - ICON_SIZE) / 2 - 1;
 		g.pose().pushMatrix();
 		g.pose().translate(x, iy);
 		g.pose().scale(scale, scale);

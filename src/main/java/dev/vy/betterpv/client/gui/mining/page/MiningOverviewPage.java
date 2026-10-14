@@ -4,11 +4,16 @@ import dev.vy.betterpv.client.data.ColeWeight;
 import dev.vy.betterpv.client.data.DungeonSnapshot;
 import dev.vy.betterpv.client.data.FormatUtil;
 import dev.vy.betterpv.client.data.MiningSnapshot;
+import dev.vy.betterpv.client.data.PlayerStatsSnapshot;
+import dev.vy.betterpv.client.dungeons.EssencePerkTips;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
+import dev.vy.betterpv.client.gui.essence.EssenceIcons;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import dev.vy.betterpv.client.gui.mining.MiningUi;
 import dev.vy.betterpv.client.gui.mining.MiningUi.HoverZone;
+import dev.vy.betterpv.client.gui.overview.SkillStatRows;
+import dev.vy.betterpv.client.gui.overview.SummaryCards;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -26,6 +31,11 @@ public final class MiningOverviewPage {
 	private static final int ESSENCE_HEADER_ICON = 16;
 	private static final int ESSENCE_PERK_ICON = 10;
 	private static final int COLOR_MAXED = 0xFF7CFF9A;
+	private static final String[] SKILL_STATS = { "mining_speed", "mining_fortune", "pristine", "mining_spread" };
+	private static final List<String> STAT_EXCLUSIONS = List.of(
+		"Excludes held tool, set bonuses,",
+		"temporary buffs and location bonuses."
+	);
 
 	private int scroll;
 	private int maxScroll;
@@ -88,7 +98,7 @@ public final class MiningOverviewPage {
 	}
 
 	public void render(
-		GuiGraphicsExtractor g, Font font, MiningSnapshot snapshot, List<HoverZone> zones,
+		GuiGraphicsExtractor g, Font font, MiningSnapshot snapshot, PlayerStatsSnapshot stats, List<HoverZone> zones,
 		int x, int y, int w, int h, int mx, int my
 	) {
 		int rightW = Math.max(200, w * 55 / 100);
@@ -131,6 +141,20 @@ public final class MiningOverviewPage {
 		if (snapshot.miningFiestaOres() > 0L) {
 			ly = MiningUi.statLine(g, font, "Fiesta ores",
 				FormatUtil.commas(snapshot.miningFiestaOres()), lx, ly, lw, PvDraw.COLOR_GOLD);
+		}
+
+		int bottom = y + h - MiningUi.PAD;
+		if (ly + MiningUi.STAT_ROW * 2 <= bottom) {
+			ly = MiningUi.sectionSeparator(g, font, x, ly, leftW);
+			for (String id : SKILL_STATS) {
+				if (ly + MiningUi.STAT_ROW > bottom) {
+					break;
+				}
+				SummaryCards.Stat stat = SkillStatRows.row(stats, id, STAT_EXCLUSIONS);
+				zones.add(HoverZone.of(lx, ly, lw, MiningUi.STAT_ROW, stat.tip()));
+				ly = MiningUi.coloredLabelStat(g, font, stat.label(), stat.value(), lx, ly, lw,
+					stat.labelColor(), stat.valueColor()) + 1;
+			}
 		}
 
 		drawCrystalsPanel(g, font, snapshot, zones, x + leftW + MiningUi.GAP, y, rightW, h, mx, my);
@@ -183,7 +207,7 @@ public final class MiningOverviewPage {
 
 		if (showEssence) {
 			this.maxScroll = 0;
-			drawMiningEssenceFace(g, font, snapshot, x, y, w, h);
+			drawMiningEssenceFace(g, font, snapshot, zones, x, y, w, h);
 		} else {
 			drawCrystalsFace(g, font, snapshot, zones, x, y, w, h);
 		}
@@ -251,7 +275,7 @@ public final class MiningOverviewPage {
 			List<PvTooltip.Line> tip = new ArrayList<>();
 			tip.add(PvTooltip.Line.title("Nucleus runs", PvDraw.COLOR_TEXT));
 			tip.add(PvTooltip.Line.divider());
-			tip.add(PvTooltip.Line.row("Derived", PvDraw.COLOR_MUTED, FormatUtil.commas(derived), PvDraw.COLOR_ACCENT));
+			tip.add(PvTooltip.Line.row("From crystals", PvDraw.COLOR_MUTED, FormatUtil.commas(derived), PvDraw.COLOR_ACCENT));
 			if (api > 0L) {
 				tip.add(PvTooltip.Line.row("API", PvDraw.COLOR_MUTED, FormatUtil.commas(api), PvDraw.COLOR_GOLD));
 			}
@@ -275,7 +299,7 @@ public final class MiningOverviewPage {
 
 	/** Gold / Diamond essence shops stacked full-width (names fit; rows fill each half). */
 	private void drawMiningEssenceFace(
-		GuiGraphicsExtractor g, Font font, MiningSnapshot snapshot, int x, int y, int w, int h
+		GuiGraphicsExtractor g, Font font, MiningSnapshot snapshot, List<HoverZone> zones, int x, int y, int w, int h
 	) {
 		int pad = 6;
 		int cx = x + pad;
@@ -300,14 +324,14 @@ public final class MiningOverviewPage {
 		int diamondRowH = Math.max(font.lineHeight + 2, Math.max(ESSENCE_PERK_ICON + 3, diamondBody / diamondPerks));
 
 		drawMiningEssenceColumn(
-			g, font, snapshot.goldShop(), cx, goldTop, innerW, headerH, goldRowH, goldBottom, GOLD_COLOR
+			g, font, snapshot.goldShop(), zones, cx, goldTop, innerW, headerH, goldRowH, goldBottom, GOLD_COLOR
 		);
 
 		int sepY = goldBottom + sectionGap / 2;
 		PvDraw.fill(g, cx, sepY, innerW, 1, PvDraw.COLOR_BORDER);
 
 		drawMiningEssenceColumn(
-			g, font, snapshot.diamondShop(), cx, diamondTop, innerW, headerH, diamondRowH, diamondBottom, DIAMOND_COLOR
+			g, font, snapshot.diamondShop(), zones, cx, diamondTop, innerW, headerH, diamondRowH, diamondBottom, DIAMOND_COLOR
 		);
 	}
 
@@ -315,6 +339,7 @@ public final class MiningOverviewPage {
 		GuiGraphicsExtractor g,
 		Font font,
 		DungeonSnapshot.EssenceShop shop,
+		List<HoverZone> zones,
 		int x,
 		int y,
 		int w,
@@ -351,6 +376,7 @@ public final class MiningOverviewPage {
 			int valueColor = perk.maxed() ? COLOR_MAXED : PvDraw.COLOR_TEXT;
 			PvDraw.text(g, font, left, perkLabelX, rowAlign.textY(), PvDraw.COLOR_MUTED);
 			PvDraw.textRight(g, font, right, x + w, rowAlign.textY(), valueColor);
+			zones.add(HoverZone.of(x, ly, w, rowH, EssencePerkTips.tip(perk)));
 			ly += rowH;
 		}
 	}
@@ -361,24 +387,7 @@ public final class MiningOverviewPage {
 	}
 
 	private static ItemStack miningEssencePerkIcon(String perkId) {
-		if (perkId == null) {
-			return new ItemStack(Items.PAPER);
-		}
-		return switch (perkId) {
-			case "heart_of_gold" -> new ItemStack(Items.GOLDEN_APPLE);
-			case "treasures_of_the_earth" -> new ItemStack(Items.CHEST);
-			case "dwarven_training" -> new ItemStack(Items.IRON_PICKAXE);
-			case "unbreaking" -> new ItemStack(Items.ANVIL);
-			case "eager_miner" -> new ItemStack(Items.GOLDEN_PICKAXE);
-			case "midas_lure" -> new ItemStack(Items.FISHING_ROD);
-			case "radiant_fisher" -> new ItemStack(Items.COD);
-			case "diamond_in_the_rough" -> new ItemStack(Items.DIAMOND);
-			case "rhinestone_infusion" -> new ItemStack(Items.AMETHYST_SHARD);
-			case "under_pressure" -> new ItemStack(Items.OBSIDIAN);
-			case "high_roller" -> new ItemStack(Items.GOLD_BLOCK);
-			case "return_to_sender" -> new ItemStack(Items.ARROW);
-			default -> new ItemStack(Items.PAPER);
-		};
+		return EssenceIcons.perk(perkId);
 	}
 
 	private static float easeInOutCubic(float t) {

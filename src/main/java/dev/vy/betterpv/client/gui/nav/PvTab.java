@@ -39,15 +39,42 @@ public enum PvTab {
 		return Component.translatable(this.langKey);
 	}
 
+	/** A {@code /pv <page>} target. {@code sub} is null when the tab's default subtab should be used. */
+	public record Route(PvTab tab, PvSubTab sub) {
+		public boolean valid() {
+			if (this.tab == null) {
+				return false;
+			}
+			if (this.sub == null) {
+				return true;
+			}
+			for (PvSubTab candidate : this.tab.subTabs()) {
+				if (candidate == this.sub) {
+					return true;
+				}
+			}
+			return false;
+		}
+	}
+
 	/**
 	 * Resolves {@code /pv <page>} aliases. Returns {@code null} when the token is not a page
 	 * (caller should treat it as a player name).
 	 */
 	public static PvTab fromCommandArg(String raw) {
+		Route route = routeFromCommandArg(raw);
+		return route == null ? null : route.tab();
+	}
+
+	public static Route routeFromCommandArg(String raw) {
 		if (raw == null || raw.isBlank()) {
 			return null;
 		}
-		return switch (raw.trim().toLowerCase(Locale.ROOT)) {
+		String token = raw.trim().toLowerCase(Locale.ROOT);
+		if (token.equals("essence") || token.equals("essences")) {
+			return new Route(HOME, PvSubTab.HOME_ESSENCE);
+		}
+		PvTab tab = switch (token) {
 			case "home" -> HOME;
 			case "dungeons", "dungeon" -> DUNGEONS;
 			case "storage", "inventories", "inventory" -> INVENTORIES;
@@ -65,6 +92,7 @@ public enum PvTab {
 			case "events", "event" -> EVENTS;
 			default -> null;
 		};
+		return tab == null ? null : new Route(tab, null);
 	}
 
 	/** Canonical {@code /pv <page>} tokens shown in command suggestions. */
@@ -84,13 +112,14 @@ public enum PvTab {
 			"rift",
 			"museum",
 			"bestiary",
-			"events"
+			"events",
+			"essence"
 		};
 	}
 
 	public PvSubTab[] subTabs() {
 		return switch (this) {
-			case HOME -> new PvSubTab[] { PvSubTab.HOME_OVERVIEW, PvSubTab.HOME_MISC, PvSubTab.HOME_RECORDS };
+			case HOME -> new PvSubTab[] { PvSubTab.HOME_OVERVIEW, PvSubTab.HOME_MISC, PvSubTab.HOME_RECORDS, PvSubTab.HOME_ESSENCE };
 			case DUNGEONS -> new PvSubTab[] { PvSubTab.DUNGEON_OVERVIEW, PvSubTab.DUNGEON_CHESTS };
 			case AUCTIONS -> new PvSubTab[] { PvSubTab.AUCTION_STATS, PvSubTab.AUCTION_SOLD, PvSubTab.AUCTION_BOUGHT };
 			case COLLECTIONS -> new PvSubTab[] { PvSubTab.COLLECTIONS_LIST, PvSubTab.COLLECTIONS_MINIONS };
@@ -110,10 +139,9 @@ public enum PvTab {
 				PvSubTab.FORAGING_OVERVIEW,
 				PvSubTab.FORAGING_HOTF,
 				PvSubTab.FORAGING_HUNTING,
-				PvSubTab.FORAGING_SAFARI,
 				PvSubTab.FORAGING_ATTRIBUTE_SHARDS
 			};
-			case FISHING -> PvSubTab.NONE;
+			case FISHING -> new PvSubTab[] { PvSubTab.FISHING_MAIN, PvSubTab.FISHING_TROPHIES };
 			case CRIMSON -> new PvSubTab[] {
 				PvSubTab.CRIMSON_OVERVIEW,
 				PvSubTab.CRIMSON_KUUDRA,

@@ -33,6 +33,9 @@ public final class CollectionsListPage {
 	private int gridTop;
 	private int gridH;
 	private final List<ItemHit> itemHits = new ArrayList<>();
+	private final CollectionDetailView detail = new CollectionDetailView();
+	private final int[] board = new int[4];
+	private CollectionSnapshot snapshot;
 	private List<PvTooltip.Line> hoverTip = List.of();
 
 	public void reset(CollectionSnapshot snapshot) {
@@ -40,6 +43,7 @@ public final class CollectionsListPage {
 		this.selectedItem = 0;
 		this.gridScroll = 0;
 		this.hoverTip = List.of();
+		this.detail.close();
 	}
 
 	public void render(
@@ -57,7 +61,23 @@ public final class CollectionsListPage {
 	) {
 		this.itemHits.clear();
 		this.hoverTip = List.of();
-		renderCollections(snapshot, g, font, x, y, w, h, mouseX, mouseY);
+		this.snapshot = snapshot;
+		this.board[0] = x;
+		this.board[1] = y;
+		this.board[2] = w;
+		this.board[3] = h;
+		boolean popup = this.detail.isOpen();
+		renderCollections(snapshot, g, font, x, y, w, h, popup ? -1 : mouseX, popup ? -1 : mouseY);
+		if (popup) {
+			this.hoverTip = List.of();
+		}
+	}
+
+	public void renderOverlay(GuiGraphicsExtractor g, Font font, int screenW, int screenH, int mouseX, int mouseY) {
+		if (this.detail.isOpen() && this.snapshot != null) {
+			this.detail.render(this.snapshot, g, font, screenW, screenH,
+				this.board[0], this.board[1], this.board[2], this.board[3], mouseX, mouseY);
+		}
 	}
 
 	public void renderTooltip(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH) {
@@ -66,11 +86,23 @@ public final class CollectionsListPage {
 		}
 	}
 
+	public boolean keyPressed(int key) {
+		return this.detail.keyPressed(key);
+	}
+
+	public void closeDetail() {
+		this.detail.close();
+	}
+
 	public boolean mouseClicked(double mx, double my) {
+		if (this.detail.isOpen()) {
+			return this.detail.mouseClicked(mx, my);
+		}
 		for (ItemHit hit : this.itemHits) {
 			if (mx >= hit.x && mx < hit.x + hit.w && my >= hit.y && my < hit.y + hit.h) {
 				this.selectedCat = hit.cat;
 				this.selectedItem = hit.item;
+				this.detail.open(hit.entry);
 				return true;
 			}
 		}
@@ -78,7 +110,7 @@ public final class CollectionsListPage {
 	}
 
 	public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
-		return false;
+		return this.detail.mouseScrolled(mouseX, mouseY, scrollY);
 	}
 
 	private void renderCollections(
@@ -184,7 +216,7 @@ public final class CollectionsListPage {
 					int tw = Math.max(1, Math.round(font.width(label) * labelScale));
 					PvDraw.textScaled(g, font, label, sx + (slot - tw) / 2, labelY, labelColor, labelScale);
 				}
-				this.itemHits.add(new ItemHit(sx, sy, slot, cellH, c, i));
+				this.itemHits.add(new ItemHit(sx, sy, slot, cellH, c, i, item));
 				if (hover) {
 					this.hoverTip = collectionHover(snapshot, item);
 				}
@@ -238,6 +270,11 @@ public final class CollectionsListPage {
 		HypixelCollectionsCache.Tier next = item.nextTier(amount);
 		if (maxed || next == null) {
 			lines.add(PvTooltip.Line.bold("Maxed", MINION_UNLOCKED));
+			int legacy = snapshot.legacyTier(item);
+			if (legacy > 0) {
+				lines.add(PvTooltip.Line.meta("Old tier " + CollectionDetailView.roman(legacy)
+					+ " from before the " + item.maxTiers() + "-tier rework"));
+			}
 		} else {
 			int pct = Math.round(item.progressToNext(amount) * 100f);
 			lines.add(new PvTooltip.Line(List.of(
@@ -278,6 +315,10 @@ public final class CollectionsListPage {
 				));
 				lines.add(new PvTooltip.Line(spans));
 			}
+		}
+		if (!item.tiers().isEmpty()) {
+			lines.add(PvTooltip.Line.blank());
+			lines.add(PvTooltip.Line.meta("Click to view tiers"));
 		}
 		return lines;
 	}
@@ -533,6 +574,6 @@ public final class CollectionsListPage {
 		this.selectedItem = Math.max(0, Math.min(this.selectedItem, items.size() - 1));
 	}
 
-	private record ItemHit(int x, int y, int w, int h, int cat, int item) {
+	private record ItemHit(int x, int y, int w, int h, int cat, int item, HypixelCollectionsCache.Item entry) {
 	}
 }

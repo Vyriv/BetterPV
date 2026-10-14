@@ -7,6 +7,7 @@ import dev.vy.betterpv.client.networth.InventoryDecoder;
 import dev.vy.betterpv.client.price.HypixelItemsCache;
 import dev.vy.betterpv.client.price.ItemPricer;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
@@ -75,6 +76,8 @@ public final class MuseumCatalog {
 	private static volatile Map<String, List<String>> CHILDREN = Map.of();
 	/** Starred / alt id → catalog museum slot id. */
 	private static volatile Map<String, String> VARIANT_TO_BASE = Map.of();
+	/** Armor/equipment piece id → museum set slot id. */
+	private static volatile Map<String, String> PIECE_TO_SET = Map.of();
 
 	private MuseumCatalog() {
 	}
@@ -92,9 +95,14 @@ public final class MuseumCatalog {
 		BY_ID = Map.of();
 		CHILDREN = Map.of();
 		VARIANT_TO_BASE = Map.of();
+		PIECE_TO_SET = Map.of();
 	}
 
 	public static void rebuild() {
+		rebuild(HypixelItemsCache.allItems());
+	}
+
+	static void rebuild(Collection<JsonObject> items) {
 		Map<MuseumSort, LinkedHashSet<String>> buckets = new EnumMap<>(MuseumSort.class);
 		for (MuseumSort sort : MuseumSort.categories()) {
 			buckets.put(sort, new LinkedHashSet<>());
@@ -103,7 +111,7 @@ public final class MuseumCatalog {
 		Map<String, String> upgradeTo = new LinkedHashMap<>();
 		Map<String, String> variantToBase = new LinkedHashMap<>();
 
-		for (JsonObject item : HypixelItemsCache.allItems()) {
+		for (JsonObject item : items) {
 			if (item == null || !item.has("museum_data") || !item.get("museum_data").isJsonObject()) {
 				continue;
 			}
@@ -188,10 +196,31 @@ public final class MuseumCatalog {
 			out.put(sort, List.copyOf(list));
 		}
 
+		Map<String, String> pieceToSet = new LinkedHashMap<>();
+		for (Mutable m : building.values()) {
+			if (m.armorSet) {
+				for (String piece : m.pieces) {
+					pieceToSet.putIfAbsent(piece, m.id);
+				}
+			}
+		}
+
+		BY_SORT = Map.copyOf(out);
+		BY_ID = Map.copyOf(byId);
+		CHILDREN = Map.copyOf(childrenOf(upgradeTo, pieceToSet));
+		VARIANT_TO_BASE = Map.copyOf(variantToBase);
+		PIECE_TO_SET = Map.copyOf(pieceToSet);
+	}
+
+	/**
+	 * Higher → lower edges with set pieces folded onto their set id. Hypixel sometimes keys
+	 * {@code parent} by a piece (MANGROVE_GRIPPERS) even though the museum slot is the set.
+	 */
+	static Map<String, List<String>> childrenOf(Map<String, String> upgradeTo, Map<String, String> pieceToSet) {
 		Map<String, List<String>> children = new LinkedHashMap<>();
 		for (var edge : upgradeTo.entrySet()) {
-			String lower = edge.getKey();
-			String higher = edge.getValue();
+			String lower = edge.getKey() == null ? null : pieceToSet.getOrDefault(edge.getKey(), edge.getKey());
+			String higher = edge.getValue() == null ? null : pieceToSet.getOrDefault(edge.getValue(), edge.getValue());
 			if (lower == null || higher == null || lower.equals(higher)) {
 				continue;
 			}
@@ -201,11 +230,21 @@ public final class MuseumCatalog {
 			List<String> uniq = new ArrayList<>(new LinkedHashSet<>(e.getValue()));
 			e.setValue(List.copyOf(uniq));
 		}
+		return children;
+	}
 
-		BY_SORT = Map.copyOf(out);
-		BY_ID = Map.copyOf(byId);
-		CHILDREN = Map.copyOf(children);
-		VARIANT_TO_BASE = Map.copyOf(variantToBase);
+	/**
+	 * Item id whose price counts toward donated value, or null when the slot is only filled because
+	 * a higher tier was donated (that donor's price is already counted on its own slot).
+	 */
+	public static String valueId(String donationId, String coveredBy, InventoryDecoder.Stack stack) {
+		if (coveredBy != null && !coveredBy.isBlank()) {
+			return null;
+		}
+		if (donationId != null && donationId.toUpperCase(Locale.ROOT).startsWith("SPECIAL:")) {
+			return stack == null || stack.id() == null || stack.id().isBlank() ? null : stack.id();
+		}
+		return donationId;
 	}
 
 	/**
@@ -229,6 +268,11 @@ public final class MuseumCatalog {
 				continue;
 			}
 			String slot = canonicalSlotId(key);
+			if (!BY_ID.containsKey(slot) && PIECE_TO_SET.containsKey(slot)) {
+				// Pieces donated before Hypixel grouped them into a set keep their own key (e.g. PESTHUNTERS_BELT
+				// next to PESTHUNTER). They aren't a museum slot and don't donate the set, so they're not Special either.
+				continue;
+			}
 			direct.putIfAbsent(slot, entry.getValue());
 		}
 		for (var entry : direct.entrySet()) {

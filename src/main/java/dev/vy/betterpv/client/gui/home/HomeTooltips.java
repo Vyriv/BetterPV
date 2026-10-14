@@ -60,7 +60,7 @@ final class HomeTooltips {
 			case LOADING -> {
 				tip.add(PvTooltip.Line.title("Username history", PvDraw.COLOR_TEXT));
 				tip.add(PvTooltip.Line.divider());
-				tip.add(PvTooltip.Line.meta("Loading…"));
+				tip.add(PvTooltip.Line.meta("Loading..."));
 			}
 			case ERROR -> {
 				tip.add(PvTooltip.Line.title("Username history", PvDraw.COLOR_TEXT));
@@ -113,7 +113,7 @@ final class HomeTooltips {
 		));
 		List<ProfileSnapshot.BankTransaction> txs = snapshot.bankTransactions();
 		if (txs == null || txs.isEmpty()) {
-			lines.add(PvTooltip.Line.meta("No recent transactions (API off or empty)"));
+			lines.add(PvTooltip.Line.meta("No transactions, or Banking API off"));
 			return lines;
 		}
 		lines.add(PvTooltip.Line.blank());
@@ -145,21 +145,44 @@ final class HomeTooltips {
 		tip.add(PvTooltip.Line.of("Hypixel status", PvDraw.COLOR_TEXT));
 		switch (playerStatus.state()) {
 			case IDLE -> tip.add(PvTooltip.Line.of("Click to check online status", PvDraw.COLOR_MUTED));
-			case LOADING -> tip.add(PvTooltip.Line.of("Loading…", PvDraw.COLOR_MUTED));
+			case LOADING -> tip.add(PvTooltip.Line.of("Loading...", PvDraw.COLOR_MUTED));
 			case ONLINE -> {
-				tip.add(PvTooltip.Line.of(playerStatus.buttonLabel(), ENABLED_GREEN));
-				if (!playerStatus.gameType().isBlank()) {
-					tip.add(PvTooltip.Line.of(
-						PlayerStatus.prettyLocation(playerStatus.gameType()),
-						PvDraw.COLOR_MUTED));
+				tip.add(PvTooltip.Line.of("Online", ENABLED_GREEN));
+				tip.add(PvTooltip.Line.of(playerStatus.location(), PvDraw.COLOR_MUTED));
+				String game = PlayerStatus.prettyLocation(playerStatus.gameType());
+				if (!game.isBlank() && !game.equals(playerStatus.location())) {
+					tip.add(PvTooltip.Line.of(game, PvDraw.COLOR_MUTED));
 				}
 			}
-			case OFFLINE -> tip.add(PvTooltip.Line.of("Offline", OFFLINE_RED));
+			case OFFLINE -> {
+				List<String> lines = offlineLines(playerStatus, System.currentTimeMillis());
+				tip.add(PvTooltip.Line.of(lines.get(0), OFFLINE_RED));
+				for (int i = 1; i < lines.size(); i++) {
+					tip.add(PvTooltip.Line.of(lines.get(i), PvDraw.COLOR_MUTED));
+				}
+			}
 			case ERROR -> tip.add(PvTooltip.Line.of(
 				playerStatus.error().isBlank() ? "Unavailable" : playerStatus.error(),
 				OFFLINE_RED));
 		}
 		return tip;
+	}
+
+	/** First line is exactly the status button text; the rest only add detail. */
+	static List<String> offlineLines(PlayerStatus playerStatus, long nowMs) {
+		List<String> lines = new ArrayList<>(2);
+		lines.add(playerStatus.buttonLabel(nowMs));
+		if (playerStatus.lastOnlineMs() > 0L) {
+			String date = FormatUtil.prettyDate(playerStatus.lastOnlineMs());
+			if (!date.isBlank()) {
+				lines.add(date);
+			}
+		} else if (playerStatus.sessionHidden()) {
+			lines.add("Online status hidden in Hypixel API settings");
+		} else {
+			lines.add("Hypixel did not share a last online time");
+		}
+		return lines;
 	}
 
 	static String shortDate(String iso) {

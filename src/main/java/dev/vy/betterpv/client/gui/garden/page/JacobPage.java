@@ -35,6 +35,7 @@ public final class JacobPage {
 	private int jacobHitY;
 	private int jacobHitW;
 	private int jacobHitH;
+	private boolean jacobHovered;
 
 	public void render(GardenSnapshot snap, GardenUi ui, GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, int mx, int my) {
 		int rightW = Math.max(200, w * 52 / 100);
@@ -57,7 +58,13 @@ public final class JacobPage {
 		g.enableScissor(lx, this.leftScrollTop, lx + lw, this.leftScrollTop + this.leftScrollH);
 		int cy = this.leftScrollTop - this.leftScroll;
 
-		PvDraw.text(g, font, "Medals", lx, cy, PvDraw.COLOR_MUTED);
+		PvDraw.text(g, font, "Unspent medals", lx, cy, PvDraw.COLOR_MUTED);
+		ui.zones.add(new GardenUi.HoverZone(lx, cy, lw, font.lineHeight, List.of(
+			PvTooltip.Line.title("Unspent medals", PvDraw.COLOR_TEXT),
+			PvTooltip.Line.divider(),
+			PvTooltip.Line.of("Medals held, not yet spent at Anita.", PvDraw.COLOR_TEXT),
+			PvTooltip.Line.meta("Not lifetime medal finishes")
+		)));
 		cy += font.lineHeight + 3;
 		GardenSnapshot.MedalCounts m = snap.medals();
 		cy = GardenUi.statLine(g, font, "Bronze", FormatUtil.commas(m.bronze()), lx, cy, lw, BRONZE) + 1;
@@ -98,13 +105,14 @@ public final class JacobPage {
 					case 5 -> "Diamond";
 					default -> "None";
 				};
-				ui.zones.add(new GardenUi.HoverZone(lx, cy, lw, rowH, List.of(
-					PvTooltip.Line.of(medal.name(), PvDraw.COLOR_TEXT),
-					PvTooltip.Line.of(
-						"Highest unique: " + tipMedal,
-						medal.filled() <= 0 ? PvDraw.COLOR_MUTED : medalOrbColor(medal.filled() - 1)
-					)
-				)));
+				List<PvTooltip.Line> tip = new ArrayList<>();
+				tip.add(PvTooltip.Line.of(medal.name(), PvDraw.COLOR_TEXT));
+				tip.add(PvTooltip.Line.of(
+					"Highest unique: " + tipMedal,
+					medal.filled() <= 0 ? PvDraw.COLOR_MUTED : medalOrbColor(medal.filled() - 1)
+				));
+				addPlacementLines(tip, snap, medal.id());
+				ui.zones.add(new GardenUi.HoverZone(lx, cy, lw, rowH, tip));
 				cy += rowH + 1;
 			}
 			cy += 3;
@@ -130,6 +138,7 @@ public final class JacobPage {
 		this.jacobHitH = h;
 
 		boolean hovered = mx >= x && mx < x + w && my >= y && my < y + h;
+		this.jacobHovered = hovered;
 		float flipProgress = 0F;
 		boolean animating = this.jacobFlipStartMs != 0L;
 		if (animating) {
@@ -179,6 +188,7 @@ public final class JacobPage {
 		int ry = y + PAD;
 		int rw = w - PAD * 2;
 		PvDraw.text(g, font, "Contest history", rx, ry, PvDraw.COLOR_MUTED);
+		drawFlipHint(g, font, "Click for bests", rx, ry, rw);
 		ry += font.lineHeight + 3;
 
 		String credit = Component.translatable("betterpv.garden.elite_credit").getString();
@@ -227,9 +237,9 @@ public final class JacobPage {
 				} else if ("unclaimable".equalsIgnoreCase(c.medal())) {
 					tip.add(PvTooltip.Line.of("Medal: Unclaimable", PvDraw.COLOR_MUTED));
 				}
-				if (c.position() > 0) {
+				if (c.placement() > 0) {
 					tip.add(PvTooltip.Line.of(
-						"#" + c.position() + (c.participants() > 0 ? " / " + c.participants() : ""),
+						"#" + c.placement() + (c.participants() > 0 ? " / " + c.participants() : ""),
 						PvDraw.COLOR_MUTED
 					));
 				}
@@ -249,10 +259,18 @@ public final class JacobPage {
 		int rw = w - PAD * 2;
 		int bottom = y + h - PAD;
 
-		PvDraw.text(g, font, "Unique golds", rx, ry, PvDraw.COLOR_MUTED);
+		List<String> uniqueGolds = snap.uniqueGoldCrops();
+		String goldHeader = uniqueGolds.isEmpty() ? "Unique golds" : "Unique golds (" + uniqueGolds.size() + ")";
+		PvDraw.text(g, font, goldHeader, rx, ry, PvDraw.COLOR_MUTED);
+		ui.zones.add(new GardenUi.HoverZone(rx, ry, font.width(goldHeader), font.lineHeight, List.of(
+			PvTooltip.Line.title("Unique golds", GOLD),
+			PvTooltip.Line.divider(),
+			PvTooltip.Line.of("Crops with a gold medal earned at least once.", PvDraw.COLOR_TEXT),
+			PvTooltip.Line.meta("Not total gold finishes or unspent medals")
+		)));
+		drawFlipHint(g, font, "Click for history", rx, ry, rw);
 		ry += font.lineHeight + 3;
 
-		List<String> uniqueGolds = snap.uniqueGoldCrops();
 		int goldBlockH;
 		if (uniqueGolds.isEmpty()) {
 			PvDraw.text(g, font, "None yet", rx, ry, PvDraw.COLOR_MUTED);
@@ -298,14 +316,44 @@ public final class JacobPage {
 				int textW = rw - ICON - 4;
 				GardenUi.drawPair(g, font, pb.name(), FormatUtil.commas(pb.amount()), textX,
 					yy + (rowH - font.lineHeight) / 2, textW, PvDraw.COLOR_TEXT, PvDraw.COLOR_ACCENT);
-				ui.zones.add(new GardenUi.HoverZone(rx, yy, rw, rowH, List.of(
-					PvTooltip.Line.of(pb.name(), PvDraw.COLOR_TEXT),
-					PvTooltip.Line.of(FormatUtil.commas(pb.amount()) + " collected", PvDraw.COLOR_MUTED)
-				)));
+				List<PvTooltip.Line> tip = new ArrayList<>();
+				tip.add(PvTooltip.Line.of(pb.name(), PvDraw.COLOR_TEXT));
+				tip.add(PvTooltip.Line.of(FormatUtil.commas(pb.amount()) + " collected", PvDraw.COLOR_MUTED));
+				addPlacementLines(tip, snap, pb.id());
+				ui.zones.add(new GardenUi.HoverZone(rx, yy, rw, rowH, tip));
 			}
 			yy += rowH;
 		}
 		g.disableScissor();
+	}
+
+	private void drawFlipHint(GuiGraphicsExtractor g, Font font, String hint, int rx, int ry, int rw) {
+		int hintW = font.width(hint);
+		PvDraw.text(g, font, hint, rx + rw - hintW, ry, this.jacobHovered ? PvDraw.COLOR_ACCENT : PvDraw.COLOR_MUTED);
+	}
+
+	private static void addPlacementLines(List<PvTooltip.Line> tip, GardenSnapshot snap, String cropId) {
+		if (snap.contestsLoading()) {
+			tip.add(PvTooltip.Line.meta("Loading contests..."));
+			return;
+		}
+		GardenSnapshot.CropPlacement p = snap.placement(cropId);
+		if (p == null) {
+			tip.add(PvTooltip.Line.meta("No contests for this crop"));
+			return;
+		}
+		tip.add(PvTooltip.Line.blank());
+		if (p.best() > 0) {
+			String value = "#" + FormatUtil.commas(p.best())
+				+ (p.participants() > 0 ? " / " + FormatUtil.commas(p.participants()) : "");
+			tip.add(PvTooltip.Line.row("Best placement", PvDraw.COLOR_MUTED, value, PvDraw.COLOR_ACCENT));
+		} else {
+			tip.add(PvTooltip.Line.row("Best placement", PvDraw.COLOR_MUTED, "None", PvDraw.COLOR_MUTED));
+		}
+		tip.add(PvTooltip.Line.row("Contests", PvDraw.COLOR_MUTED, FormatUtil.commas(p.contests()), PvDraw.COLOR_TEXT));
+		if (p.unplaced() > 0) {
+			tip.add(PvTooltip.Line.meta(FormatUtil.commas(p.unplaced()) + " unclaimed contests"));
+		}
 	}
 
 	private int measureJacobLeft(GardenSnapshot snap, Font font) {

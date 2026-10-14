@@ -91,7 +91,8 @@ public final class MiscStatsSnapshot {
 		}
 	}
 
-	public record BurrowCount(String label, long total, Map<String, Long> byRarity) {
+	/** {@code byRarity} is keyed by the Griffin pet rarity used while digging. */
+	public record BurrowCount(String key, String label, long total, Map<String, Long> byRarity) {
 		public BurrowCount {
 			byRarity = byRarity == null ? Map.of() : java.util.Collections.unmodifiableMap(new LinkedHashMap<>(byRarity));
 		}
@@ -111,14 +112,24 @@ public final class MiscStatsSnapshot {
 		}
 	}
 
-	/** Jerry's Workshop bests ({@code player_stats.winter}) and Spooky Festival candy / bats. */
+	/**
+	 * Jerry's Workshop bests ({@code player_stats.winter}) and Spooky Festival candy / bats.
+	 * Best festival is ranked by festival points (green 1, purple 5), not raw candy count.
+	 * {@code festivalHistoryCandy} is the candy covered by per-festival entries; Hypixel's history
+	 * can be shorter than the lifetime total, in which case the best is only the best recorded.
+	 */
 	public record SeasonalStats(
 		long snowballsHit, long winterDamage, long magmaDamage,
 		long candyTotal, long greenCandy, long purpleCandy,
-		int festivals, long bestFestivalCandy, int bestFestivalYear, long batsSpawned
+		int festivals, long bestFestivalCandy, int bestFestivalYear, long batsSpawned,
+		long bestFestivalPoints, long bestFestivalGreen, long bestFestivalPurple, long festivalHistoryCandy
 	) {
 		public static SeasonalStats empty() {
-			return new SeasonalStats(0L, 0L, 0L, 0L, 0L, 0L, 0, 0L, 0, 0L);
+			return new SeasonalStats(0L, 0L, 0L, 0L, 0L, 0L, 0, 0L, 0, 0L, 0L, 0L, 0L, 0L);
+		}
+
+		public boolean festivalHistoryIncomplete() {
+			return festivalHistoryCandy < candyTotal;
 		}
 
 		public boolean winterPresent() {
@@ -293,7 +304,7 @@ public final class MiscStatsSnapshot {
 		);
 	}
 
-	private static SeasonalStats parseSeasonal(JsonObject stats) {
+	static SeasonalStats parseSeasonal(JsonObject stats) {
 		if (stats == null) {
 			return SeasonalStats.empty();
 		}
@@ -304,17 +315,29 @@ public final class MiscStatsSnapshot {
 		int festivals = 0;
 		long bestCandy = 0L;
 		int bestYear = 0;
+		long bestPoints = 0L;
+		long bestGreen = 0L;
+		long bestPurple = 0L;
+		long historyCandy = 0L;
 		if (candy != null) {
 			for (var e : candy.entrySet()) {
 				if (!e.getKey().startsWith("spooky_festival_")) {
 					continue;
 				}
-				long total = longOf(Leveling.obj(e.getValue()), "total");
+				JsonObject year = Leveling.obj(e.getValue());
+				long total = longOf(year, "total");
 				if (total <= 0L) {
 					continue;
 				}
 				festivals++;
-				if (total > bestCandy) {
+				historyCandy += total;
+				long green = longOf(year, "green_candy");
+				long purple = longOf(year, "purple_candy");
+				long points = green + purple * 5L;
+				if (points > bestPoints) {
+					bestPoints = points;
+					bestGreen = green;
+					bestPurple = purple;
 					bestCandy = total;
 					try {
 						bestYear = Integer.parseInt(e.getKey().substring("spooky_festival_".length()));
@@ -334,7 +357,11 @@ public final class MiscStatsSnapshot {
 			festivals,
 			bestCandy,
 			bestYear,
-			longOf(bats, "total")
+			longOf(bats, "total"),
+			bestPoints,
+			bestGreen,
+			bestPurple,
+			historyCandy
 		);
 	}
 
@@ -448,15 +475,15 @@ public final class MiscStatsSnapshot {
 		"none", "COMMON", "UNCOMMON", "RARE", "EPIC", "LEGENDARY", "MYTHIC"
 	);
 
-	private static MythosStats parseMythos(JsonObject mythos) {
+	static MythosStats parseMythos(JsonObject mythos) {
 		if (mythos == null) {
 			return MythosStats.empty();
 		}
 		List<BurrowCount> burrows = new ArrayList<>();
+		addBurrows(burrows, mythos, "burrows_dug_next", "Arrow");
+		addBurrows(burrows, mythos, "burrows_dug_combat", "Mob");
 		addBurrows(burrows, mythos, "burrows_dug_treasure", "Treasure");
-		addBurrows(burrows, mythos, "burrows_dug_combat", "Combat");
-		addBurrows(burrows, mythos, "burrows_dug_next", "Start / Next");
-		addBurrows(burrows, mythos, "burrows_chains_complete", "Chains Done");
+		addBurrows(burrows, mythos, "burrows_chains_complete", "Chains Completed");
 		return new MythosStats(longOf(mythos, "kills"), burrows);
 	}
 
@@ -479,7 +506,7 @@ public final class MiscStatsSnapshot {
 			}
 		}
 		if (total > 0L) {
-			out.add(new BurrowCount(label, total, byRarity));
+			out.add(new BurrowCount(key, label, total, byRarity));
 		}
 	}
 

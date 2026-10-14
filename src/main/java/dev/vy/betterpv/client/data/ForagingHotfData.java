@@ -72,9 +72,10 @@ public final class ForagingHotfData {
 		return titleCase(apiId == null ? "" : apiId);
 	}
 
+	/** 0 when the perk isn't in NEU's layout, so its max is unknown. */
 	public static int maxLevel(String apiId) {
 		PerkDef def = perk(apiId);
-		return def == null ? 1 : Math.max(1, def.maxLevel());
+		return def == null ? 0 : Math.max(1, def.maxLevel());
 	}
 
 	public static int maxX() {
@@ -124,7 +125,7 @@ public final class ForagingHotfData {
 				int x = (int) num(o, "x");
 				int y = (int) num(o, "y");
 				int max = Math.max(1, (int) num(o, "maxLevel"));
-				boolean ability = "axe_toss".equals(id) || "maniac_slicer".equals(id);
+				boolean ability = o.has("isAbility") ? bool(o, "isAbility") : "axe_toss".equals(id) || "maniac_slicer".equals(id);
 				PerkDef def = new PerkDef(id, name, x, y, max, ability);
 				map.put(id, def);
 				list.add(def);
@@ -159,6 +160,14 @@ public final class ForagingHotfData {
 			return o.get(key).getAsString();
 		} catch (IllegalStateException | ClassCastException | NumberFormatException | UnsupportedOperationException ignored) {
 			return "";
+		}
+	}
+
+	private static boolean bool(JsonObject o, String key) {
+		try {
+			return o.get(key).isJsonPrimitive() && o.get(key).getAsBoolean();
+		} catch (IllegalStateException | ClassCastException | UnsupportedOperationException ignored) {
+			return false;
 		}
 	}
 

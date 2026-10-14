@@ -11,6 +11,8 @@ import static dev.vy.betterpv.client.gui.foraging.ForagingUi.PAD;
 import static dev.vy.betterpv.client.gui.foraging.ForagingUi.SLOT;
 import static dev.vy.betterpv.client.gui.foraging.ForagingUi.SLOT_GAP;
 
+import com.google.gson.JsonObject;
+import dev.vy.betterpv.client.data.AttributeShardsData;
 import dev.vy.betterpv.client.data.FormatUtil;
 import dev.vy.betterpv.client.data.ForagingSnapshot;
 import dev.vy.betterpv.client.gui.PvDraw;
@@ -19,10 +21,13 @@ import dev.vy.betterpv.client.gui.foraging.ForagingUi;
 import dev.vy.betterpv.client.gui.foraging.ForagingUi.HoverZone;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockIconRenderer;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
+import dev.vy.betterpv.client.neu.NeuRepoCache;
 import dev.vy.betterpv.client.price.ItemPricer;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -34,6 +39,7 @@ import net.minecraft.world.item.Items;
 /** Attribute Shards subtab with dual-scroll grid + cost list. */
 public final class AttributeShardsPage {
 	private final List<HoverZone> zones = new ArrayList<>();
+	private final Map<String, AttributeShardTooltip.Info> shardInfo = new HashMap<>();
 
 	private int attrGridScroll;
 	private int attrGridMaxScroll;
@@ -47,11 +53,39 @@ public final class AttributeShardsPage {
 	private int attrListY;
 	private int attrListW;
 	private int attrListH;
+	private boolean sortByRarity;
+	private List<ForagingSnapshot.AttributeShardRow> sortedSource;
+	private List<ForagingSnapshot.AttributeShardRow> raritySorted = List.of();
+	private int sortX;
+	private int sortY;
+	private int sortW;
+	private int sortH;
 
 	public void reset() {
 		this.zones.clear();
 		this.attrGridScroll = 0;
 		this.attrListScroll = 0;
+		this.sortedSource = null;
+	}
+
+	public boolean mouseClicked(double mx, double my) {
+		if (this.sortW > 0 && ForagingUi.hit(mx, my, this.sortX, this.sortY, this.sortW, this.sortH)) {
+			this.sortByRarity = !this.sortByRarity;
+			this.attrGridScroll = 0;
+			return true;
+		}
+		return false;
+	}
+
+	private List<ForagingSnapshot.AttributeShardRow> gridOrder(List<ForagingSnapshot.AttributeShardRow> rows) {
+		if (!this.sortByRarity) {
+			return rows;
+		}
+		if (this.sortedSource != rows) {
+			this.sortedSource = rows;
+			this.raritySorted = ForagingSnapshot.AttributeShardRow.byRarity(rows);
+		}
+		return this.raritySorted;
 	}
 
 	public void resetScroll() {
@@ -109,7 +143,6 @@ public final class AttributeShardsPage {
 		int bottom = y + h - PAD;
 
 		PvDraw.text(g, font, "Attribute Shards", lx, ly, PvDraw.COLOR_MUTED);
-		ly += font.lineHeight + 4;
 		if (rows.isEmpty()) {
 			PvDraw.textCentered(g, font, "No attribute data",
 				x + w / 2, y + h / 2 - font.lineHeight / 2, PvDraw.COLOR_MUTED);
@@ -117,8 +150,24 @@ public final class AttributeShardsPage {
 			this.attrGridScroll = 0;
 			this.attrGridW = 0;
 			this.attrGridH = 0;
+			this.sortW = 0;
 			return;
 		}
+		String sortLabel = this.sortByRarity ? "Sort: Rarity" : "Sort: Default";
+		this.sortW = font.width(sortLabel);
+		this.sortH = font.lineHeight;
+		this.sortX = lx + lw - this.sortW;
+		this.sortY = ly;
+		boolean sortHovered = ForagingUi.hit(mx, my, this.sortX, this.sortY, this.sortW, this.sortH);
+		PvDraw.text(g, font, sortLabel, this.sortX, this.sortY,
+			sortHovered || this.sortByRarity ? PvDraw.COLOR_ACCENT : PvDraw.COLOR_MUTED);
+		this.zones.add(new HoverZone(this.sortX, this.sortY, this.sortW, this.sortH, List.of(
+			PvTooltip.Line.of("Click to change sort", PvDraw.COLOR_TEXT),
+			PvTooltip.Line.of("Default: unlocked first, then name", PvDraw.COLOR_MUTED),
+			PvTooltip.Line.of("Rarity: highest first, then name", PvDraw.COLOR_MUTED)
+		)));
+		ly += font.lineHeight + 4;
+		rows = gridOrder(rows);
 
 		int cols = Math.max(6, Math.min(12, (lw + SLOT_GAP) / (SLOT + SLOT_GAP)));
 		int gridRows = (rows.size() + cols - 1) / cols;
@@ -140,7 +189,7 @@ public final class AttributeShardsPage {
 			boolean hovered = mx >= bx && mx < bx + SLOT && my >= by && my < by + SLOT
 				&& ForagingUi.hit(mx, my, lx, this.attrGridY, lw, this.attrGridH);
 			boolean locked = !row.unlocked();
-			PvDraw.fill(g, bx, by, SLOT, SLOT, locked ? ITEM_SLOT_LOCKED_BG : ITEM_SLOT_BG);
+			PvDraw.fill(g, bx, by, SLOT, SLOT, locked ? ITEM_SLOT_LOCKED_BG : raritySlotBackground(rarityColor(row.rarity())));
 			int border = locked
 				? ITEM_SLOT_LOCKED_BORDER
 				: (hovered ? PvDraw.COLOR_ACCENT : ITEM_SLOT_BORDER);
@@ -174,7 +223,7 @@ public final class AttributeShardsPage {
 		for (ForagingSnapshot.AttributeShardRow row : notMaxed) {
 			totalCost += shardMaxCost(row);
 		}
-		String totalText = totalCost > 0 ? FormatUtil.shortCoins(totalCost) : "-";
+		String totalText = totalCost > 0 ? FormatUtil.compactCoins(totalCost) : "-";
 		PvDraw.textRight(g, font, totalText, rx + rw, ry, PvDraw.COLOR_GOLD);
 		ry += font.lineHeight + 2;
 		PvDraw.text(g, font, "Cheapest to max", rx, ry, PvDraw.COLOR_MUTED);
@@ -217,7 +266,7 @@ public final class AttributeShardsPage {
 				rx + ICON + 4, rowAlign.textY(), nameColor);
 			PvDraw.textRight(g, font, qty, rx + rw, rowAlign.textY(), PvDraw.COLOR_ACCENT);
 			double cost = shardMaxCost(row);
-			String costText = cost > 0 ? FormatUtil.shortCoins(cost) : "-";
+			String costText = cost > 0 ? FormatUtil.compactCoins(cost) : "-";
 			PvDraw.text(g, font, costText, rx + ICON + 4, rowAlign.textY() + font.lineHeight + 1, PvDraw.COLOR_GOLD);
 			ForagingUi.addClippedHover(this.zones, rx, yy, rw, rowH, rx, this.attrListY, rw, this.attrListH,
 				attributeTooltip(row));
@@ -234,27 +283,22 @@ public final class AttributeShardsPage {
 		return stack;
 	}
 
-	private static List<PvTooltip.Line> attributeTooltip(ForagingSnapshot.AttributeShardRow row) {
-		int need = Math.max(0, row.shardsForMax() - row.shardsOwned());
-		double cost = shardMaxCost(row);
-		List<PvTooltip.Line> tip = new ArrayList<>();
-		tip.add(PvTooltip.Line.of(row.name(), rarityColor(row.rarity())));
-		tip.add(PvTooltip.Line.of(ForagingUi.pretty(row.rarity()), rarityColor(row.rarity())));
-		tip.add(PvTooltip.Line.of("Level " + row.level() + " / " + row.maxLevel(), PvDraw.COLOR_ACCENT));
-		tip.add(PvTooltip.Line.of(
-			row.unlocked()
-				? "Shards to max: " + FormatUtil.commas(need)
-				: "Locked · " + FormatUtil.commas(row.shardsForMax()) + " shards to max",
-			PvDraw.COLOR_MUTED
-		));
-		if (row.unlocked()) {
-			tip.add(PvTooltip.Line.of("Owned: " + FormatUtil.commas(row.shardsOwned())
-				+ " / " + FormatUtil.commas(row.shardsForMax()), PvDraw.COLOR_GOLD));
+	private List<PvTooltip.Line> attributeTooltip(ForagingSnapshot.AttributeShardRow row) {
+		return AttributeShardTooltip.lines(row, shardInfo(row), unitPrice(row), rarityColor(row.rarity()));
+	}
+
+	private AttributeShardTooltip.Info shardInfo(ForagingSnapshot.AttributeShardRow row) {
+		AttributeShardTooltip.Info cached = this.shardInfo.get(row.iconId());
+		if (cached != null) {
+			return cached;
 		}
-		if (cost > 0) {
-			tip.add(PvTooltip.Line.of("Cost to max: " + FormatUtil.shortCoins(cost), PvDraw.COLOR_GOLD));
+		JsonObject neuItem = NeuRepoCache.get(row.iconId());
+		AttributeShardTooltip.Info info = AttributeShardTooltip.info(AttributeShardsData.def(row.stackId()), neuItem, row.name());
+		// Only cache once NEU has the item, so the description fills in after the repo finishes loading.
+		if (neuItem != null) {
+			this.shardInfo.put(row.iconId(), info);
 		}
-		return tip;
+		return info;
 	}
 
 	private static double shardMaxCost(ForagingSnapshot.AttributeShardRow row) {
@@ -262,6 +306,11 @@ public final class AttributeShardsPage {
 		if (need <= 0) {
 			return 0;
 		}
+		double unit = unitPrice(row);
+		return unit > 0 ? unit * need : 0;
+	}
+
+	private static double unitPrice(ForagingSnapshot.AttributeShardRow row) {
 		double unit = ItemPricer.price(row.priceId());
 		if (unit <= 0) {
 			unit = ItemPricer.price(row.iconId());
@@ -273,7 +322,21 @@ public final class AttributeShardsPage {
 				unit = ItemPricer.price(icon.substring(0, semi));
 			}
 		}
-		return unit > 0 ? unit * need : 0;
+		return unit;
+	}
+
+	/** Dark rarity-tinted slot fill (keeps icons readable); white common keeps the neutral slot. */
+	private static int raritySlotBackground(int rarityArgb) {
+		int r = (rarityArgb >>> 16) & 0xFF;
+		int green = (rarityArgb >>> 8) & 0xFF;
+		int b = rarityArgb & 0xFF;
+		if (r >= 240 && green >= 240 && b >= 240) {
+			return ITEM_SLOT_BG;
+		}
+		return 0xFF000000
+			| (Math.min(255, Math.round(16 + r * 0.28f)) << 16)
+			| (Math.min(255, Math.round(16 + green * 0.28f)) << 8)
+			| Math.min(255, Math.round(16 + b * 0.28f));
 	}
 
 	private static int rarityColor(String rarity) {

@@ -81,12 +81,12 @@ public final class MiningSnapshot {
 
 	public static final List<CorpseMilestone> CORPSE_MILESTONES = List.of(
 		new CorpseMilestone(1, 10, 0, 0, 0),
-		new CorpseMilestone(2, 25, 1, 0, 0),
-		new CorpseMilestone(3, 50, 5, 0, 0),
-		new CorpseMilestone(4, 100, 10, 0, 1),
-		new CorpseMilestone(5, 250, 25, 0, 5),
-		new CorpseMilestone(6, 500, 50, 0, 10),
-		new CorpseMilestone(7, 1000, 100, 0, 20)
+		new CorpseMilestone(2, 25, 1, 1, 0),
+		new CorpseMilestone(3, 50, 5, 5, 0),
+		new CorpseMilestone(4, 100, 10, 10, 1),
+		new CorpseMilestone(5, 250, 25, 25, 5),
+		new CorpseMilestone(6, 500, 50, 50, 10),
+		new CorpseMilestone(7, 1000, 100, 100, 20)
 	);
 
 	private final int hotmLevel;
@@ -268,14 +268,9 @@ public final class MiningSnapshot {
 		Powder gemstone = powder(core, "gemstone");
 		Powder glacite = powder(core, "glacite");
 
-		JsonObject treeTokens = Leveling.obj(skillTree == null ? null : skillTree.get("tokens_spent"));
-		int tokensSpent;
-		if (treeTokens != null && treeTokens.has("mountain")) {
-			// Prefer skill_tree even when 0 so we do not resurrect stale mining_core.tokens_spent.
-			tokensSpent = intOf(treeTokens, "mountain");
-		} else {
-			tokensSpent = intOf(core, "tokens_spent");
-		}
+		// Prefer skill_tree even when 0 so we do not resurrect stale mining_core.tokens_spent.
+		Integer treeTokens = SkillTreePresets.selectedTokensSpent(skillTree, "mining");
+		int tokensSpent = treeTokens != null ? treeTokens : intOf(core, "tokens_spent");
 
 		JsonObject treeAbility = Leveling.obj(skillTree == null ? null : skillTree.get("selected_ability"));
 		String abilityId;
@@ -566,21 +561,9 @@ public final class MiningSnapshot {
 		return new Powder(Math.max(0L, lifetime - spent), spent);
 	}
 
-	/** Merge {@code skill_tree.nodes.mining*} into one layout-id → level map. */
+	/** Selected HOTM preset from {@code skill_tree.nodes} as layout-id → level. */
 	private static Map<String, Integer> parseSkillTreeMiningNodes(JsonObject skillTree) {
-		JsonObject root = Leveling.obj(skillTree == null ? null : skillTree.get("nodes"));
-		if (root == null) {
-			return Map.of();
-		}
-		Map<String, Integer> out = new LinkedHashMap<>();
-		for (Map.Entry<String, JsonElement> cat : root.entrySet()) {
-			String key = cat.getKey();
-			if (key == null || (!key.equals("mining") && !key.startsWith("mining_"))) {
-				continue;
-			}
-			mergeNodes(out, Leveling.obj(cat.getValue()));
-		}
-		return Map.copyOf(out);
+		return parseNodes(SkillTreePresets.selectedNodes(skillTree, "mining"));
 	}
 
 	private static Map<String, Integer> parseNodes(JsonObject nodes) {

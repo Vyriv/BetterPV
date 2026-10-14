@@ -75,6 +75,10 @@ public enum InventoryPane {
 	}
 
 	public boolean visibleOn(InventorySnapshot snapshot) {
+		// Fishing Bag was removed from the game; still decoded for networth but never shown.
+		if (this == FISHING_BAG) {
+			return false;
+		}
 		if (snapshot == null) {
 			return this != CARNIVAL_MASKS && this != CANDY_BAG;
 		}

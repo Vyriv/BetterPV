@@ -25,6 +25,7 @@ import net.minecraft.world.item.ItemStack;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.ToIntFunction;
 
 /** Profile face, left-column flip, and stats-face drawing for Home. */
 final class HomeLeftColumn {
@@ -61,6 +62,9 @@ final class HomeLeftColumn {
 	private boolean leftFlipTarget;
 	private final PlayerModelRenderer playerModel = new PlayerModelRenderer();
 	private final int[] modelBoxScratch = new int[4];
+	private boolean modelLookSet;
+	private int modelLookX;
+	private int modelLookY;
 	private Component cachedNwLine;
 	private Component cachedWeightLine;
 	private Component cachedStyledName;
@@ -120,6 +124,25 @@ final class HomeLeftColumn {
 			&& mouseX >= this.nameHitX && mouseX < this.nameHitX + this.nameHitW
 			&& mouseY >= this.nameHitY && mouseY < this.nameHitY + this.nameHitH
 			&& this.nameHitW > 0;
+	}
+
+	/**
+	 * Real cursor for the model's look-at. Popups mask the hover mouse to a far off-screen point,
+	 * and feeding that to the follow-mouse entity render snaps the model's head and body.
+	 * Only applies to the next draw.
+	 */
+	void setModelLook(int x, int y) {
+		this.modelLookSet = true;
+		this.modelLookX = x;
+		this.modelLookY = y;
+	}
+
+	int modelLookX(int hoverX) {
+		return this.modelLookSet ? this.modelLookX : hoverX;
+	}
+
+	int modelLookY(int hoverY) {
+		return this.modelLookSet ? this.modelLookY : hoverY;
 	}
 
 	boolean hitStatus(double mouseX, double mouseY) {
@@ -264,8 +287,8 @@ final class HomeLeftColumn {
 				modelY0,
 				modelX1,
 				modelY1,
-				mouseX,
-				mouseY,
+				modelLookX(mouseX),
+				modelLookY(mouseY),
 				armor.length > 3 ? armor[3] : ItemStack.EMPTY,
 				armor.length > 2 ? armor[2] : ItemStack.EMPTY,
 				armor.length > 1 ? armor[1] : ItemStack.EMPTY,
@@ -282,6 +305,7 @@ final class HomeLeftColumn {
 				uiOffsetY
 			);
 		}
+		this.modelLookSet = false;
 	}
 
 	private int[] drawProfileFace(
@@ -314,7 +338,7 @@ final class HomeLeftColumn {
 			if (nwTotal > 0) {
 				nwValue = FormatUtil.shortCoins(nwTotal);
 			} else if (activeNw.note() != null && activeNw.note().toLowerCase(java.util.Locale.ROOT).contains("loading")) {
-				nwValue = "…";
+				nwValue = "...";
 			} else {
 				nwValue = "-";
 			}
@@ -344,8 +368,8 @@ final class HomeLeftColumn {
 			this.cachedWeightFormatSystem = weightSystem;
 			this.cachedWeightTotal = weightTotal;
 			weightValue = FormatUtil.weight(weightTotal);
-			if (snapshot.weightText().equals("…") && (loadError == null || loadError.isBlank())) {
-				weightValue = "…";
+			if (snapshot.weightText().equals("...") && (loadError == null || loadError.isBlank())) {
+				weightValue = "...";
 			}
 			if (loadError != null && !loadError.isBlank() && senither.total() <= 0 && lily.total() <= 0) {
 				weightValue = "-";
@@ -438,7 +462,7 @@ final class HomeLeftColumn {
 		String statusLabel = playerStatus.buttonLabel();
 		int statusColor = playerStatus.buttonColor(
 			PvDraw.COLOR_ACCENT, HomeTooltips.ENABLED_GREEN, HomeTooltips.OFFLINE_RED, PvDraw.COLOR_MUTED);
-		int statusW = Math.min(boxW, Math.max(48, boxW - 8));
+		int statusW = statusBoxWidth(boxW);
 		int statusH = layout.statusH;
 		int statusX = cx - statusW / 2;
 		int statusY = footerY;
@@ -451,15 +475,23 @@ final class HomeLeftColumn {
 		PvDraw.fill(g, statusX, statusY, statusW, statusH, 0xFF101018);
 		g.outline(statusX, statusY, statusW, statusH,
 			statusHover ? PvDraw.COLOR_ACCENT : PvDraw.COLOR_BORDER);
-		int statusMaxW = Math.max(8, statusW - 8);
-		String statusKey = statusLabel + "|" + statusMaxW;
+		String statusKey = statusLabel + "|" + statusW;
 		if (!statusKey.equals(this.cachedStatusKey)) {
 			this.cachedStatusKey = statusKey;
-			this.cachedStatusDrawn = trimToWidth(font, statusLabel, statusMaxW);
+			this.cachedStatusDrawn = statusText(font::width, statusLabel, statusW);
 		}
 		PvDraw.textCentered(g, font, this.cachedStatusDrawn, statusX + statusW / 2,
 			statusY + (statusH - font.lineHeight) / 2, statusColor);
 		return modelBox;
+	}
+
+	static int statusBoxWidth(int boxW) {
+		return Math.min(boxW, Math.max(48, boxW - 8));
+	}
+
+	// Full label stays in the hover tooltip; the box itself never grows.
+	static String statusText(ToIntFunction<String> width, String label, int statusW) {
+		return trimToWidth(width, label, Math.max(8, statusW - 8));
 	}
 
 	private static void drawSkillAverage(
@@ -467,7 +499,7 @@ final class HomeLeftColumn {
 	) {
 		boolean loaded = snapshot.skillsLoaded();
 		double average = snapshot.skillAverage(true);
-		String value = loaded ? FormatUtil.twoDecimals(average) : "…";
+		String value = loaded ? FormatUtil.twoDecimals(average) : "...";
 		Component line = Component.empty()
 			.append(PvDraw.styled(SKILL_AVG_LABEL, 0xFF55FF55, false))
 			.append(PvDraw.styled(value, PvDraw.COLOR_GOLD, true));
@@ -551,12 +583,20 @@ final class HomeLeftColumn {
 			String value = entry.present() ? formatStat(entry.value().getAsDouble()) : "-";
 			PvDraw.textRight(g, font, value, bx + colW, by, PvDraw.COLOR_WHITE);
 			String tipValue = entry.present() ? formatStatFull(entry.value().getAsDouble()) : "-";
+			List<PvTooltip.Line> tip = new ArrayList<>(SkyBlockStats.tooltipLines(entry.id(), tipValue));
+			tip.add(PvTooltip.Line.blank());
+			if (!entry.present()) {
+				tip.add(PvTooltip.Line.meta("Not in the API"));
+			} else {
+				tip.add(PvTooltip.Line.meta("Excludes held item, set bonuses,"));
+				tip.add(PvTooltip.Line.meta("temporary buffs and location bonuses."));
+			}
 			zones.add(new HomePage.HoverZone(
 				bx,
 				by,
 				colW,
 				Math.max(font.lineHeight, rowH - 1),
-				SkyBlockStats.tooltipLines(entry.id(), tipValue)
+				tip
 			));
 		}
 	}
@@ -619,15 +659,15 @@ final class HomeLeftColumn {
 		}
 	}
 
-	private static String trimToWidth(Font font, String text, int maxW) {
+	private static String trimToWidth(ToIntFunction<String> width, String text, int maxW) {
 		if (text == null) {
 			return "";
 		}
-		if (font.width(text) <= maxW) {
+		if (width.applyAsInt(text) <= maxW) {
 			return text;
 		}
 		String ellipsis = "...";
-		int ellipsisW = font.width(ellipsis);
+		int ellipsisW = width.applyAsInt(ellipsis);
 		if (maxW <= ellipsisW) {
 			return ellipsis;
 		}
@@ -635,13 +675,13 @@ final class HomeLeftColumn {
 		int hi = text.length();
 		while (lo < hi) {
 			int mid = (lo + hi + 1) >>> 1;
-			if (font.width(text.substring(0, mid)) + ellipsisW <= maxW) {
+			if (width.applyAsInt(text.substring(0, mid)) + ellipsisW <= maxW) {
 				lo = mid;
 			} else {
 				hi = mid - 1;
 			}
 		}
-		return text.substring(0, lo) + ellipsis;
+		return text.substring(0, lo).stripTrailing() + ellipsis;
 	}
 
 	/** Compact rounded stats: {@code 3908.7 → 3.9k}, {@code 469.5 → 470}, {@code 0.0 → 0}. */

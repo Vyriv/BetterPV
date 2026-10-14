@@ -1,5 +1,6 @@
 package dev.vy.betterpv.client.networth;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import dev.vy.betterpv.client.data.InventorySnapshot;
@@ -31,15 +32,16 @@ public final class InventoryDecoder {
 		}
 	}
 
+	/** One loadout wardrobe set; {@code pieces} is helmet to boots with nulls for empty slots. */
+	public record WardrobePreset(int slot, boolean equipped, List<Stack> pieces) {
+	}
+
 	public record RiftInventories(
 		InventorySnapshot.Page inventory,
 		List<InventorySnapshot.Slot> equipment,
 		List<InventorySnapshot.Slot> armor,
-		InventorySnapshot.Page enderChest
+		List<InventorySnapshot.Page> enderPages
 	) {
-		public List<InventorySnapshot.Page> enderPages() {
-			return enderChest == null ? List.of() : List.of(enderChest);
-		}
 	}
 
 	private InventoryDecoder() {
@@ -196,6 +198,63 @@ public final class InventoryDecoder {
 		return MuseumInventoryDecoder.parseMuseumById(museumMember);
 	}
 
+	/** One toolkit slot. {@code inUse} means the tool was taken out, so the copy in the inventory is the live one. */
+	public record ToolkitItem(String category, int index, boolean inUse, Stack stack) {
+	}
+
+	/**
+	 * Toolkit JSON is {@code {IS_UNLOCKED, IN_USE: {CROP: {"0": bool}}, CROP: {"0": {data}}}}. Older saves may use an
+	 * array or a single {@code {data}} per crop, so all three are read.
+	 */
+	public static List<ToolkitItem> parseToolkit(JsonObject toolkit) {
+		List<ToolkitItem> out = new ArrayList<>();
+		if (toolkit == null) {
+			return out;
+		}
+		JsonObject inUse = toolkit.get("IN_USE") instanceof JsonObject o ? o : null;
+		for (Map.Entry<String, JsonElement> e : toolkit.entrySet()) {
+			String key = e.getKey();
+			if (key == null || "IS_UNLOCKED".equalsIgnoreCase(key) || "IN_USE".equalsIgnoreCase(key)) {
+				continue;
+			}
+			JsonElement val = e.getValue();
+			JsonObject used = inUse != null && inUse.get(key) instanceof JsonObject u ? u : null;
+			if (val instanceof JsonArray arr) {
+				for (int i = 0; i < arr.size(); i++) {
+					out.add(toolkitItem(key, i, used, arr.get(i)));
+				}
+			} else if (val instanceof JsonObject obj) {
+				if (obj.has("data")) {
+					out.add(toolkitItem(key, 0, used, obj));
+					continue;
+				}
+				List<Integer> indices = new ArrayList<>();
+				for (String slot : obj.keySet()) {
+					try {
+						indices.add(Integer.parseInt(slot));
+					} catch (NumberFormatException ignored) {
+					}
+				}
+				indices.sort(null);
+				for (int index : indices) {
+					out.add(toolkitItem(key, index, used, obj.get(String.valueOf(index))));
+				}
+			}
+		}
+		return out;
+	}
+
+	private static ToolkitItem toolkitItem(String category, int index, JsonObject used, JsonElement data) {
+		List<Stack> decoded = data == null || data.isJsonNull() ? List.of() : InventoryDecodeCache.decodeDataElement(data);
+		JsonElement flag = used == null ? null : used.get(String.valueOf(index));
+		boolean inUse = flag != null && flag.isJsonPrimitive() && flag.getAsJsonPrimitive().isBoolean() && flag.getAsBoolean();
+		return new ToolkitItem(category, index, inUse, decoded.isEmpty() ? null : decoded.get(0));
+	}
+
+	public static List<Stack> stacksFromItemBytes(JsonElement itemBytes) {
+		return InventoryDecodeCache.decodeDataElement(itemBytes);
+	}
+
 	public static InventorySnapshot.Slot slotFromItemBytes(JsonElement itemBytes) {
 		List<Stack> decoded = InventoryDecodeCache.decodeDataElement(itemBytes);
 		if (decoded.isEmpty()) {
@@ -249,27 +308,7 @@ public final class InventoryDecoder {
 		List<InventorySnapshot.Slot> equipSlots = InventoryDecodeSupport.toUiSlots(
 			InventoryDecodeCache.decodeFieldKeepingEmpty(inventory, "equipment_contents", 4)
 		);
-		// Player layout: equipment + armor columns left, main 3×9, hotbar bottom.
-		// Store as [equip×4][helmet..boots][inv_contents] (Hypixel inv: 0-8 hotbar, 9-35 main).
-		List<InventorySnapshot.Slot> combinedInv = new ArrayList<>(44);
-		while (equipSlots.size() < 4) {
-			equipSlots.add(null);
-		}
-		combinedInv.addAll(equipSlots.subList(0, 4));
-		if (armorSlots.size() >= 4) {
-			combinedInv.add(armorSlots.get(3)); // helmet
-			combinedInv.add(armorSlots.get(2));
-			combinedInv.add(armorSlots.get(1));
-			combinedInv.add(armorSlots.get(0)); // boots
-		} else {
-			for (int i = 0; i < 4; i++) {
-				combinedInv.add(i < armorSlots.size() ? armorSlots.get(i) : null);
-			}
-		}
-		while (invSlots.size() < 36) {
-			invSlots.add(null);
-		}
-		combinedInv.addAll(invSlots.subList(0, 36));
+		List<InventorySnapshot.Slot> combinedInv = playerSlots(equipSlots, armorSlots, invSlots);
 
 		List<InventorySnapshot.Page> enderPages = InventoryDecodeSupport.chunkPages(
 			InventoryDecodeSupport.toUiSlots(InventoryDecodeCache.decodeFieldKeepingEmpty(inventory, "ender_chest_contents", 45)),
@@ -316,6 +355,7 @@ public final class InventoryDecoder {
 		InventorySnapshot.Page candyPage = sharedPage(
 			shared, inventory, member, "candy_inventory_contents", "Candy Bag"
 		);
+		InventorySnapshot.Page timePocket = timePocketPage(bags);
 
 		return new InventorySnapshot(
 			new InventorySnapshot.Page("Inventory", combinedInv, 9),
@@ -330,7 +370,7 @@ public final class InventoryDecoder {
 			bagPage(bags, "quiver", "Quiver"),
 			accessoryBagPages(bags),
 			accessoryInfo,
-			timePocketPage(bags),
+			timePocket == null ? InventorySnapshot.emptyPage("Time Pocket", 9) : timePocket,
 			new InventorySnapshot.Page(
 				"Personal Vault",
 				InventoryDecodeSupport.toUiSlots(InventoryDecodeCache.decodeFieldKeepingEmpty(inventory, "personal_vault_contents", 27)),
@@ -339,8 +379,33 @@ public final class InventoryDecoder {
 			carnivalPage,
 			carnivalPresent,
 			candyPage,
-			candyPresent
+			candyPresent,
+			inventoryApiEnabled(inventory),
+			hasInventoryField(inventory, "personal_vault_contents"),
+			timePocket != null
 		);
+	}
+
+	public static boolean hasInventoryApi(JsonObject member) {
+		return member != null && inventoryApiEnabled(inventoryObject(member));
+	}
+
+	/** Wardrobe sets from {@code loadout.armor}. Empty when the profile only has the legacy wardrobe blob. */
+	public static List<WardrobePreset> wardrobePresets(JsonObject member) {
+		if (member == null) {
+			return List.of();
+		}
+		return WardrobeDecoder.armorPresets(inventoryObject(member), InventoryDecodeSupport.obj(member.get("loadout")));
+	}
+
+	private static JsonObject inventoryObject(JsonObject member) {
+		JsonObject inventory = InventoryDecodeSupport.obj(member.get("inventory"));
+		return inventory != null ? inventory : InventoryDecodeSupport.obj(member.get("inventories"));
+	}
+
+	/** Hypixel omits inv_contents entirely (even for an empty inventory) when the inventory API is off. */
+	static boolean inventoryApiEnabled(JsonObject inventory) {
+		return inventory != null && inventory.has("inv_contents") && !inventory.get("inv_contents").isJsonNull();
 	}
 
 	private static boolean hasInventoryField(JsonObject container, String field) {
@@ -394,9 +459,10 @@ public final class InventoryDecoder {
 		return pages.isEmpty() ? List.of(InventorySnapshot.emptyPage("Accessory Bag", 9)) : pages;
 	}
 
+	/** Null when no Time Pocket field exists; the API key is unconfirmed, so a few candidates are probed. */
 	private static InventorySnapshot.Page timePocketPage(JsonObject bags) {
 		if (bags == null) {
-			return InventorySnapshot.emptyPage("Time Pocket", 9);
+			return null;
 		}
 		for (String key : List.of("time_pocket", "time_bag", "timed_items", "timepocket", "time_pocket_contents")) {
 			if (bags.has(key)) {
@@ -417,7 +483,7 @@ public final class InventoryDecoder {
 				);
 			}
 		}
-		return InventorySnapshot.emptyPage("Time Pocket", 9);
+		return null;
 	}
 
 	public static InventorySnapshot.AccessoryInfo parseAccessoryInfo(JsonObject member) {
@@ -479,10 +545,8 @@ public final class InventoryDecoder {
 	public static RiftInventories parseRiftUi(JsonObject member) {
 		JsonObject rift = InventoryDecodeSupport.obj(member == null ? null : member.get("rift"));
 		JsonObject inv = InventoryDecodeSupport.obj(rift == null ? null : rift.get("inventory"));
-		InventorySnapshot.Page invPage = new InventorySnapshot.Page(
-			"Inventory",
-			InventoryDecodeSupport.toUiSlots(InventoryDecodeCache.decodeFieldKeepingEmpty(inv, "inv_contents", 36)),
-			9
+		List<InventorySnapshot.Slot> invSlots = InventoryDecodeSupport.toUiSlots(
+			InventoryDecodeCache.decodeFieldKeepingEmpty(inv, "inv_contents", 36)
 		);
 		List<InventorySnapshot.Slot> armorSlots = InventoryDecodeSupport.toUiSlots(
 			InventoryDecodeCache.decodeFieldKeepingEmpty(inv, "inv_armor", 4)
@@ -490,12 +554,46 @@ public final class InventoryDecoder {
 		List<InventorySnapshot.Slot> equipSlots = InventoryDecodeSupport.toUiSlots(
 			InventoryDecodeCache.decodeFieldKeepingEmpty(inv, "equipment_contents", 4)
 		);
-		InventorySnapshot.Page ender = new InventorySnapshot.Page(
-			"Ender Chest",
-			InventoryDecodeSupport.toUiSlots(InventoryDecodeCache.decodeFieldKeepingEmpty(inv, "ender_chest_contents", 27)),
-			9
+		InventorySnapshot.Page invPage = new InventorySnapshot.Page(
+			"Inventory", playerSlots(equipSlots, armorSlots, invSlots), 9
+		);
+		// Rift ender chest is a flat list paged by 45 like the main one (page icons in ender_chest_page_icons).
+		List<InventorySnapshot.Page> ender = InventoryDecodeSupport.chunkPages(
+			InventoryDecodeSupport.toUiSlots(InventoryDecodeCache.decodeFieldKeepingEmpty(inv, "ender_chest_contents", 45)),
+			45,
+			9,
+			"Ender Chest"
 		);
 		return new RiftInventories(invPage, equipSlots, armorSlots, ender);
+	}
+
+	/**
+	 * Player layout used by both inventory renderers: [equip x4][helmet..boots][inv_contents x36].
+	 * Hypixel inv_armor is boots-first; inv_contents is 0-8 hotbar, 9-35 main.
+	 */
+	public static List<InventorySnapshot.Slot> playerSlots(
+		List<InventorySnapshot.Slot> equipment,
+		List<InventorySnapshot.Slot> armor,
+		List<InventorySnapshot.Slot> inventory
+	) {
+		List<InventorySnapshot.Slot> out = new ArrayList<>(44);
+		for (int i = 0; i < 4; i++) {
+			out.add(equipment != null && i < equipment.size() ? equipment.get(i) : null);
+		}
+		if (armor != null && armor.size() >= 4) {
+			out.add(armor.get(3));
+			out.add(armor.get(2));
+			out.add(armor.get(1));
+			out.add(armor.get(0));
+		} else {
+			for (int i = 0; i < 4; i++) {
+				out.add(armor != null && i < armor.size() ? armor.get(i) : null);
+			}
+		}
+		for (int i = 0; i < 36; i++) {
+			out.add(inventory != null && i < inventory.size() ? inventory.get(i) : null);
+		}
+		return out;
 	}
 
 	public static String prettyWords(String raw) {

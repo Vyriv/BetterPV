@@ -128,6 +128,11 @@ public final class PlayerStatsCalculator {
 	private PlayerStatsCalculator() {
 	}
 
+	// Worn gear only: parseCategories also merges every saved equipment loadout into "equipment".
+	public static PlayerStatsSnapshot fromMember(JsonObject member) {
+		return fromMember(member, member == null ? Map.of() : InventoryDecoder.parseHomeGear(member));
+	}
+
 	public static PlayerStatsSnapshot fromMember(
 		JsonObject member,
 		Map<String, List<InventoryDecoder.Stack>> categories
@@ -289,6 +294,26 @@ public final class PlayerStatsCalculator {
 			added = true;
 		}
 		return added;
+	}
+
+	/** Attribute levels for the given stack ids; empty when the NEU shard table isn't available. */
+	static Map<String, Integer> attributeLevels(JsonObject member, List<String> stackIds) {
+		JsonObject attributes = member == null ? null : obj(member.get("attributes"));
+		JsonObject stacks = attributes == null ? null : obj(attributes.get("stacks"));
+		JsonObject shardsFile = stacks == null ? null : attributeShards();
+		if (shardsFile == null) {
+			return Map.of();
+		}
+		Map<String, int[]> costsByRarity = readAttributeLevelling(shardsFile);
+		Map<String, String> rarityById = readAttributeRarities(shardsFile);
+		Map<String, Integer> out = new HashMap<>();
+		for (String id : stackIds) {
+			int level = attributeLevel(costsByRarity.get(rarityById.getOrDefault(id, "COMMON")), intOr(stacks, id));
+			if (level > 0) {
+				out.put(id, level);
+			}
+		}
+		return out;
 	}
 
 	private static Map<String, int[]> readAttributeLevelling(JsonObject shardsFile) {
@@ -863,6 +888,29 @@ public final class PlayerStatsCalculator {
 		return added;
 	}
 
+	/** Sum of one stat's lore lines on a single item, matched the same way as worn gear. */
+	static double loreStat(List<String> lore, String id) {
+		if (lore == null || lore.isEmpty()) {
+			return 0D;
+		}
+		double total = 0D;
+		for (StatDef def : DISPLAY) {
+			if (!def.id.equals(id)) {
+				continue;
+			}
+			for (String line : lore) {
+				Matcher matcher = def.pattern.matcher(stripFormatting(line));
+				if (matcher.find()) {
+					try {
+						total += Double.parseDouble(matcher.group(1));
+					} catch (NumberFormatException ignored) {
+					}
+				}
+			}
+		}
+		return total;
+	}
+
 	private static Map<String, Integer> skillLevels(JsonObject member) {
 		Map<String, Integer> out = new HashMap<>();
 		for (String skill : List.of(
@@ -951,7 +999,7 @@ public final class PlayerStatsCalculator {
 		totals.merge(id, value, Double::sum);
 	}
 
-	private static String stripFormatting(String text) {
+	static String stripFormatting(String text) {
 		if (text == null || text.isEmpty()) {
 			return "";
 		}
@@ -1029,32 +1077,21 @@ public final class PlayerStatsCalculator {
 	}
 
 	/**
-	 * HOTM perk levels: modern {@code skill_tree.nodes.mining*} merged, else legacy {@code mining_core.nodes}.
+	 * HOTM perk levels: the selected {@code skill_tree} preset, else legacy {@code mining_core.nodes}.
 	 */
 	private static JsonObject hotmPerkNodes(JsonObject member) {
-		JsonObject skillTree = obj(member.get("skill_tree"));
-		JsonObject treeNodes = skillTree == null ? null : obj(skillTree.get("nodes"));
-		if (treeNodes != null) {
-			JsonObject merged = new JsonObject();
-			for (var entry : treeNodes.entrySet()) {
-				String key = entry.getKey();
-				if (key == null || (!key.equals("mining") && !key.startsWith("mining_"))) {
+		JsonObject selected = SkillTreePresets.selectedNodes(obj(member.get("skill_tree")), "mining");
+		if (selected != null) {
+			JsonObject perks = new JsonObject();
+			for (var perk : selected.entrySet()) {
+				String id = perk.getKey();
+				if (id == null || id.startsWith("toggle_")) {
 					continue;
 				}
-				JsonObject cat = obj(entry.getValue());
-				if (cat == null) {
-					continue;
-				}
-				for (var perk : cat.entrySet()) {
-					String id = perk.getKey();
-					if (id == null || id.startsWith("toggle_")) {
-						continue;
-					}
-					merged.add(id, perk.getValue());
-				}
+				perks.add(id, perk.getValue());
 			}
-			if (!merged.entrySet().isEmpty()) {
-				return merged;
+			if (!perks.entrySet().isEmpty()) {
+				return perks;
 			}
 		}
 		JsonObject miningCore = obj(member.get("mining_core"));

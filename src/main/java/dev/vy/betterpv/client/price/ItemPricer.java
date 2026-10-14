@@ -58,4 +58,14 @@ public final class ItemPricer {
 		Double skyHelper = SkyHelperPriceCache.get(id);
 		return skyHelper == null ? 0 : skyHelper;
 	}
+
+	/** Bazaar first, then any market price; null when no source prices the item (unlike the 0 above). */
+	public static Double knownPrice(String itemId) {
+		double bazaar = materialPrice(itemId);
+		if (bazaar > 0) {
+			return bazaar;
+		}
+		double any = price(itemId);
+		return any > 0 ? any : null;
+	}
 }

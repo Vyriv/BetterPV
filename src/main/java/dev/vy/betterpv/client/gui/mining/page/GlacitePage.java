@@ -3,8 +3,10 @@ package dev.vy.betterpv.client.gui.mining.page;
 import dev.vy.betterpv.client.data.DungeonSnapshot;
 import dev.vy.betterpv.client.data.FormatUtil;
 import dev.vy.betterpv.client.data.MiningSnapshot;
+import dev.vy.betterpv.client.dungeons.EssencePerkTips;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
+import dev.vy.betterpv.client.gui.essence.EssenceIcons;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import dev.vy.betterpv.client.gui.mining.MiningUi;
 import dev.vy.betterpv.client.gui.mining.MiningUi.HoverZone;
@@ -186,7 +188,7 @@ public final class GlacitePage {
 
 		if (showEssence) {
 			this.maxScroll = 0;
-			drawFossilEssenceFace(g, font, snapshot.fossilShop(), x, y, w, h);
+			drawFossilEssenceFace(g, font, snapshot.fossilShop(), zones, x, y, w, h);
 		} else {
 			renderCorpseMilestones(g, font, snapshot, zones, x, y, w, h, mx, my);
 		}
@@ -234,7 +236,8 @@ public final class GlacitePage {
 	}
 
 	private void drawFossilEssenceFace(
-		GuiGraphicsExtractor g, Font font, DungeonSnapshot.EssenceShop shop, int x, int y, int w, int h
+		GuiGraphicsExtractor g, Font font, DungeonSnapshot.EssenceShop shop, List<HoverZone> zones,
+		int x, int y, int w, int h
 	) {
 		int pad = MiningUi.PAD;
 		int cx = x + pad;
@@ -278,6 +281,7 @@ public final class GlacitePage {
 			int valueColor = perk.maxed() ? COLOR_MAXED : PvDraw.COLOR_TEXT;
 			PvDraw.text(g, font, left, labelX, rowAlign.textY(), PvDraw.COLOR_MUTED);
 			PvDraw.textRight(g, font, right, px + colW, rowAlign.textY(), valueColor);
+			zones.add(HoverZone.of(px, py, colW, rowH, EssencePerkTips.tip(perk)));
 		}
 	}
 
@@ -305,7 +309,7 @@ public final class GlacitePage {
 			return List.of(PvTooltip.Line.of("Tier " + tier.tier() + " complete", PvDraw.COLOR_ACCENT));
 		}
 		List<PvTooltip.Line> tip = new ArrayList<>();
-		tip.add(PvTooltip.Line.title("Need for tier " + tier.tier(), PvDraw.COLOR_TEXT));
+		tip.add(PvTooltip.Line.title("Tier " + tier.tier() + " needs", PvDraw.COLOR_TEXT));
 		tip.add(PvTooltip.Line.divider());
 		addCorpseNeedRow(tip, "Lapis", counts.lapis(), tier.needLapis(), CORPSE_LAPIS);
 		addCorpseNeedRow(tip, "Umber", counts.umber(), tier.needUmber(), CORPSE_UMBER);
@@ -334,18 +338,7 @@ public final class GlacitePage {
 	}
 
 	private static ItemStack fossilPerkIcon(String perkId) {
-		if (perkId == null) {
-			return new ItemStack(Items.PAPER);
-		}
-		return switch (perkId) {
-			case "prehistorian" -> new ItemStack(Items.BONE);
-			case "resourceful" -> new ItemStack(Items.CHEST);
-			case "chilled_to_the_bone" -> new ItemStack(Items.BLUE_ICE);
-			case "dwarven_expertise" -> new ItemStack(Items.IRON_PICKAXE);
-			case "sleight_of_hand" -> new ItemStack(Items.GOLDEN_PICKAXE);
-			case "cut_loose" -> new ItemStack(Items.SHEARS);
-			default -> new ItemStack(Items.PAPER);
-		};
+		return EssenceIcons.perk(perkId);
 	}
 
 	private static float easeInOutCubic(float t) {

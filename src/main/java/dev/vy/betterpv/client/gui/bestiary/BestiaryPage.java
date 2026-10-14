@@ -437,6 +437,10 @@ public final class BestiaryPage {
 					+ "§7/§f" + FormatUtil.commas(fam.nextNeed())));
 		}
 		tip.add(SkyBlockItemFactory.legacyLine("§7Total kills: §f" + FormatUtil.commas(fam.kills())));
+		long cap = fam.family().cap();
+		if (fam.maxed() && cap > 0 && fam.kills() > cap) {
+			tip.add(SkyBlockItemFactory.legacyLine("§8+" + FormatUtil.commas(fam.kills() - cap) + " past final milestone"));
+		}
 		if (fam.deaths() > 0) {
 			tip.add(SkyBlockItemFactory.legacyLine("§7Deaths to family: §c" + FormatUtil.commas(fam.deaths())));
 		}

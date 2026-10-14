@@ -1,18 +1,33 @@
 package dev.vy.betterpv.client.gui.collections.page;
 
 import dev.vy.betterpv.client.data.CollectionSnapshot;
+import dev.vy.betterpv.client.data.FormatUtil;
+import dev.vy.betterpv.client.data.MinionCosts;
 import dev.vy.betterpv.client.gui.PvDraw;
+import dev.vy.betterpv.client.gui.PvTooltip;
 import dev.vy.betterpv.client.gui.collections.CollectionsUi;
+import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
+import dev.vy.betterpv.client.neu.NeuRepoCache;
+import dev.vy.betterpv.client.price.HypixelCollectionsCache;
+import dev.vy.betterpv.client.price.ItemPricer;
 import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
+import java.util.function.Function;
+import java.util.Map;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 import static dev.vy.betterpv.client.gui.collections.CollectionsUi.*;
 
-/** Minions grid + tier checklist subpage. */
+/** Minions grid (grouped by category) or cheapest-next list, plus a tier checklist with upgrade costs. */
 public final class MinionsPage {
+	private static final long COST_RETRY_MS = 2_000L;
+
 	private int selectedMinion;
 	private int minionScroll;
 	private int minionMaxScroll;
@@ -22,12 +37,27 @@ public final class MinionsPage {
 	private int minionH;
 	private int tierListTop;
 	private int tierListH;
+	private boolean cheapestMode;
+	private int toggleX;
+	private int toggleY;
+	private int toggleW;
+	private int toggleH;
 	private final List<SlotHit> minionHits = new ArrayList<>();
+	private List<PvTooltip.Line> hoverTip = List.of();
+
+	private CollectionSnapshot costsFor;
+	private boolean costsFinal;
+	private long costsAt;
+	private final Map<String, List<MinionCosts.TierCost>> missingById = new HashMap<>();
+	private List<MinionCosts.MissingTier> cheapest = List.of();
+	private Map<MinionCosts.Category, List<Integer>> groups = Map.of();
 
 	public void reset(CollectionSnapshot snapshot) {
 		this.selectedMinion = snapshot == null || snapshot.minions().isEmpty() ? -1 : 0;
 		this.minionScroll = 0;
 		this.tierScroll = 0;
+		this.costsFor = null;
+		this.hoverTip = List.of();
 	}
 
 	public void render(
@@ -42,10 +72,23 @@ public final class MinionsPage {
 		int mouseY
 	) {
 		this.minionHits.clear();
+		this.hoverTip = List.of();
+		ensureCosts(snapshot);
 		renderMinions(snapshot, g, font, x, y, w, h, mouseX, mouseY);
 	}
 
+	public void renderTooltip(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH) {
+		if (!this.hoverTip.isEmpty()) {
+			PvTooltip.drawStyled(g, font, this.hoverTip, mouseX, mouseY, screenW, screenH);
+		}
+	}
+
 	public boolean mouseClicked(double mx, double my) {
+		if (mx >= this.toggleX && mx < this.toggleX + this.toggleW && my >= this.toggleY && my < this.toggleY + this.toggleH) {
+			this.cheapestMode = !this.cheapestMode;
+			this.minionScroll = 0;
+			return true;
+		}
 		for (SlotHit hit : this.minionHits) {
 			if (mx >= hit.x && mx < hit.x + hit.w && my >= hit.y && my < hit.y + hit.h) {
 				this.selectedMinion = hit.index;
@@ -65,6 +108,27 @@ public final class MinionsPage {
 			return CollectionsUi.scrollBy(scrollY, this.tierScroll, this.tierMaxScroll, 12, v -> this.tierScroll = v);
 		}
 		return false;
+	}
+
+	/** Recipes, prices and collection categories load async; recompute until all three are in. */
+	private void ensureCosts(CollectionSnapshot snapshot) {
+		long now = System.currentTimeMillis();
+		if (snapshot == this.costsFor && (this.costsFinal || now - this.costsAt < COST_RETRY_MS)) {
+			return;
+		}
+		this.costsFor = snapshot;
+		this.costsAt = now;
+		this.costsFinal = ItemPricer.isReady() && NeuRepoCache.isReady() && HypixelCollectionsCache.isReady();
+		this.missingById.clear();
+		List<CollectionSnapshot.MinionEntry> minions = snapshot == null ? List.of() : snapshot.minions();
+		Map<MinionCosts.Category, List<Integer>> byCategory = new EnumMap<>(MinionCosts.Category.class);
+		for (int i = 0; i < minions.size(); i++) {
+			CollectionSnapshot.MinionEntry minion = minions.get(i);
+			byCategory.computeIfAbsent(MinionCosts.categoryOf(minion.id()), k -> new ArrayList<>()).add(i);
+			this.missingById.put(minion.id(), MinionCosts.missingTiers(minion));
+		}
+		this.groups = byCategory;
+		this.cheapest = MinionCosts.cheapestNext(minions);
 	}
 
 	private void renderMinions(
@@ -91,6 +155,7 @@ public final class MinionsPage {
 		this.minionH = Math.max(20, y + h - PAD - this.minionTop);
 
 		if (minions.isEmpty()) {
+			this.toggleW = 0;
 			PvDraw.textCentered(
 				g, font,
 				Component.translatable("betterpv.collections.minions_empty").getString(),
@@ -98,73 +163,164 @@ public final class MinionsPage {
 			);
 			this.minionMaxScroll = 0;
 			this.selectedMinion = -1;
-			drawMinionDetail(g, font, null, rightX, y, rightW, h);
+			drawMinionDetail(g, font, null, rightX, y, rightW, h, mouseX, mouseY);
 			return;
 		}
 		this.selectedMinion = Math.max(0, Math.min(this.selectedMinion, minions.size() - 1));
 
+		String toggle = Component.translatable("betterpv.collections.minions_cheapest").getString();
+		this.toggleW = font.width(toggle);
+		this.toggleH = font.lineHeight;
+		this.toggleX = x + leftW - PAD - this.toggleW;
+		this.toggleY = y + PAD;
+		boolean toggleHover = mouseX >= this.toggleX && mouseX < this.toggleX + this.toggleW
+			&& mouseY >= this.toggleY && mouseY < this.toggleY + this.toggleH;
+		PvDraw.text(g, font, toggle, this.toggleX, this.toggleY,
+			this.cheapestMode ? PvDraw.COLOR_ACCENT : toggleHover ? PvDraw.COLOR_TEXT : PvDraw.COLOR_MUTED);
+
 		int listX = x + PAD;
 		int listW = leftW - PAD * 2;
-		int count = minions.size();
+		if (this.cheapestMode) {
+			renderCheapest(snapshot, g, font, listX, listW, mouseX, mouseY);
+		} else {
+			renderGrid(minions, g, font, listX, listW, mouseX, mouseY);
+		}
+
+		drawMinionDetail(g, font, minions.get(this.selectedMinion), rightX, y, rightW, h, mouseX, mouseY);
+	}
+
+	private void renderGrid(
+		List<CollectionSnapshot.MinionEntry> minions,
+		GuiGraphicsExtractor g,
+		Font font,
+		int listX,
+		int listW,
+		int mouseX,
+		int mouseY
+	) {
 		int slot = SLOT;
 		int minGap = 5;
 		int maxGap = 14;
-
-		// One row shorter than a full-height pack → more columns, wider grid.
-		int fitRows = Math.max(1, (this.minionH + minGap) / (slot + minGap));
-		int idealRows = Math.max(1, fitRows - 1);
-		int maxCols = Math.max(1, (listW + minGap) / (slot + minGap));
-		int cols = Math.max(1, Math.min(maxCols, (count + idealRows - 1) / idealRows));
-		int rows = (count + cols - 1) / cols;
-
-		// Widen columns if the tall layout would clip below the panel.
-		while (cols < maxCols) {
-			int trialGapY = rows <= 1 ? 0 : Math.max(minGap, Math.min(maxGap, (this.minionH - rows * slot) / Math.max(1, rows - 1)));
-			int trialH = rows * slot + Math.max(0, rows - 1) * trialGapY;
-			if (trialH <= this.minionH) {
-				break;
-			}
-			cols++;
-			rows = (count + cols - 1) / cols;
-		}
-
-		int gapX = cols <= 1 ? 0 : Math.max(minGap, Math.min(maxGap, (listW - cols * slot) / Math.max(1, cols - 1)));
-		int gapY = rows <= 1 ? 0 : Math.max(minGap, Math.min(maxGap, (this.minionH - rows * slot) / Math.max(1, rows - 1)));
-
+		int cols = Math.max(1, (listW + minGap) / (slot + minGap));
+		int gapX = cols <= 1 ? 0 : Math.max(minGap, Math.min(maxGap, (listW - cols * slot) / (cols - 1)));
+		int gapY = minGap;
 		int gridW = cols * slot + Math.max(0, cols - 1) * gapX;
-		int contentH = rows * slot + Math.max(0, rows - 1) * gapY;
 		int startX = listX + Math.max(0, (listW - gridW) / 2);
-		int startY = this.minionTop + Math.max(0, (this.minionH - contentH) / 2);
+		int headerH = font.lineHeight + 3;
+		int groupGap = 4;
+
+		int contentH = 0;
+		for (List<Integer> members : this.groups.values()) {
+			int rows = (members.size() + cols - 1) / cols;
+			contentH += headerH + rows * slot + Math.max(0, rows - 1) * gapY + groupGap;
+		}
+		contentH = Math.max(0, contentH - groupGap);
 		this.minionMaxScroll = Math.max(0, contentH - this.minionH);
 		this.minionScroll = Math.max(0, Math.min(this.minionScroll, this.minionMaxScroll));
+		boolean inList = mouseY >= this.minionTop && mouseY < this.minionTop + this.minionH;
 
 		g.enableScissor(listX, this.minionTop, listX + listW, this.minionTop + this.minionH);
-		for (int i = 0; i < count; i++) {
-			int col = i % cols;
-			int row = i / cols;
-			int sx = startX + col * (slot + gapX);
-			int sy = startY + row * (slot + gapY) - this.minionScroll;
-			if (sy + slot < this.minionTop || sy > this.minionTop + this.minionH) {
-				continue;
+		int cy = this.minionTop - this.minionScroll;
+		for (var group : this.groups.entrySet()) {
+			List<Integer> members = group.getValue();
+			int maxed = 0;
+			for (int index : members) {
+				if (isMaxed(minions.get(index))) {
+					maxed++;
+				}
 			}
-			CollectionSnapshot.MinionEntry minion = minions.get(i);
-			boolean selected = i == this.selectedMinion;
-			boolean hover = mouseX >= sx && mouseX < sx + slot && mouseY >= sy && mouseY < sy + slot;
-			PvDraw.fill(g, sx, sy, slot, slot, selected ? 0xFF2A3A55 : hover ? 0xFF222230 : 0xFF101018);
-			g.outline(sx, sy, slot, slot, selected ? PvDraw.COLOR_ACCENT : hover ? 0xFF4A4A5A : 0xFF2A2A35);
-			CollectionsUi.drawIcon(g, minion.iconId(), sx + (slot - ITEM_ICON) / 2, sy + (slot - ITEM_ICON) / 2 - 1);
-			boolean maxed = minion.maxCrafted() >= minion.tierCap() && minion.tierCap() > 0;
-			PvDraw.textRight(
-				g, font,
-				String.valueOf(minion.maxCrafted()),
-				sx + slot - 1, sy + slot - font.lineHeight + 1,
-				maxed ? PvDraw.COLOR_GOLD : MINION_LOCKED
-			);
-			this.minionHits.add(new SlotHit(sx, sy, slot, slot, i));
+			String label = group.getKey().label() + " " + maxed + "/" + members.size();
+			PvDraw.sectionHeader(g, font, label, listX, cy, listW);
+			cy += headerH;
+			for (int n = 0; n < members.size(); n++) {
+				int index = members.get(n);
+				int sx = startX + (n % cols) * (slot + gapX);
+				int sy = cy + (n / cols) * (slot + gapY);
+				if (sy + slot < this.minionTop || sy > this.minionTop + this.minionH) {
+					continue;
+				}
+				CollectionSnapshot.MinionEntry minion = minions.get(index);
+				boolean selected = index == this.selectedMinion;
+				boolean hover = inList && mouseX >= sx && mouseX < sx + slot && mouseY >= sy && mouseY < sy + slot;
+				PvDraw.fill(g, sx, sy, slot, slot, selected ? 0xFF2A3A55 : hover ? 0xFF222230 : 0xFF101018);
+				g.outline(sx, sy, slot, slot, selected ? PvDraw.COLOR_ACCENT : hover ? 0xFF4A4A5A : 0xFF2A2A35);
+				CollectionsUi.drawIcon(g, minion.iconId(), sx + (slot - ITEM_ICON) / 2, sy + (slot - ITEM_ICON) / 2 - 1);
+				PvDraw.textRight(
+					g, font,
+					String.valueOf(minion.maxCrafted()),
+					sx + slot - 1, sy + slot - font.lineHeight + 1,
+					isMaxed(minion) ? PvDraw.COLOR_GOLD : MINION_LOCKED
+				);
+				if (inList) {
+					this.minionHits.add(new SlotHit(sx, sy, slot, slot, index));
+				}
+				if (hover) {
+					this.hoverTip = minionTip(minion);
+				}
+			}
+			int rows = (members.size() + cols - 1) / cols;
+			cy += rows * slot + Math.max(0, rows - 1) * gapY + groupGap;
 		}
 		g.disableScissor();
+	}
 
-		drawMinionDetail(g, font, minions.get(this.selectedMinion), rightX, y, rightW, h);
+	private void renderCheapest(
+		CollectionSnapshot snapshot,
+		GuiGraphicsExtractor g,
+		Font font,
+		int listX,
+		int listW,
+		int mouseX,
+		int mouseY
+	) {
+		List<CollectionSnapshot.MinionEntry> minions = snapshot.minions();
+		if (this.cheapest.isEmpty()) {
+			this.minionMaxScroll = 0;
+			PvDraw.textCentered(
+				g, font,
+				Component.translatable("betterpv.collections.minions_all_crafted").getString(),
+				listX + listW / 2, this.minionTop + this.minionH / 2 - font.lineHeight / 2, PvDraw.COLOR_MUTED
+			);
+			return;
+		}
+		Map<String, Integer> indexById = new HashMap<>();
+		for (int i = 0; i < minions.size(); i++) {
+			indexById.put(minions.get(i).id(), i);
+		}
+		int rowH = Math.max(ITEM_ICON, font.lineHeight) + 2;
+		this.minionMaxScroll = Math.max(0, this.cheapest.size() * rowH - this.minionH);
+		this.minionScroll = Math.max(0, Math.min(this.minionScroll, this.minionMaxScroll));
+		boolean inList = mouseY >= this.minionTop && mouseY < this.minionTop + this.minionH;
+
+		g.enableScissor(listX, this.minionTop, listX + listW, this.minionTop + this.minionH);
+		int rowY = this.minionTop - this.minionScroll;
+		for (MinionCosts.MissingTier row : this.cheapest) {
+			if (rowY + rowH >= this.minionTop && rowY <= this.minionTop + this.minionH) {
+				Integer index = indexById.get(row.minionId());
+				boolean selected = index != null && index == this.selectedMinion;
+				boolean hover = inList && mouseX >= listX && mouseX < listX + listW && mouseY >= rowY && mouseY < rowY + rowH;
+				if (selected || hover) {
+					PvDraw.fill(g, listX, rowY, listW, rowH, selected ? 0xFF2A3A55 : 0xFF222230);
+				}
+				PvDraw.IconTextAlign align = PvDraw.IconTextAlign.of(rowY, rowH, ITEM_ICON, font.lineHeight);
+				String tierId = row.minionId() + "_" + row.cost().tier();
+				CollectionsUi.drawIcon(g, tierId, listX + 1, align.iconY());
+				String cost = costText(row.cost());
+				int costW = font.width(cost);
+				PvDraw.textRight(g, font, cost, listX + listW - 2, align.textY(), costColor(row.cost()));
+				int nameX = listX + ITEM_ICON + 5;
+				PvDraw.text(g, font, CollectionsUi.trim(font, tierName(row.minionId(), row.cost().tier()), listX + listW - 2 - costW - 6 - nameX),
+					nameX, align.textY(), PvDraw.COLOR_TEXT);
+				if (inList && index != null) {
+					this.minionHits.add(new SlotHit(listX, rowY, listW, rowH, index));
+				}
+				if (hover) {
+					this.hoverTip = tierTip(row.minionId(), row.cost());
+				}
+			}
+			rowY += rowH;
+		}
+		g.disableScissor();
 	}
 
 	private void drawMinionDetail(
@@ -174,7 +330,9 @@ public final class MinionsPage {
 		int x,
 		int y,
 		int w,
-		int h
+		int h,
+		int mouseX,
+		int mouseY
 	) {
 		int cx = x + PAD;
 		int cy = y + PAD;
@@ -200,7 +358,7 @@ public final class MinionsPage {
 			PvDraw.COLOR_TEXT
 		);
 		cy += ITEM_ICON + 4;
-		boolean maxed = minion.maxCrafted() >= minion.tierCap() && minion.tierCap() > 0;
+		boolean maxed = isMaxed(minion);
 		PvDraw.text(
 			g, font,
 			"T" + minion.maxCrafted() + " / " + minion.tierCap(),
@@ -216,11 +374,27 @@ public final class MinionsPage {
 		);
 		cy += font.lineHeight + 3;
 
+		List<MinionCosts.TierCost> missing = this.missingById.getOrDefault(minion.id(), List.of());
+		if (!missing.isEmpty()) {
+			String remainingLabel = Component.translatable("betterpv.collections.minions_remaining").getString();
+			String remaining = totalText(missing);
+			PvDraw.text(g, font, CollectionsUi.trim(font, remainingLabel, contentW - font.width(remaining) - 4), cx, cy, PvDraw.COLOR_MUTED);
+			PvDraw.textRight(g, font, remaining, cx + contentW, cy, totalComplete(missing) ? PvDraw.COLOR_GOLD : PvDraw.COLOR_MUTED);
+			if (mouseX >= cx && mouseX < cx + contentW && mouseY >= cy && mouseY < cy + font.lineHeight) {
+				this.hoverTip = remainingTip(minion, missing);
+			}
+			cy += font.lineHeight + 3;
+		}
+
 		PvDraw.text(g, font, Component.translatable("betterpv.collections.tiers").getString(), cx, cy, PvDraw.COLOR_MUTED);
 		cy += font.lineHeight + 2;
 		this.tierListTop = cy;
 		this.tierListH = Math.max(20, y + h - PAD - this.tierListTop);
 
+		Map<Integer, MinionCosts.TierCost> costByTier = new HashMap<>();
+		for (MinionCosts.TierCost cost : missing) {
+			costByTier.put(cost.tier(), cost);
+		}
 		int tiers = Math.max(1, minion.tierCap());
 		int naturalRow = font.lineHeight + 1;
 		int fitRow = Math.max(8, this.tierListH / tiers);
@@ -228,6 +402,8 @@ public final class MinionsPage {
 		float tierScale = rowH < font.lineHeight ? rowH / (float) font.lineHeight : 1.0f;
 		this.tierMaxScroll = Math.max(0, tiers * rowH - this.tierListH);
 		this.tierScroll = Math.max(0, Math.min(this.tierScroll, this.tierMaxScroll));
+		boolean inTiers = mouseX >= cx && mouseX < cx + contentW
+			&& mouseY >= this.tierListTop && mouseY < this.tierListTop + this.tierListH;
 
 		g.enableScissor(cx, this.tierListTop, cx + contentW, this.tierListTop + this.tierListH);
 		int rowY = this.tierListTop - this.tierScroll;
@@ -236,20 +412,176 @@ public final class MinionsPage {
 				boolean crafted = minion.crafted(t);
 				int color = crafted ? MINION_UNLOCKED : MINION_LOCKED;
 				String label = "T" + t;
+				MinionCosts.TierCost cost = crafted ? null : costByTier.get(t);
 				if (tierScale >= 0.99f) {
 					PvDraw.text(g, font, label, cx, rowY, color);
-					Component mark = PvDraw.styled(crafted ? MINION_TICK : MINION_CROSS, color, true);
-					PvDraw.text(g, font, mark, cx + contentW - PvDraw.width(font, mark), rowY);
+					if (cost != null) {
+						PvDraw.textRight(g, font, costText(cost), cx + contentW, rowY, costColor(cost));
+					} else {
+						Component mark = PvDraw.styled(crafted ? MINION_TICK : MINION_CROSS, color, true);
+						PvDraw.text(g, font, mark, cx + contentW - PvDraw.width(font, mark), rowY);
+					}
 				} else {
 					PvDraw.textScaled(g, font, label, cx, rowY, color, tierScale);
-					String mark = crafted ? MINION_TICK : MINION_CROSS;
-					int tw = Math.max(1, Math.round(PvDraw.widthBold(font, mark) * tierScale));
-					PvDraw.textScaled(g, font, mark, cx + contentW - tw, rowY, color, tierScale);
+					if (cost != null) {
+						String text = costText(cost);
+						int tw = Math.max(1, Math.round(font.width(text) * tierScale));
+						PvDraw.textScaled(g, font, text, cx + contentW - tw, rowY, costColor(cost), tierScale);
+					} else {
+						String mark = crafted ? MINION_TICK : MINION_CROSS;
+						int tw = Math.max(1, Math.round(PvDraw.widthBold(font, mark) * tierScale));
+						PvDraw.textScaled(g, font, mark, cx + contentW - tw, rowY, color, tierScale);
+					}
+				}
+				if (cost != null && inTiers && mouseY >= rowY && mouseY < rowY + rowH) {
+					this.hoverTip = tierTip(minion.id(), cost);
 				}
 			}
 			rowY += rowH;
 		}
 		g.disableScissor();
+	}
+
+	private List<PvTooltip.Line> minionTip(CollectionSnapshot.MinionEntry minion) {
+		List<PvTooltip.Line> lines = new ArrayList<>();
+		lines.add(PvTooltip.Line.bold(minion.displayName(), PvDraw.COLOR_GOLD));
+		lines.add(PvTooltip.Line.row("Tier", PvDraw.COLOR_MUTED,
+			minion.maxCrafted() + " / " + minion.tierCap(), isMaxed(minion) ? MINION_UNLOCKED : PvDraw.COLOR_TEXT));
+		List<MinionCosts.TierCost> missing = this.missingById.getOrDefault(minion.id(), List.of());
+		if (!missing.isEmpty()) {
+			lines.add(PvTooltip.Line.row(
+				Component.translatable("betterpv.collections.minions_remaining").getString(), PvDraw.COLOR_MUTED,
+				totalText(missing), totalComplete(missing) ? PvDraw.COLOR_GOLD : PvDraw.COLOR_MUTED));
+		}
+		return lines;
+	}
+
+	private List<PvTooltip.Line> remainingTip(CollectionSnapshot.MinionEntry minion, List<MinionCosts.TierCost> missing) {
+		List<PvTooltip.Line> lines = new ArrayList<>();
+		lines.add(PvTooltip.Line.bold(minion.displayName(), PvDraw.COLOR_GOLD));
+		for (MinionCosts.TierCost cost : missing) {
+			lines.add(PvTooltip.Line.row("T" + cost.tier(), PvDraw.COLOR_MUTED, costText(cost), costColor(cost)));
+		}
+		lines.add(PvTooltip.Line.blank());
+		lines.add(PvTooltip.Line.of(Component.translatable("betterpv.collections.minions_cost_note").getString(), PvDraw.COLOR_MUTED));
+		return lines;
+	}
+
+	private static List<PvTooltip.Line> tierTip(String minionId, MinionCosts.TierCost cost) {
+		return tierTipLines(
+			tierName(minionId, cost.tier()),
+			cost,
+			MinionCosts.ingredientsFor(minionId, cost.tier()),
+			MinionsPage::itemName,
+			MinionsPage::itemColor,
+			MinionsPage::itemIcon,
+			id -> cost.unpriced().contains(id) ? null : ItemPricer.knownPrice(id),
+			Component.translatable("betterpv.collections.minions_unpriced").getString(),
+			Component.translatable("betterpv.collections.minions_no_recipe").getString()
+		);
+	}
+
+	static List<PvTooltip.Line> tierTipLines(
+		String title,
+		MinionCosts.TierCost cost,
+		Map<String, Integer> ingredients,
+		Function<String, String> names,
+		Function<String, Integer> colors,
+		Function<String, ItemStack> icons,
+		Function<String, Double> prices,
+		String unpricedLabel,
+		String noRecipeLabel
+	) {
+		List<PvTooltip.Line> lines = new ArrayList<>();
+		lines.add(PvTooltip.Line.bold(title, PvDraw.COLOR_GOLD));
+		if (cost.noRecipe()) {
+			lines.add(PvTooltip.Line.of(noRecipeLabel, PvDraw.COLOR_MUTED));
+			return lines;
+		}
+		lines.add(PvTooltip.Line.blank());
+		for (var e : ingredients.entrySet()) {
+			Integer color = colors.apply(e.getKey());
+			List<PvTooltip.Span> left = List.of(
+				PvTooltip.Span.of(e.getValue() + "x ", PvDraw.COLOR_MUTED),
+				PvTooltip.Span.of(names.apply(e.getKey()), color == null ? PvDraw.COLOR_TEXT : color)
+			);
+			Double unit = prices.apply(e.getKey());
+			PvTooltip.Line row = PvTooltip.Line.row(left, List.of(unit == null || unit <= 0
+				? PvTooltip.Span.of(unpricedLabel, PvDraw.COLOR_MUTED)
+				: PvTooltip.Span.of(FormatUtil.shortCoins(unit * e.getValue()), PvDraw.COLOR_GOLD)));
+			ItemStack icon = icons.apply(e.getKey());
+			lines.add(icon == null ? row : row.withIcon(icon));
+		}
+		lines.add(PvTooltip.Line.blank());
+		boolean unknown = !cost.complete() && cost.coins() <= 0;
+		lines.add(PvTooltip.Line.row(
+			List.of(PvTooltip.Span.of("Craft cost:", PvDraw.COLOR_MUTED)),
+			List.of(PvTooltip.Span.bold(unknown ? "Unknown" : costText(cost), costColor(cost)))
+		));
+		if (!cost.complete() && !unknown) {
+			lines.add(PvTooltip.Line.meta("Excludes materials with no price"));
+		}
+		return lines;
+	}
+
+	/** Partial totals get a trailing {@code +}: the real cost is at least this much. */
+	private static String costText(MinionCosts.TierCost cost) {
+		if (cost.noRecipe()) {
+			return "?";
+		}
+		return FormatUtil.shortCoins(cost.coins()) + (cost.complete() ? "" : "+");
+	}
+
+	private static int costColor(MinionCosts.TierCost cost) {
+		return cost.complete() ? PvDraw.COLOR_GOLD : PvDraw.COLOR_MUTED;
+	}
+
+	private static String totalText(List<MinionCosts.TierCost> missing) {
+		double sum = 0;
+		boolean any = false;
+		for (MinionCosts.TierCost cost : missing) {
+			if (!cost.noRecipe()) {
+				sum += cost.coins();
+				any = true;
+			}
+		}
+		if (!any) {
+			return "?";
+		}
+		return FormatUtil.shortCoins(sum) + (totalComplete(missing) ? "" : "+");
+	}
+
+	private static boolean totalComplete(List<MinionCosts.TierCost> missing) {
+		for (MinionCosts.TierCost cost : missing) {
+			if (!cost.complete()) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private static String tierName(String minionId, int tier) {
+		String name = SkyBlockItemFactory.plainDisplayName(minionId + "_" + tier);
+		return name == null || name.isBlank() ? minionId + " " + tier : name;
+	}
+
+	private static Integer itemColor(String id) {
+		return SkyBlockItemFactory.tierArgb(SkyBlockItemFactory.resolveTier(id.replace(':', '-')));
+	}
+
+	// NEU hands back paper while it's still loading; skip the icon rather than show a placeholder.
+	private static ItemStack itemIcon(String id) {
+		ItemStack icon = SkyBlockItemFactory.iconStack(id.replace(':', '-'));
+		return icon.isEmpty() || icon.is(Items.PAPER) ? null : icon;
+	}
+
+	private static String itemName(String id) {
+		String name = SkyBlockItemFactory.plainDisplayName(id.replace(':', '-'));
+		return name == null || name.isBlank() ? id : name;
+	}
+
+	private static boolean isMaxed(CollectionSnapshot.MinionEntry minion) {
+		return minion.maxCrafted() >= minion.tierCap() && minion.tierCap() > 0;
 	}
 
 	private record SlotHit(int x, int y, int w, int h, int index) {

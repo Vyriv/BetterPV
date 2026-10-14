@@ -31,6 +31,12 @@ public final class CrimsonPage {
 		if (this.activeSub == PvSubTab.CRIMSON_OVERVIEW) {
 			return this.overview.mouseClicked(mx, my);
 		}
+		if (this.activeSub == PvSubTab.CRIMSON_ABIPHONE) {
+			return this.abiphone.mouseClicked(mx, my);
+		}
+		if (this.activeSub == PvSubTab.CRIMSON_KUUDRA) {
+			return this.kuudra.mouseClicked(mx, my);
+		}
 		return false;
 	}
 

@@ -56,6 +56,14 @@ public final class AuctionPage {
 	private InventorySnapshot.Slot hoveredSlot;
 	private ItemStack hoveredStack = ItemStack.EMPTY;
 	private AuctionSnapshot.Listing hoveredListing;
+	private AuctionSnapshot.Bucket hoveredBucket;
+	private String viewedProfileId;
+	private boolean titleHovered;
+
+	public void apply(AuctionSnapshot snapshot, String profileId) {
+		this.viewedProfileId = profileId;
+		apply(snapshot);
+	}
 
 	public void apply(AuctionSnapshot snapshot) {
 		// Every enrichment publish re-applies the same auctions; keep the Cofl-enriched copy.
@@ -104,6 +112,8 @@ public final class AuctionPage {
 		this.hoveredSlot = null;
 		this.hoveredStack = ItemStack.EMPTY;
 		this.hoveredListing = null;
+		this.hoveredBucket = null;
+		this.titleHovered = false;
 		this.loadMoreVisible = false;
 
 		AuctionSnapshot.Bucket bucket = bucketFor(sub);
@@ -135,13 +145,17 @@ public final class AuctionPage {
 		PvDraw.innerPanel(g, rightX, y, rightW, h);
 		this.scrollStats = false;
 
-		List<AuctionSnapshot.Listing> listings = this.snapshot.active();
+		List<AuctionSnapshot.Listing> listings = activeOnProfile();
 		int cx = leftX + PAD;
 		int cy = y + PAD;
 		int innerW = leftW - PAD * 2;
 
 		PvDraw.text(g, font, Component.translatable("betterpv.auctions.active").getString(), cx, cy, PvDraw.COLOR_MUTED);
-		String summary = listings.size() + " · " + FormatUtil.shortCoins(this.snapshot.totalCoins(AuctionSnapshot.Bucket.ACTIVE));
+		long activeCoins = 0L;
+		for (AuctionSnapshot.Listing listing : listings) {
+			activeCoins += listing.price();
+		}
+		String summary = listings.size() + " · " + FormatUtil.shortCoins(activeCoins);
 		PvDraw.textRight(g, font, summary, cx + innerW, cy, PvDraw.COLOR_TEXT);
 		cy += font.lineHeight + 4;
 
@@ -175,6 +189,27 @@ public final class AuctionPage {
 
 		drawStatsPanel(g, font, rightX, y, rightW, h, mouseX, mouseY);
 		drawTooltip(g, font, mouseX, mouseY, screenW, screenH);
+	}
+
+	// Hypixel returns the player's listings across every profile; each one carries its profile_id.
+	private List<AuctionSnapshot.Listing> activeOnProfile() {
+		List<AuctionSnapshot.Listing> all = this.snapshot.active();
+		if (this.viewedProfileId == null || this.viewedProfileId.isBlank()) {
+			return all;
+		}
+		List<AuctionSnapshot.Listing> out = new java.util.ArrayList<>(all.size());
+		for (AuctionSnapshot.Listing listing : all) {
+			if (!listing.profileKnown() || listing.onProfile(this.viewedProfileId)) {
+				out.add(listing);
+			}
+		}
+		return out;
+	}
+
+	private boolean otherProfile(AuctionSnapshot.Listing listing) {
+		return listing.profileKnown()
+			&& this.viewedProfileId != null && !this.viewedProfileId.isBlank()
+			&& !listing.onProfile(this.viewedProfileId);
 	}
 
 	private void drawStatsPanel(
@@ -351,8 +386,9 @@ public final class AuctionPage {
 		int cy = y + PAD;
 		int innerW = w - PAD * 2;
 
-		String title = titleFor(bucket);
-		PvDraw.text(g, font, title, cx, cy, PvDraw.COLOR_MUTED);
+		String title = titleFor(bucket) + " · " + Component.translatable("betterpv.auctions.all_profiles").getString();
+		this.titleHovered = mouseX >= cx && mouseX < cx + font.width(title) && mouseY >= cy && mouseY < cy + font.lineHeight;
+		PvDraw.text(g, font, title, cx, cy, this.titleHovered ? PvDraw.COLOR_TEXT : PvDraw.COLOR_MUTED);
 		String summary = listings.size() + " · " + FormatUtil.shortCoins(this.snapshot.totalCoins(bucket));
 		PvDraw.textRight(g, font, summary, cx + innerW, cy, PvDraw.COLOR_TEXT);
 		cy += font.lineHeight + 4;
@@ -397,7 +433,7 @@ public final class AuctionPage {
 			boolean hover = mouseX >= this.loadMoreX && mouseX < this.loadMoreX + this.loadMoreW
 				&& mouseY >= this.loadMoreY && mouseY < this.loadMoreY + LOAD_MORE_H;
 			String label = this.loadingMore.get()
-				? "Loading…"
+				? "Loading..."
 				: Component.translatable("betterpv.auctions.load_more").getString();
 			PvDraw.fill(g, this.loadMoreX, this.loadMoreY, this.loadMoreW, LOAD_MORE_H, hover ? 0xFF2A3A55 : 0xFF16161E);
 			g.outline(
@@ -417,7 +453,7 @@ public final class AuctionPage {
 
 		if (listings.isEmpty()) {
 			String empty = this.snapshot.historyLoading()
-				? "Loading…"
+				? "Loading..."
 				: Component.translatable("betterpv.auctions.empty").getString();
 			PvDraw.textCentered(
 				g, font, empty,
@@ -453,6 +489,15 @@ public final class AuctionPage {
 	}
 
 	private void drawTooltip(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH) {
+		if (this.titleHovered) {
+			dev.vy.betterpv.client.gui.PvTooltip.draw(g, font, List.of(
+				Component.translatable("betterpv.auctions.all_profiles_tip").getString(),
+				Component.translatable("betterpv.auctions.all_profiles_tip2").getString(),
+				Component.translatable("betterpv.auctions.all_profiles_tip3").getString(),
+				Component.translatable("betterpv.auctions.all_profiles_tip4").getString()
+			), mouseX, mouseY, screenW, screenH);
+			return;
+		}
 		if (this.hoveredSlot == null || this.hoveredStack.isEmpty()) {
 			return;
 		}
@@ -461,6 +506,12 @@ public final class AuctionPage {
 		);
 		if (this.hoveredListing != null) {
 			applyListingNameColor(tip, this.hoveredListing);
+		}
+		boolean history = this.hoveredListing != null && this.hoveredBucket != null
+			&& this.hoveredBucket != AuctionSnapshot.Bucket.ACTIVE;
+		if (history && !tip.isEmpty()) {
+			// History slots are NEU templates, so their lore is generic stats and requirements, not the sold item.
+			tip.subList(1, tip.size()).clear();
 		}
 		if (this.hoveredListing != null && this.hoveredListing.detailLines() != null
 			&& !this.hoveredListing.detailLines().isEmpty()) {
@@ -474,6 +525,28 @@ public final class AuctionPage {
 					tip.add(SkyBlockItemFactory.legacyLine(line));
 				}
 			}
+		}
+		if (history && !tip.isEmpty()) {
+			tip.add(Component.empty());
+			for (String line : transactionLines(this.hoveredListing, this.hoveredBucket, System.currentTimeMillis())) {
+				tip.add(SkyBlockItemFactory.legacyLine(line));
+			}
+		}
+		if (history && !tip.isEmpty()) {
+			String key;
+			int color;
+			if (!this.hoveredListing.profileKnown()) {
+				key = "betterpv.auctions.profile_unknown";
+				color = PvDraw.COLOR_MUTED;
+			} else if (otherProfile(this.hoveredListing)) {
+				key = "betterpv.auctions.profile_other";
+				color = 0xFFFF6666;
+			} else {
+				key = "betterpv.auctions.profile_this";
+				color = 0xFF55DD55;
+			}
+			tip.add(Component.empty());
+			tip.add(PvDraw.styled(Component.translatable(key).getString(), color & 0xFFFFFF, false));
 		}
 		if (!tip.isEmpty()) {
 			dev.vy.betterpv.client.gui.PvTooltip.drawComponents(g, font, tip, mouseX, mouseY, screenW, screenH);
@@ -508,8 +581,10 @@ public final class AuctionPage {
 				this.hoveredSlot = slot;
 				this.hoveredStack = stack;
 				this.hoveredListing = listing;
+				this.hoveredBucket = bucket;
 			}
 		}
+		boolean dim = bucket != AuctionSnapshot.Bucket.ACTIVE && otherProfile(listing);
 
 		String price = FormatUtil.shortCoins(listing.price());
 		int priceW = font.width(price);
@@ -522,13 +597,16 @@ public final class AuctionPage {
 		String rest = time.isEmpty() ? "" : " - " + time;
 		int restW = font.width(rest);
 		String shownName = trim(font, name, Math.max(8, textMax - restW));
-		int nameColor = nameColor(listing);
+		int nameColor = dim ? PvDraw.COLOR_MUTED : nameColor(listing);
 
 		PvDraw.text(g, font, shownName, textX, textY, nameColor);
 		if (!rest.isEmpty()) {
 			PvDraw.text(g, font, rest, textX + font.width(shownName), textY, PvDraw.COLOR_MUTED);
 		}
-		PvDraw.textRight(g, font, price, x + w - 2, textY, 0xFFFFD36A);
+		PvDraw.textRight(g, font, price, x + w - 2, textY, dim ? PvDraw.COLOR_MUTED : 0xFFFFD36A);
+		if (dim) {
+			PvDraw.fill(g, x, y, w, ROW_H - 1, 0x66000000);
+		}
 	}
 
 	private static void applyListingNameColor(List<Component> tip, AuctionSnapshot.Listing listing) {
@@ -570,6 +648,18 @@ public final class AuctionPage {
 			}
 		}
 		return color;
+	}
+
+	static List<String> transactionLines(AuctionSnapshot.Listing listing, AuctionSnapshot.Bucket bucket, long nowMs) {
+		List<String> lines = new java.util.ArrayList<>(2);
+		String verb = bucket == AuctionSnapshot.Bucket.BOUGHT ? "Bought for" : "Sold for";
+		String price = listing.price() > 0L ? "\u00a76" + FormatUtil.shortCoins(listing.price()) + " coins" : "\u00a78Unknown";
+		lines.add("\u00a77" + verb + ": " + price + " \u00a78(" + (listing.bin() ? "BIN" : "Auction") + ")");
+		if (listing.endMs() > 0L) {
+			long ago = Math.max(0L, nowMs - listing.endMs());
+			lines.add("\u00a78Ended " + (ago < 60_000L ? "just now" : FormatUtil.prettySpan(ago) + " ago"));
+		}
+		return lines;
 	}
 
 	private static String timeLabel(AuctionSnapshot.Listing listing, AuctionSnapshot.Bucket bucket) {
@@ -640,13 +730,13 @@ public final class AuctionPage {
 		if (bucket == AuctionSnapshot.Bucket.SOLD) {
 			int next = this.snapshot.soldPage() + 1;
 			CoflnetApiClient.playerAuctions(this.snapshot.playerUuid(), next).whenComplete((arr, err) ->
-				Minecraft.getInstance().execute(() -> onMoreSold(arr.orElse(null), next)));
+				Minecraft.getInstance().execute(() -> onMoreSold(arr == null ? null : arr.orElse(null), next)));
 			return;
 		}
 		if (bucket == AuctionSnapshot.Bucket.BOUGHT) {
 			int next = this.snapshot.boughtPage() + 1;
 			CoflnetApiClient.playerBids(this.snapshot.playerUuid(), next).whenComplete((arr, err) ->
-				Minecraft.getInstance().execute(() -> onMoreBought(arr.orElse(null), next)));
+				Minecraft.getInstance().execute(() -> onMoreBought(arr == null ? null : arr.orElse(null), next)));
 			return;
 		}
 		this.loadingMore.set(false);
@@ -766,7 +856,7 @@ public final class AuctionPage {
 						if (opt.isEmpty()) {
 							return;
 						}
-						AuctionSnapshot.Listing enriched = AuctionSnapshot.enrichFromCoflDetail(listing, opt.get());
+						AuctionSnapshot.Listing enriched = AuctionSnapshot.enrichFromCoflDetail(listing, opt.get(), snapshot.playerUuid());
 						applyEnrichmentOnClient(snapshot, auctionId, enriched);
 					});
 				}

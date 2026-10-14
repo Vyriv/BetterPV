@@ -35,29 +35,17 @@ public final class HotfPage {
 		int x, int y, int w, int h, int mx, int my
 	) {
 		this.zones.clear();
-		// Wider sides so "Whispers" / "Heart of the Forest" aren't truncated.
+		// Wide enough that "Heart of the Forest" isn't truncated.
 		int leftW = Math.max(128, Math.min(156, w / 5));
-		int rightW = Math.max(136, Math.min(168, w * 22 / 100));
-		int centerW = w - leftW - rightW - GAP * 2;
-		if (centerW < 180) {
-			int shrink = 180 - centerW;
-			int takeLeft = Math.min(shrink / 2, Math.max(0, leftW - 118));
-			int takeRight = Math.min(shrink - takeLeft, Math.max(0, rightW - 124));
-			leftW -= takeLeft;
-			rightW -= takeRight;
-			centerW = w - leftW - rightW - GAP * 2;
-		}
+		int centerW = w - leftW - GAP;
 		int leftX = x;
 		int centerX = x + leftW + GAP;
-		int rightX = centerX + centerW + GAP;
 
 		PvDraw.innerPanel(g, leftX, y, leftW, h);
 		PvDraw.innerPanel(g, centerX, y, centerW, h);
-		PvDraw.innerPanel(g, rightX, y, rightW, h);
 
 		renderHotfLeft(g, font, snapshot, leftX, y, leftW, h);
 		renderHotfCenter(g, font, snapshot, centerX, y, centerW, h, mx, my);
-		renderHotfRight(g, font, snapshot, rightX, y, rightW, h);
 	}
 
 	public void drawHover(GuiGraphicsExtractor g, Font font, int mx, int my, int screenW, int screenH) {
@@ -72,6 +60,15 @@ public final class HotfPage {
 		int rw = w - PAD * 2;
 		int bottom = y + h - PAD;
 
+		PvDraw.text(g, font, "Heart of the Forest", rx, ry, PvDraw.COLOR_MUTED);
+		ry += font.lineHeight + 3;
+		ry = ForagingUi.statLine(g, font, "HOTF XP", FormatUtil.shortXp(snapshot.hotfXp()),
+			rx, ry, rw, PvDraw.COLOR_ACCENT) + 1;
+		ry = ForagingUi.statLine(g, font, "Tokens spent", String.valueOf(snapshot.forestTokensSpent()),
+			rx, ry, rw, PvDraw.COLOR_TEXT) + 2;
+		// skill_tree.last_reset.foraging unit/reliability unverified; hide until confirmed.
+
+		ry = ForagingUi.sectionSeparator(g, font, x, ry, w);
 		PvDraw.text(g, font, "Whispers", rx, ry, PvDraw.COLOR_MUTED);
 		ry += font.lineHeight + 3;
 		List<ForagingSnapshot.WhisperPool> pools = snapshot.whisperPools();
@@ -79,26 +76,23 @@ public final class HotfPage {
 			ry = ForagingUi.statLine(g, font, "Total", "-", rx, ry, rw, PvDraw.COLOR_MUTED) + 3;
 		} else {
 			for (ForagingSnapshot.WhisperPool pool : pools) {
-				if (ry + STAT_ROW * 2 > bottom) {
+				String value = whisperValue(pool);
+				boolean stacked = !fitsOnOneLine(font.width(pool.label()), font.width(value), rw);
+				int rowH = stacked ? STAT_ROW * 2 : STAT_ROW;
+				if (ry + rowH > bottom) {
 					break;
 				}
 				int poolColor = whisperPoolColor(pool.id());
-				PvDraw.text(g, font, pool.label(), rx, ry, poolColor);
-				ry += font.lineHeight + 1;
-				int balanceY = ry;
-				ry = ForagingUi.statLine(g, font, "Balance", FormatUtil.commas(pool.balance()),
-					rx, ry, rw, poolColor) + 2;
-				List<PvTooltip.Line> tip = new ArrayList<>();
-				tip.add(PvTooltip.Line.title(pool.label() + " whispers", poolColor));
-				tip.add(PvTooltip.Line.divider());
-				tip.add(PvTooltip.Line.row("Balance", PvDraw.COLOR_MUTED,
-					FormatUtil.commas(pool.balance()), poolColor));
-				tip.add(PvTooltip.Line.row("Spent", PvDraw.COLOR_MUTED,
-					FormatUtil.commas(pool.spent()), PvDraw.COLOR_TEXT));
-				tip.add(PvTooltip.Line.row("Total earned", PvDraw.COLOR_MUTED,
-					FormatUtil.commas(pool.total()), PvDraw.COLOR_MUTED));
-				this.zones.add(HoverZone.of(rx, balanceY - font.lineHeight - 1, rw, STAT_ROW + font.lineHeight + 1, tip));
+				this.zones.add(HoverZone.of(rx, ry, rw, rowH, whisperTip(pool, poolColor)));
+				if (stacked) {
+					PvDraw.text(g, font, pool.label(), rx, ry, PvDraw.COLOR_MUTED);
+					PvDraw.textRight(g, font, value, rx + rw, ry + STAT_ROW, poolColor);
+					ry += rowH + 1;
+				} else {
+					ry = ForagingUi.statLine(g, font, pool.label(), value, rx, ry, rw, poolColor) + 1;
+				}
 			}
+			ry += 2;
 		}
 
 		ry = ForagingUi.sectionSeparator(g, font, x, ry, w);
@@ -106,7 +100,7 @@ public final class HotfPage {
 		ry += font.lineHeight + 3;
 		ry = ForagingUi.statLine(g, font, "Trees cut", FormatUtil.commas(snapshot.currentDailyTreesCut()),
 			rx, ry, rw, PvDraw.COLOR_TEXT) + 1;
-		ry = ForagingUi.statLine(g, font, "Daily Tree Gifts", FormatUtil.commas(snapshot.currentDailyGifts()),
+		ry = ForagingUi.statLine(g, font, "Tree gifts", FormatUtil.commas(snapshot.currentDailyGifts()),
 			rx, ry, rw, PvDraw.COLOR_TEXT) + 2;
 
 		List<String> dailyLogs = snapshot.currentDailyLogs();
@@ -129,7 +123,30 @@ public final class HotfPage {
 			ry += font.lineHeight + 2;
 			String effect = snapshot.dailyEffect().isBlank() ? "-" : ForagingUi.pretty(snapshot.dailyEffect());
 			ForagingUi.wrapText(g, font, effect, rx, ry, rw, PvDraw.COLOR_GOLD);
+			ry += font.lineHeight + 4;
 			// current_daily_effect_last_changed is unmapped (value scale != daily_*_day). Hide raw until verified.
+		}
+
+		List<ForagingSnapshot.HotfNode> unplaced = snapshot.unplacedHotfNodes();
+		if (unplaced.isEmpty() || ry + STAT_ROW * 2 > bottom) {
+			return;
+		}
+		ry = ForagingUi.sectionSeparator(g, font, x, ry, w);
+		PvDraw.text(g, font, "Other perks", rx, ry, PvDraw.COLOR_MUTED);
+		ry += font.lineHeight + 3;
+		for (ForagingSnapshot.HotfNode node : unplaced) {
+			if (ry + STAT_ROW > bottom) {
+				break;
+			}
+			int color = node.enabled() ? PvDraw.COLOR_TEXT : DISABLED;
+			ForagingUi.statLine(g, font, node.name(), "Lv " + node.level(), rx, ry, rw, color);
+			List<PvTooltip.Line> tip = new ArrayList<>();
+			tip.add(PvTooltip.Line.of(node.name(), PvDraw.COLOR_TEXT));
+			tip.add(PvTooltip.Line.of("Level " + node.level(), PvDraw.COLOR_ACCENT));
+			tip.add(PvTooltip.Line.of(node.enabled() ? "Enabled" : "Disabled", node.enabled() ? ENABLED : DISABLED));
+			tip.add(PvTooltip.Line.meta("Max level unknown"));
+			this.zones.add(HoverZone.of(rx, ry, rw, STAT_ROW, tip));
+			ry += STAT_ROW;
 		}
 	}
 
@@ -223,33 +240,31 @@ public final class HotfPage {
 		return new ItemStack(Items.STRIPPED_OAK_LOG);
 	}
 
-	private void renderHotfRight(
-		GuiGraphicsExtractor g, Font font, ForagingSnapshot snapshot, int x, int y, int w, int h
-	) {
-		int rx = x + PAD;
-		int ry = y + PAD;
-		int rw = w - PAD * 2;
+	/** Three significant figures (10.4M) so the pool name fits beside it; exact numbers stay in the tooltip. */
+	static String whisperValue(ForagingSnapshot.WhisperPool pool) {
+		return compact(pool.balance()) + " / " + compact(pool.total());
+	}
 
-		PvDraw.text(g, font, "Heart of the Forest", rx, ry, PvDraw.COLOR_MUTED);
-		ry += font.lineHeight + 6;
-		ry = ForagingUi.statLine(g, font, "HOTF XP", FormatUtil.shortXp(snapshot.hotfXp()),
-			rx, ry, rw, PvDraw.COLOR_ACCENT) + 4;
-		ry = ForagingUi.statLine(g, font, "Tokens spent", String.valueOf(snapshot.forestTokensSpent()),
-			rx, ry, rw, PvDraw.COLOR_TEXT) + 6;
-		// skill_tree.last_reset.foraging unit/reliability unverified; hide until confirmed.
+	private static String compact(long value) {
+		return FormatUtil.compactCoins(value).toUpperCase(java.util.Locale.ROOT);
+	}
 
-		ry = ForagingUi.sectionSeparator(g, font, x, ry, w);
-		PvDraw.text(g, font, "Ability", rx, ry, PvDraw.COLOR_MUTED);
-		ry += font.lineHeight + 4;
-		String ability = snapshot.selectedAbility().isBlank()
-			? "-"
-			: ForagingHotfData.displayName(snapshot.selectedAbility());
-		ForagingUi.wrapText(g, font, ability, rx, ry, rw, PvDraw.COLOR_GOLD);
-		ry += font.lineHeight + 8;
+	static boolean fitsOnOneLine(int labelW, int valueW, int rowW) {
+		return labelW + 6 + valueW <= rowW;
+	}
 
-		if (snapshot.refundAbilityFree()) {
-			ForagingUi.statLine(g, font, "Refund", "Free", rx, ry, rw, ENABLED);
+	static List<PvTooltip.Line> whisperTip(ForagingSnapshot.WhisperPool pool, int poolColor) {
+		List<PvTooltip.Line> tip = new ArrayList<>();
+		tip.add(PvTooltip.Line.title(pool.label() + " whispers", poolColor));
+		tip.add(PvTooltip.Line.divider());
+		tip.add(PvTooltip.Line.row("Left", PvDraw.COLOR_MUTED, FormatUtil.commas(pool.balance()), poolColor));
+		tip.add(PvTooltip.Line.row("Spent", PvDraw.COLOR_MUTED, FormatUtil.commas(pool.spent()), PvDraw.COLOR_TEXT));
+		tip.add(PvTooltip.Line.row("Total earned", PvDraw.COLOR_MUTED, FormatUtil.commas(pool.total()), PvDraw.COLOR_TEXT));
+		if (pool.spentByLoadout().size() > 1) {
+			tip.add(PvTooltip.Line.blank());
+			tip.add(PvTooltip.Line.meta("Spent in loadout " + pool.loadout() + " (selected)"));
 		}
+		return tip;
 	}
 
 	private static int whisperPoolColor(String id) {

@@ -12,6 +12,7 @@ import static dev.vy.betterpv.client.gui.crimson.CrimsonUi.prettyRingtone;
 import static dev.vy.betterpv.client.gui.crimson.CrimsonUi.sectionSeparator;
 import static dev.vy.betterpv.client.gui.crimson.CrimsonUi.statLine;
 
+import dev.vy.betterpv.client.data.AbiphoneCosts;
 import dev.vy.betterpv.client.data.AbiphoneNpcs;
 import dev.vy.betterpv.client.data.CrimsonSnapshot;
 import dev.vy.betterpv.client.data.FormatUtil;
@@ -21,8 +22,12 @@ import dev.vy.betterpv.client.gui.crimson.CrimsonUi.HoverZone;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockIconRenderer;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import dev.vy.betterpv.client.neu.NeuRepoCache;
+import dev.vy.betterpv.client.price.ItemPricer;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -41,9 +46,24 @@ public final class AbiphonePage {
 	private int abiphoneY;
 	private int abiphoneW;
 	private int abiphoneH;
+	private boolean cheapestFirst;
+	private int sortX;
+	private int sortY;
+	private int sortW;
+	private int sortH;
 
 	public void resetScroll() {
 		this.abiphoneScroll = 0;
+	}
+
+	public boolean mouseClicked(double mx, double my) {
+		if (this.sortW > 0 && mx >= this.sortX && mx < this.sortX + this.sortW
+			&& my >= this.sortY && my < this.sortY + this.sortH) {
+			this.cheapestFirst = !this.cheapestFirst;
+			this.abiphoneScroll = 0;
+			return true;
+		}
+		return false;
 	}
 
 	public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
@@ -134,10 +154,29 @@ public final class AbiphonePage {
 		int bottom = y + h - PAD;
 
 		PvDraw.text(g, font, "Contacts", lx, ly, PvDraw.COLOR_MUTED);
-		ly += font.lineHeight + 4;
-
 		List<CrimsonSnapshot.AbiphoneContact> contacts = snapshot.abiphoneContacts();
 		List<AbiphoneNpcs.Undiscovered> undiscovered = undiscovered(snapshot);
+		this.sortW = 0;
+		if (!undiscovered.isEmpty()) {
+			String sortLabel = this.cheapestFirst ? "Missing: Cheapest" : "Missing: Name";
+			this.sortW = font.width(sortLabel);
+			this.sortH = font.lineHeight;
+			this.sortX = lx + lw - this.sortW;
+			this.sortY = ly;
+			boolean sortHovered = mx >= this.sortX && mx < this.sortX + this.sortW
+				&& my >= this.sortY && my < this.sortY + this.sortH;
+			PvDraw.text(g, font, sortLabel, this.sortX, this.sortY,
+				sortHovered || this.cheapestFirst ? PvDraw.COLOR_ACCENT : PvDraw.COLOR_MUTED);
+			this.zones.add(HoverZone.of(this.sortX, this.sortY, this.sortW, this.sortH, List.of(
+				PvTooltip.Line.of("Click to change sort", PvDraw.COLOR_TEXT),
+				PvTooltip.Line.of("Name: A to Z", PvDraw.COLOR_MUTED),
+				PvTooltip.Line.of("Cheapest: lowest cost first, unpriced last", PvDraw.COLOR_MUTED)
+			)));
+			if (this.cheapestFirst) {
+				undiscovered = this.cheapestCache;
+			}
+		}
+		ly += font.lineHeight + 4;
 		if (contacts.isEmpty() && undiscovered.isEmpty()) {
 			PvDraw.textCentered(g, font, "No contacts",
 				x + w / 2, y + h / 2 - font.lineHeight / 2, PvDraw.COLOR_MUTED);
@@ -239,6 +278,15 @@ public final class AbiphonePage {
 				for (String req : contact.requirement()) {
 					tip.add(PvTooltip.Line.of(req, PvDraw.COLOR_GOLD));
 				}
+				AbiphoneCosts.Estimate cost = this.costCache.getOrDefault(contact, AbiphoneCosts.Estimate.UNKNOWN);
+				tip.add(PvTooltip.Line.blank());
+				if (!cost.known()) {
+					tip.add(PvTooltip.Line.meta("Cost unknown"));
+				} else if (cost.coins() <= 0) {
+					tip.add(PvTooltip.Line.of("No coin cost", ENABLED));
+				} else {
+					tip.add(PvTooltip.Line.of("Est. cost: " + FormatUtil.compactCoins(cost.coins()), PvDraw.COLOR_GOLD));
+				}
 				this.zones.add(HoverZone.of(bx, y0, slot, y1 - y0, tip));
 			}
 		}
@@ -251,17 +299,35 @@ public final class AbiphonePage {
 
 	private CrimsonSnapshot undiscoveredFor;
 	private boolean undiscoveredFinal;
+	private long undiscoveredAtMs;
 	private List<AbiphoneNpcs.Undiscovered> undiscoveredCache = List.of();
+	private List<AbiphoneNpcs.Undiscovered> cheapestCache = List.of();
+	private Map<AbiphoneNpcs.Undiscovered, AbiphoneCosts.Estimate> costCache = Map.of();
 
 	private List<AbiphoneNpcs.Undiscovered> undiscovered(CrimsonSnapshot snapshot) {
-		// Keep recomputing until the NEU repo is ready; it may still be downloading on first draw.
-		if (this.undiscoveredFor != snapshot || !this.undiscoveredFinal) {
+		// Keep recomputing until the NEU repo and prices are ready; both may still be loading on first draw.
+		long now = System.currentTimeMillis();
+		boolean retry = !this.undiscoveredFinal && now - this.undiscoveredAtMs >= 1000L;
+		if (this.undiscoveredFor != snapshot || retry) {
+			this.undiscoveredAtMs = now;
 			List<String> ids = new ArrayList<>();
 			for (CrimsonSnapshot.AbiphoneContact contact : snapshot.abiphoneContacts()) {
 				ids.add(contact.id());
 			}
 			this.undiscoveredCache = AbiphoneNpcs.undiscovered(ids);
-			this.undiscoveredFinal = NeuRepoCache.isReady();
+			Map<AbiphoneNpcs.Undiscovered, AbiphoneCosts.Estimate> costs = new IdentityHashMap<>();
+			for (AbiphoneNpcs.Undiscovered contact : this.undiscoveredCache) {
+				costs.put(contact, AbiphoneCosts.estimate(
+					contact.requirement(), NeuRepoCache::idForDisplayName, ItemPricer::knownPrice));
+			}
+			this.costCache = costs;
+			List<AbiphoneNpcs.Undiscovered> cheapest = new ArrayList<>(this.undiscoveredCache);
+			cheapest.sort(Comparator
+				.comparing((AbiphoneNpcs.Undiscovered c) -> !costs.get(c).known())
+				.thenComparingDouble(c -> costs.get(c).known() ? costs.get(c).coins() : 0D)
+				.thenComparing(AbiphoneNpcs.Undiscovered::name, String.CASE_INSENSITIVE_ORDER));
+			this.cheapestCache = List.copyOf(cheapest);
+			this.undiscoveredFinal = NeuRepoCache.isReady() && ItemPricer.isReady();
 			this.undiscoveredFor = snapshot;
 		}
 		return this.undiscoveredCache;

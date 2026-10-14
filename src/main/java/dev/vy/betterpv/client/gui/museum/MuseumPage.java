@@ -4,12 +4,14 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import dev.vy.betterpv.client.data.FormatUtil;
 import dev.vy.betterpv.client.data.InventorySnapshot;
+import dev.vy.betterpv.client.data.MinionCosts;
 import dev.vy.betterpv.client.data.MuseumCatalog;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockIconRenderer;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import dev.vy.betterpv.client.gui.nav.MuseumSort;
+import dev.vy.betterpv.client.neu.NeuRepoCache;
 import dev.vy.betterpv.client.networth.InventoryDecoder;
 import dev.vy.betterpv.client.networth.NbtAttrs;
 import dev.vy.betterpv.client.price.HypixelItemsCache;
@@ -286,7 +288,7 @@ public final class MuseumPage {
 
 		PvDraw.text(g, font, "Museum", lx, ly, PvDraw.COLOR_MUTED);
 		boolean refreshEnabled = this.state != LoadState.LOADING;
-		String refreshLabel = refreshEnabled ? "Refresh" : "Loading…";
+		String refreshLabel = refreshEnabled ? "Refresh" : "Loading...";
 		int btnW = Math.max(56, font.width(refreshLabel) + 10);
 		int btnH = font.lineHeight + 6;
 		int btnX = lx + lw - btnW;
@@ -305,7 +307,7 @@ public final class MuseumPage {
 		ly += font.lineHeight + 6;
 
 		if (this.state == LoadState.LOADING) {
-			PvDraw.textCentered(g, font, "Loading museum…",
+			PvDraw.textCentered(g, font, "Loading museum...",
 				x + w / 2, y + h / 2 - font.lineHeight / 2, PvDraw.COLOR_MUTED);
 			this.gridMaxScroll = 0;
 			return null;
@@ -317,13 +319,13 @@ public final class MuseumPage {
 			return null;
 		}
 		if (this.state == LoadState.IDLE) {
-			PvDraw.textCentered(g, font, "Open this tab to load museum",
+			PvDraw.textCentered(g, font, "Museum not loaded",
 				x + w / 2, y + h / 2 - font.lineHeight / 2, PvDraw.COLOR_MUTED);
 			this.gridMaxScroll = 0;
 			return null;
 		}
 		if (this.slots.isEmpty()) {
-			PvDraw.textCentered(g, font, HypixelItemsCache.allItems().isEmpty() ? "Loading item data…" : "No museum slots",
+			PvDraw.textCentered(g, font, HypixelItemsCache.allItems().isEmpty() ? "Loading item data..." : "No museum slots",
 				x + w / 2, y + h / 2 - font.lineHeight / 2, PvDraw.COLOR_MUTED);
 			this.gridMaxScroll = 0;
 			return null;
@@ -505,6 +507,13 @@ public final class MuseumPage {
 		MuseumCatalog.ensureBuilt();
 		List<Slot> built = buildSlots();
 		this.slots = built;
+		List<String> missingIds = new ArrayList<>();
+		for (Slot slot : built) {
+			if (slot.missing() && slot.donationId() != null && !isSpecialKey(slot.donationId())) {
+				missingIds.add(slot.donationId());
+			}
+		}
+		NeuRepoCache.prefetch(missingIds);
 		this.iconByIndex.clear();
 		this.missingIconById.clear();
 		this.hoverKey = "";
@@ -530,7 +539,10 @@ public final class MuseumPage {
 				));
 			} else {
 				donated++;
-				owned += MuseumCatalog.marketPrice(slot.donationId());
+				String valueId = MuseumCatalog.valueId(slot.donationId(), slot.coveredBy(), slot.stack());
+				if (valueId != null) {
+					owned += MuseumCatalog.marketPrice(valueId);
+				}
 			}
 		}
 		// Priced ascending, unknowns (0) at the end.
@@ -745,6 +757,13 @@ public final class MuseumPage {
 				tip.add(SkyBlockItemFactory.legacyLine("§7Donated: §f" + date));
 			}
 		}
+		if (!slot.missing()) {
+			String valueId = MuseumCatalog.valueId(slot.donationId(), slot.coveredBy(), slot.stack());
+			double value = valueId == null ? 0 : MuseumCatalog.marketPrice(valueId);
+			if (value > 0) {
+				tip.add(SkyBlockItemFactory.legacyLine("§7Value: §6" + FormatUtil.shortCoins(value)));
+			}
+		}
 		if (slot.missing()) {
 			tip.add(Component.empty());
 			tip.add(SkyBlockItemFactory.legacyLine("§7Missing donation"));
@@ -756,8 +775,28 @@ public final class MuseumPage {
 			if (xp > 0) {
 				tip.add(SkyBlockItemFactory.legacyLine("§7Museum XP: §e" + FormatUtil.commas(xp)));
 			}
+			addRecipeLines(tip, slot.donationId());
 		}
 		return tip;
+	}
+
+	/** Only items NEU has loaded; armor sets and unknown ids get no recipe section at all. */
+	private static void addRecipeLines(List<Component> tip, String donationId) {
+		JsonObject item = donationId == null || isSpecialKey(donationId) ? null : NeuRepoCache.get(donationId);
+		if (item == null) {
+			return;
+		}
+		Map<String, Integer> ingredients = MinionCosts.ingredients(MinionCosts.recipe(item), null);
+		tip.add(Component.empty());
+		if (ingredients.isEmpty()) {
+			tip.add(SkyBlockItemFactory.legacyLine("§8No crafting recipe"));
+			return;
+		}
+		tip.add(SkyBlockItemFactory.legacyLine("§7Recipe:"));
+		for (Map.Entry<String, Integer> e : ingredients.entrySet()) {
+			tip.add(SkyBlockItemFactory.legacyLine("§8" + FormatUtil.commas(e.getValue()) + "x §f"
+				+ SkyBlockItemFactory.plainDisplayName(e.getKey())));
+		}
 	}
 
 	private static InventorySnapshot.Slot toUiSlot(Slot slot) {
@@ -816,8 +855,8 @@ public final class MuseumPage {
 				MuseumCatalog.ResolvedDonation res = entry.getValue();
 				if (key != null && key.toUpperCase(Locale.ROOT).startsWith("SPECIAL:")) {
 					out.add(donatedSlot(key, res.stack(), null));
-				} else if (!MuseumCatalog.isCataloged(key)) {
-					out.add(donatedSlot(key, res.stack(), res.coveredBy()));
+				} else if (res.direct() && !MuseumCatalog.isCataloged(key)) {
+					out.add(donatedSlot(key, res.stack(), null));
 				}
 			}
 			for (String id : MuseumCatalog.donationIds(MuseumSort.SPECIAL)) {
@@ -884,6 +923,9 @@ public final class MuseumPage {
 		if (donationId == null || donationId.isBlank() || this.museumMember == null) {
 			return 0L;
 		}
+		if (isSpecialKey(donationId)) {
+			return readDonatedTime(specialEntry(donationId));
+		}
 		JsonObject items = this.museumMember.has("items") && this.museumMember.get("items").isJsonObject()
 			? this.museumMember.getAsJsonObject("items")
 			: null;
@@ -903,6 +945,32 @@ public final class MuseumPage {
 				}
 			}
 		}
+		return readDonatedTime(entry);
+	}
+
+	/** {@code SPECIAL:<index>[:<stack>]} → {@code special[index]}. */
+	private JsonObject specialEntry(String key) {
+		if (!this.museumMember.has("special") || !this.museumMember.get("special").isJsonArray()) {
+			return null;
+		}
+		String[] parts = key.split(":");
+		if (parts.length < 2) {
+			return null;
+		}
+		int index;
+		try {
+			index = Integer.parseInt(parts[1]);
+		} catch (NumberFormatException ignored) {
+			return null;
+		}
+		var special = this.museumMember.getAsJsonArray("special");
+		if (index < 0 || index >= special.size() || !special.get(index).isJsonObject()) {
+			return null;
+		}
+		return special.get(index).getAsJsonObject();
+	}
+
+	private static long readDonatedTime(JsonObject entry) {
 		if (entry == null || !entry.has("donated_time") || !entry.get("donated_time").isJsonPrimitive()) {
 			return 0L;
 		}

@@ -112,7 +112,7 @@ public final class ProfileSnapshot {
 		}
 	}
 
-	private static final String LOADING_HOVER = "Loading…";
+	private static final String LOADING_HOVER = "Loading...";
 
 	private final String playerName;
 	private final UUID playerUuid;
@@ -403,7 +403,7 @@ public final class ProfileSnapshot {
 			slayer("wolf", "Sven"), slayer("vampire", "Vampire")
 		);
 		return new ProfileSnapshot(
-			player, null, "…", 0, 0, "…", "-", 0D, 0D, List.of(), skills, slayers, entry("social", "Social"),
+			player, null, "...", 0, 0, "...", "-", 0D, 0D, List.of(), skills, slayers, entry("social", "Social"),
 			entry("runecrafting", "Runecrafting"), null, EmblemInfo.empty()
 		);
 	}
@@ -413,6 +413,6 @@ public final class ProfileSnapshot {
 	}
 
 	private static SlayerEntry slayer(String id, String name) {
-		return new SlayerEntry(id, name, 0, 0F, false, "Loading…", List.of());
+		return new SlayerEntry(id, name, 0, 0F, false, "Loading...", List.of());
 	}
 }

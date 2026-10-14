@@ -147,13 +147,26 @@ public final class RecordsPage {
 				PvTooltip.Line.row("Total", PvDraw.COLOR_MUTED, FormatUtil.commas(s.candyTotal()), PvDraw.COLOR_TEXT),
 				PvTooltip.Line.row("Festivals", PvDraw.COLOR_MUTED, FormatUtil.commas(s.festivals()), PvDraw.COLOR_TEXT)
 			));
-			cy = stat(g, font, "Best Festival", s.bestFestivalCandy() > 0L ? FormatUtil.commas(s.bestFestivalCandy()) : "-",
-				x, cy, w, PvDraw.COLOR_GOLD, s.bestFestivalYear() > 0 ? List.of(
-					PvTooltip.Line.title("Best Spooky Festival", HEADER_HIGHLIGHTS),
+			List<PvTooltip.Line> bestTip = null;
+			if (s.bestFestivalYear() > 0) {
+				bestTip = new ArrayList<>(List.of(
+					PvTooltip.Line.title(
+						"Best Spooky Festival",
+						HEADER_HIGHLIGHTS),
 					PvTooltip.Line.divider(),
 					PvTooltip.Line.row("Year", PvDraw.COLOR_MUTED, String.valueOf(s.bestFestivalYear()), PvDraw.COLOR_TEXT),
-					PvTooltip.Line.row("Candy", PvDraw.COLOR_MUTED, FormatUtil.commas(s.bestFestivalCandy()), PvDraw.COLOR_GOLD)
-				) : null);
+					PvTooltip.Line.row("Points", PvDraw.COLOR_MUTED, FormatUtil.commas(s.bestFestivalPoints()), PvDraw.COLOR_GOLD),
+					PvTooltip.Line.row("Green", PvDraw.COLOR_MUTED, FormatUtil.commas(s.bestFestivalGreen()), CANDY_GREEN),
+					PvTooltip.Line.row("Purple", PvDraw.COLOR_MUTED, FormatUtil.commas(s.bestFestivalPurple()), CANDY_PURPLE)
+				));
+				if (s.festivalHistoryIncomplete()) {
+					bestTip.add(PvTooltip.Line.blank());
+					bestTip.add(PvTooltip.Line.meta("History covers " + FormatUtil.commas(s.festivalHistoryCandy())
+						+ " / " + FormatUtil.commas(s.candyTotal()) + " candy"));
+				}
+			}
+			cy = stat(g, font, "Best Festival", s.bestFestivalPoints() > 0L ? FormatUtil.commas(s.bestFestivalPoints()) : "-",
+				x, cy, w, PvDraw.COLOR_GOLD, bestTip);
 			stat(g, font, "Bats Spawned", FormatUtil.commas(s.batsSpawned()), x, cy, w, PvDraw.COLOR_TEXT, null);
 		}
 	}
@@ -286,26 +299,56 @@ public final class RecordsPage {
 			PvDraw.text(g, font, "No Diana stats", x, cy, PvDraw.COLOR_MUTED);
 			return;
 		}
-		cy = stat(g, font, "Mythos Kills", FormatUtil.commas(m.kills()), x, cy, w, PvDraw.COLOR_GOLD, null);
+		cy = stat(g, font, "Mythological Kills", FormatUtil.commas(m.kills()), x, cy, w, PvDraw.COLOR_GOLD, List.of(
+			PvTooltip.Line.title("Mythological Kills", HEADER_HIGHLIGHTS),
+			PvTooltip.Line.divider(),
+			PvTooltip.Line.of("Mythological creatures killed.", PvDraw.COLOR_TEXT),
+			PvTooltip.Line.meta(DIANA_LIFETIME)
+		));
 		if (m.burrows().isEmpty() || cy + SEP_GAP + STAT_ROW > bottom) {
 			return;
 		}
 		cy = separator(g, px, cy, pw);
-		PvDraw.text(g, font, "Burrows", x, cy, PvDraw.COLOR_MUTED);
+		PvDraw.text(g, font, "Burrows Dug", x, cy, PvDraw.COLOR_MUTED);
 		cy += STAT_ROW;
 		for (MiscStatsSnapshot.BurrowCount burrow : m.burrows()) {
 			if (cy + STAT_ROW > bottom) {
 				break;
 			}
-			List<PvTooltip.Line> tip = new ArrayList<>();
-			tip.add(PvTooltip.Line.title(burrow.label() + " Burrows", HEADER_HIGHLIGHTS));
-			tip.add(PvTooltip.Line.divider());
+			String value = FormatUtil.commas(burrow.total());
+			String label = trim(font, burrow.label(), w - font.width(value) - 6);
+			cy = stat(g, font, label, value, x, cy, w, PvDraw.COLOR_TEXT, burrowTip(burrow));
+		}
+	}
+
+	private static final String DIANA_LIFETIME = "Lifetime, all Diana events on this profile";
+
+	static List<PvTooltip.Line> burrowTip(MiscStatsSnapshot.BurrowCount burrow) {
+		List<PvTooltip.Line> tip = new ArrayList<>();
+		boolean chains = "burrows_chains_complete".equals(burrow.key());
+		tip.add(PvTooltip.Line.title(chains ? "Chains Completed" : burrow.label() + " Burrows", HEADER_HIGHLIGHTS));
+		tip.add(PvTooltip.Line.divider());
+		String about = switch (burrow.key()) {
+			case "burrows_dug_next" -> "First burrow of each chain. Points to the next one.";
+			case "burrows_dug_combat" -> "Burrows that spawned a Mythological creature.";
+			case "burrows_dug_treasure" -> "Burrows that dropped treasure.";
+			case "burrows_chains_complete" -> "Griffin burrow chains finished.";
+			default -> null;
+		};
+		if (about != null) {
+			tip.add(PvTooltip.Line.of(about, PvDraw.COLOR_TEXT));
+		}
+		if (!burrow.byRarity().isEmpty()) {
+			tip.add(PvTooltip.Line.blank());
+			tip.add(PvTooltip.Line.of("By Griffin rarity used", PvDraw.COLOR_MUTED));
 			for (Map.Entry<String, Long> e : burrow.byRarity().entrySet()) {
 				tip.add(PvTooltip.Line.row(e.getKey(), PvDraw.COLOR_MUTED, FormatUtil.commas(e.getValue()), PvDraw.COLOR_TEXT));
 			}
-			tip.add(PvTooltip.Line.row("Total", PvDraw.COLOR_MUTED, FormatUtil.commas(burrow.total()), PvDraw.COLOR_GOLD));
-			cy = stat(g, font, burrow.label(), FormatUtil.commas(burrow.total()), x, cy, w, PvDraw.COLOR_TEXT, tip);
 		}
+		tip.add(PvTooltip.Line.row("Total", PvDraw.COLOR_MUTED, FormatUtil.commas(burrow.total()), PvDraw.COLOR_GOLD));
+		tip.add(PvTooltip.Line.blank());
+		tip.add(PvTooltip.Line.meta(DIANA_LIFETIME));
+		return tip;
 	}
 
 	private static int header(GuiGraphicsExtractor g, Font font, String title, String right, int x, int y, int w, int color) {

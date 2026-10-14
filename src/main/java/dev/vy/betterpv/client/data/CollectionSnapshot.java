@@ -219,13 +219,25 @@ public final class CollectionSnapshot {
 
 	/**
 	 * Display tier from {@link #totalAmount}, floored by {@code unlocked_coll_tiers}
-	 * for shared collections when amounts are missing or split oddly.
+	 * for shared collections when amounts are missing or split oddly. Unlocks above the
+	 * current tier list are reported by {@link #legacyTier} instead.
 	 */
 	public int displayTier(HypixelCollectionsCache.Item item) {
 		if (item == null) {
 			return 0;
 		}
-		return Math.max(item.tierFor(totalAmount(item.id())), unlockedTier(item.id()));
+		int tier = Math.max(item.tierFor(totalAmount(item.id())), unlockedTier(item.id()));
+		return item.maxTiers() > 0 ? Math.min(tier, item.maxTiers()) : tier;
+	}
+
+	// Hypixel keeps old unlocks after shrinking a collection (Redstone went 16 -> 9 tiers in 0.26.1),
+	// so REDSTONE_16 can outlive the tier it names.
+	public int legacyTier(HypixelCollectionsCache.Item item) {
+		if (item == null || item.maxTiers() <= 0) {
+			return 0;
+		}
+		int unlocked = unlockedTier(item.id());
+		return unlocked > item.maxTiers() ? unlocked : 0;
 	}
 
 	/** Same basis as {@link #totalAmount} (real amounts only). */

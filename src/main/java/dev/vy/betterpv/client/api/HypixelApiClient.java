@@ -43,6 +43,7 @@ public final class HypixelApiClient {
 
 	private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 	private static final ConcurrentHashMap<String, JsonObject> PLAYER_CACHE = new ConcurrentHashMap<>();
+	private static final ConcurrentHashMap<String, Long> PLAYER_CACHED_AT = new ConcurrentHashMap<>();
 	private static final ConcurrentHashMap<String, CompletableFuture<Optional<JsonObject>>> PLAYER_IN_FLIGHT =
 		new ConcurrentHashMap<>();
 	private static final InFlightRequestRegistry<String, Optional<JsonObject>> PROFILE_IN_FLIGHT =
@@ -462,9 +463,14 @@ public final class HypixelApiClient {
 	}
 
 	public static CompletableFuture<Optional<JsonObject>> player(UUID uuid) {
+		return player(uuid, Long.MAX_VALUE);
+	}
+
+	/** Refetches when the cached player is older than {@code maxAgeMs} (lastLogin/lastLogout go stale). */
+	public static CompletableFuture<Optional<JsonObject>> player(UUID uuid, long maxAgeMs) {
 		String id = undashed(uuid);
 		JsonObject cached = PLAYER_CACHE.get(id);
-		if (cached != null) {
+		if (cached != null && System.currentTimeMillis() - PLAYER_CACHED_AT.getOrDefault(id, 0L) <= maxAgeMs) {
 			return CompletableFuture.completedFuture(Optional.of(cached));
 		}
 		// Home and Collections both ask for the viewed player at once; share one request.
@@ -487,6 +493,7 @@ public final class HypixelApiClient {
 					? body.getAsJsonObject("player")
 					: body;
 				PLAYER_CACHE.put(id, player);
+				PLAYER_CACHED_AT.put(id, System.currentTimeMillis());
 				return Optional.of(player);
 			},
 			EXECUTOR

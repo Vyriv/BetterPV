@@ -1,6 +1,7 @@
 package dev.vy.betterpv.client.gui.inventories;
 
 import com.google.gson.JsonObject;
+import dev.vy.betterpv.BetterPV;
 import dev.vy.betterpv.client.api.HypixelApiClient;
 import dev.vy.betterpv.client.data.InventorySnapshot;
 import dev.vy.betterpv.client.data.PetLoreResolver;
@@ -15,6 +16,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.minecraft.core.component.DataComponents;
@@ -33,6 +35,7 @@ import net.minecraft.world.item.component.ItemLore;
  * {@link LegacyMaterialMap}, {@link ItemTooltipEnricher}, {@link ItemStackCache}.
  */
 public final class SkyBlockItemFactory {
+	private static final Set<String> FAILED_ICON_IDS = ConcurrentHashMap.newKeySet();
 	/** NEU {@code MINING_2_PORTAL} skull Value (HotM / mining menu stand-in). */
 	private static final String HOTM_TAB_SKULL_VALUE =
 		"ewogICJ0aW1lc3RhbXAiIDogMTYxODk5OTIyNDk2OSwKICAicHJvZmlsZUlkIiA6ICI1NjY3NWIyMjMyZjA0ZWUwODkxNzllOWM5MjA2Y2ZlOCIsCiAgInByb2ZpbGVOYW1lIiA6ICJUaGVJbmRyYSIsCiAgInNpZ25hdHVyZVJlcXVpcmVkIiA6IHRydWUsCiAgInRleHR1cmVzIiA6IHsKICAgICJTS0lOIiA6IHsKICAgICAgInVybCIgOiAiaHR0cDovL3RleHR1cmVzLm1pbmVjcmFmdC5uZXQvdGV4dHVyZS83NDIxM2RjNmRjNGIxNjQxZGVmZDMzM2Y0YTQ3MzJjYzcxNGRkNjc3NzE4ZmExMGYxNDBhNjkzOWMxMmFhMzJiIgogICAgfQogIH0KfQ==";
@@ -563,6 +566,18 @@ public final class SkyBlockItemFactory {
 		if (skyblockId == null || skyblockId.isBlank()) {
 			return new ItemStack(Items.PAPER);
 		}
+		try {
+			return resolveBaseStack(skyblockId);
+		} catch (RuntimeException exception) {
+			// Bad repo / API data must not crash a GUI frame; icons are rebuilt every frame, so warn once per id.
+			if (FAILED_ICON_IDS.add(skyblockId)) {
+				BetterPV.LOGGER.warn("[BetterPV] Icon fallback for {}: {}", skyblockId, exception.toString());
+			}
+			return new ItemStack(Items.PAPER);
+		}
+	}
+
+	private static ItemStack resolveBaseStack(String skyblockId) {
 		String key = skyblockId.toUpperCase(Locale.ROOT);
 		for (String candidate : NeuItemResolver.candidates(skyblockId)) {
 			ItemStack cached = ItemStackCache.getBase(candidate);

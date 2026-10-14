@@ -140,6 +140,25 @@ public final class GardenData {
 		return progressFromCumulative(gardenXp, Math.max(0L, Math.round(xp)));
 	}
 
+	/** Garden caps at 15; past that, every 10,000 XP (the cost of levels 11-15) is one overflow level. */
+	static final long GARDEN_OVERFLOW_STEP = 10_000L;
+
+	/** Overflow level progress past the Garden cap, or null below max. */
+	public static LevelProgress gardenOverflow(double xp) {
+		return overflowFrom(gardenLevel(xp), GARDEN_OVERFLOW_STEP);
+	}
+
+	static LevelProgress overflowFrom(LevelProgress base, long step) {
+		if (base == null || !base.maxed() || step <= 0L) {
+			return null;
+		}
+		long extra = Math.max(0L, base.intoLevel());
+		long levels = extra / step;
+		long into = extra % step;
+		int level = (int) Math.min(Integer.MAX_VALUE, base.level() + levels);
+		return new LevelProgress(level, into, step, into / (float) step, false);
+	}
+
 	public static LevelProgress cropMilestone(String cropId, long amount) {
 		ensureLoaded();
 		long[] table = cropMilestones.get(normalizeCropKey(cropId));

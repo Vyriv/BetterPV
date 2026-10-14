@@ -69,16 +69,18 @@ public final class NetworthBreakdown {
 		return tooltipStyledLines(mode, false);
 	}
 
-	public List<PvTooltip.Line> tooltipStyledLines(NetworthMode mode, boolean showSackItems) {
+	/** @param showItems per-item rows for every category (Home passes left shift) */
+	public List<PvTooltip.Line> tooltipStyledLines(NetworthMode mode, boolean showItems) {
 		List<PvTooltip.Line> lines = new ArrayList<>();
 		lines.add(new PvTooltip.Line(List.of(
 			PvTooltip.Span.of("Networth: ", PvDraw.COLOR_WHITE),
 			PvTooltip.Span.bold(FormatUtil.commas(Math.round(this.total)), PvDraw.COLOR_GOLD)
 		)));
 		if (mode != null) {
-			lines.add(PvTooltip.Line.of(mode.display(), PvDraw.COLOR_MUTED));
+			lines.add(PvTooltip.Line.of(modeLine(mode), PvDraw.COLOR_MUTED));
 		}
 		lines.add(PvTooltip.Line.of("", PvDraw.COLOR_MUTED));
+		boolean anyItems = false;
 		for (Line line : this.categories) {
 			if (line.value() <= 0) {
 				continue;
@@ -87,15 +89,15 @@ public final class NetworthBreakdown {
 			String value = FormatUtil.commas(Math.round(line.value()));
 			lines.add(new PvTooltip.Line(List.of(
 				PvTooltip.Span.of(prefix, PvDraw.COLOR_WHITE),
-				PvTooltip.Span.of(value, PvDraw.COLOR_GOLD)
+				PvTooltip.Span.of(value, PvDraw.COLOR_GOLD),
+				PvTooltip.Span.of(" (" + share(line.value()) + ")", PvDraw.COLOR_MUTED)
 			)));
 			List<ItemLine> items = line.items();
 			if (items.isEmpty()) {
 				continue;
 			}
-			boolean sacks = "sacks".equalsIgnoreCase(line.name());
-			if (sacks && !showSackItems) {
-				lines.add(PvTooltip.Line.of("  Hold L-shift for sack items", PvDraw.COLOR_MUTED));
+			anyItems = true;
+			if (!showItems) {
 				continue;
 			}
 			int shown = Math.min(MAX_ITEM_ROWS, items.size());
@@ -108,15 +110,23 @@ public final class NetworthBreakdown {
 				)));
 			}
 			if (items.size() > shown) {
+				double rest = 0;
+				for (int i = shown; i < items.size(); i++) {
+					rest += items.get(i).value();
+				}
 				lines.add(PvTooltip.Line.of(
-					"  +" + (items.size() - shown) + " more items",
+					"  +" + (items.size() - shown) + " more items: " + FormatUtil.shortCoins(Math.round(rest)),
 					PvDraw.COLOR_MUTED
 				));
 			}
 		}
+		if (anyItems && !showItems) {
+			lines.add(PvTooltip.Line.of("Hold L-shift for item values", PvDraw.COLOR_MUTED));
+		}
 		if (!this.note.isBlank()) {
 			lines.add(PvTooltip.Line.of(this.note, PvDraw.COLOR_MUTED));
 		}
+		lines.add(PvTooltip.Line.of("Prices: BetterPV, SkyHelper fallback", PvDraw.COLOR_MUTED));
 		lines.add(PvTooltip.Line.of("", PvDraw.COLOR_MUTED));
 		lines.add(profileValueLine());
 		lines.add(PvTooltip.Line.of("(Price estimated with cookies)", PvDraw.COLOR_MUTED));
@@ -153,6 +163,18 @@ public final class NetworthBreakdown {
 			PvTooltip.Span.of("Profile Value: ", PvDraw.COLOR_WHITE),
 			PvTooltip.Span.bold("$" + FormatUtil.commas(Math.round(usd)), 0xFF55FF55)
 		));
+	}
+
+	private String share(double value) {
+		return this.total <= 0 ? "0%" : FormatUtil.percent(value / this.total);
+	}
+
+	static String modeLine(NetworthMode mode) {
+		String cosmetics = mode.includeCosmetics() ? "cosmetics included" : "cosmetics excluded";
+		String soulbound = mode.soulboundFilter() == NetworthMode.SoulboundFilter.ONLY_UNSOULBOUND
+			? "soulbound excluded"
+			: "soulbound included";
+		return "Mode: " + mode.display() + " (" + cosmetics + ", " + soulbound + ")";
 	}
 
 	public static Double profileValueUsd(double networthCoins) {

@@ -76,6 +76,26 @@ final class MuseumInventoryDecoder {
 				}
 			}
 		}
+		// Special donations have no catalog id; key them by array index so donated_time stays resolvable.
+		JsonArray special = museumMember.has("special") && museumMember.get("special").isJsonArray()
+			? museumMember.getAsJsonArray("special")
+			: null;
+		if (special != null) {
+			for (int i = 0; i < special.size(); i++) {
+				JsonObject value = InventoryDecodeSupport.obj(special.get(i));
+				if (value == null) {
+					continue;
+				}
+				List<InventoryDecoder.Stack> decoded = InventoryDecodeCache.decodeDataElement(value.get("items"));
+				for (int j = 0; j < decoded.size(); j++) {
+					out.put(specialKey(i, j), decoded.get(j));
+				}
+			}
+		}
 		return out;
+	}
+
+	static String specialKey(int index, int stack) {
+		return stack == 0 ? "SPECIAL:" + index : "SPECIAL:" + index + ":" + stack;
 	}
 }

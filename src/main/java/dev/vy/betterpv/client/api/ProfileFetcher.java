@@ -9,6 +9,7 @@ import dev.vy.betterpv.client.data.CollectionSnapshot;
 import dev.vy.betterpv.client.data.CrimsonSnapshot;
 import dev.vy.betterpv.client.data.DungeonSnapshot;
 import dev.vy.betterpv.client.data.EventsSnapshot;
+import dev.vy.betterpv.client.data.FarmingFortuneEstimate;
 import dev.vy.betterpv.client.data.FishingSnapshot;
 import dev.vy.betterpv.client.data.ForagingSnapshot;
 import dev.vy.betterpv.client.data.FormatUtil;
@@ -215,6 +216,20 @@ public final class ProfileFetcher {
 		String correlationId,
 		long requestStartedNanos
 	) {
+		return fetch(playerName, null, onUpdate, correlationId, requestStartedNanos);
+	}
+
+	/**
+	 * {@code preferredProfileId} keeps a co-op member switch on the same SkyBlock profile instead of
+	 * the member's own selected one. Falls back to their selected profile if they aren't in it.
+	 */
+	public static CompletableFuture<LoadedProfile> fetch(
+		String playerName,
+		String preferredProfileId,
+		Consumer<LoadedProfile> onUpdate,
+		String correlationId,
+		long requestStartedNanos
+	) {
 		RepoData.ensureLoaded();
 		DungeonXpData.ensureLoaded();
 		GardenData.ensureLoaded();
@@ -254,11 +269,12 @@ public final class ProfileFetcher {
 			));
 		}
 		String cleaned = playerName == null ? "" : playerName.trim();
+		String preferred = preferredProfileId == null || preferredProfileId.isBlank() ? null : preferredProfileId;
 		LoadedProfile cached = getCached(nameKey(cleaned));
 		if (cached != null) {
 			BetterPV.LOGGER.info("Profile cache hit for {}", cleaned);
 			logStage(cleaned, "core_ready", startedNanos, correlation);
-			return CompletableFuture.completedFuture(cached);
+			return cachedOnProfile(cached, preferred, onUpdate);
 		}
 		CompletableFuture<Optional<String>> authFut = BetterPvSessionAuth.bearerTokenAsync();
 		HypixelApiClient.UuidName local = localUuid(cleaned);
@@ -277,7 +293,7 @@ public final class ProfileFetcher {
 				putCache(nameKey(cleaned), byUuid);
 				putCache(nameKey(id.name()), byUuid);
 				logStage(cleaned, "core_ready", startedNanos, correlation);
-				return CompletableFuture.completedFuture(byUuid);
+				return cachedOnProfile(byUuid, preferred, onUpdate);
 			}
 
 			return authFut
@@ -303,7 +319,7 @@ public final class ProfileFetcher {
 					CompletableFuture<Optional<JsonArray>> bidsFut = auctionFuts.bids();
 
 					CompletableFuture<LoadedProfile> coreFuture = CompletableFuture.supplyAsync(
-						() -> ProfileHomeParser.parseHomeCore(id.name(), id.uuid(), root),
+						() -> ProfileHomeParser.parseHomeCore(id.name(), id.uuid(), root, preferred),
 						HypixelApiClient.parseExecutor()
 					);
 
@@ -329,6 +345,27 @@ public final class ProfileFetcher {
 					return coreFuture;
 				});
 		});
+	}
+
+	private static CompletableFuture<LoadedProfile> cachedOnProfile(
+		LoadedProfile cached,
+		String preferredProfileId,
+		Consumer<LoadedProfile> onUpdate
+	) {
+		if (preferredProfileId == null
+			|| preferredProfileId.equals(cached.profileId())
+			|| cached.profilesRoot() == null
+			|| cached.snapshot() == null
+			|| cached.snapshot().playerUuid() == null) {
+			return CompletableFuture.completedFuture(cached);
+		}
+		return switchToProfile(
+			cached.snapshot().playerName(),
+			cached.snapshot().playerUuid(),
+			cached.profilesRoot(),
+			preferredProfileId,
+			onUpdate
+		);
 	}
 
 	// Skips the Mojang lookup when the client already knows the player. Tab entries are
@@ -837,7 +874,7 @@ public final class ProfileFetcher {
 		ProfileSnapshot.EmblemInfo emblems = ProfileHomeParser.parseEmblems(leveling);
 
 		String nwText = !includeNetworth || !pricesReady
-			? "…"
+			? "..."
 			: networthNormal.total() > 0
 			? FormatUtil.shortCoins(networthNormal.total())
 			: "-";
@@ -1000,7 +1037,7 @@ public final class ProfileFetcher {
 		BetterPV.LOGGER.info("Profile ready for {} (nw={})", name, nwText);
 		AuctionSnapshot auctionSnapshot = auctions == null ? AuctionSnapshot.empty() : auctions;
 		auctionSnapshot = auctionSnapshot.withStats(AuctionSnapshot.Stats.fromMember(member));
-		PlayerStatsSnapshot playerStats = PlayerStatsCalculator.fromMember(member, inventoryCategories);
+		PlayerStatsSnapshot playerStats = FarmingFortuneEstimate.attach(PlayerStatsCalculator.fromMember(member), member, inventoryCategories);
 		crimson = crimson.withPlayerStats(playerStats);
 
 		LoadedProfile loaded = new LoadedProfile(
@@ -1129,7 +1166,7 @@ public final class ProfileFetcher {
 	/** Registers a listener for deferred networth refreshes (screen generation must filter stale). */
 	public static void addNetworthListener(Consumer<LoadedProfile> listener) {
 		if (listener != null) {
-			NETWORTH_LISTENERS.add(listener);
+			NETWORTH_LISTENERS.addIfAbsent(listener);
 		}
 	}
 

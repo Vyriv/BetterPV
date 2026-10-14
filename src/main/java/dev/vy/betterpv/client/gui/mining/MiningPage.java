@@ -2,6 +2,7 @@ package dev.vy.betterpv.client.gui.mining;
 
 import dev.vy.betterpv.client.data.MiningHotmData;
 import dev.vy.betterpv.client.data.MiningSnapshot;
+import dev.vy.betterpv.client.data.PlayerStatsSnapshot;
 import dev.vy.betterpv.client.gui.mining.MiningUi.HoverZone;
 import dev.vy.betterpv.client.gui.mining.page.GlacitePage;
 import dev.vy.betterpv.client.gui.mining.page.HotmPage;
@@ -20,6 +21,7 @@ public final class MiningPage {
 	private final MiningOverviewPage overview = new MiningOverviewPage();
 	private final HotmPage hotm = new HotmPage();
 	private final GlacitePage glacite = new GlacitePage();
+	private PlayerStatsSnapshot playerStats = PlayerStatsSnapshot.empty();
 
 	public void apply(MiningSnapshot snapshot) {
 		this.snapshot = snapshot == null ? MiningSnapshot.empty() : snapshot;
@@ -28,6 +30,10 @@ public final class MiningPage {
 		this.hotm.reset();
 		this.glacite.reset();
 		MiningHotmData.ensureLoaded();
+	}
+
+	public void setPlayerStats(PlayerStatsSnapshot stats) {
+		this.playerStats = stats == null ? PlayerStatsSnapshot.empty() : stats;
 	}
 
 	public MiningSnapshot snapshot() {
@@ -65,7 +71,7 @@ public final class MiningPage {
 		switch (mode) {
 			case MINING_HOTM -> this.hotm.render(g, font, this.snapshot, this.zones, x, y, w, h, mouseX, mouseY);
 			case MINING_GLACITE -> this.glacite.render(g, font, this.snapshot, this.zones, x, y, w, h, mouseX, mouseY);
-			default -> this.overview.render(g, font, this.snapshot, this.zones, x, y, w, h, mouseX, mouseY);
+			default -> this.overview.render(g, font, this.snapshot, this.playerStats, this.zones, x, y, w, h, mouseX, mouseY);
 		}
 	}
 

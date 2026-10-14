@@ -1,6 +1,7 @@
 package dev.vy.betterpv.client;
 
 import dev.vy.betterpv.client.gui.ProfileViewerScreen;
+import dev.vy.betterpv.client.gui.nav.PvSubTab;
 import dev.vy.betterpv.client.gui.nav.PvTab;
 import java.util.Locale;
 import net.minecraft.client.Minecraft;
@@ -10,6 +11,7 @@ import net.minecraft.network.chat.Style;
 public final class ProfileViewerOpener {
 	private static volatile String pendingName;
 	private static volatile PvTab pendingTab;
+	private static volatile PvSubTab pendingSub;
 	private static volatile int openDelayTicks;
 
 	private ProfileViewerOpener() {
@@ -101,8 +103,14 @@ public final class ProfileViewerOpener {
 			openSelfOr(name);
 			return;
 		}
-		PvTab page = PvTab.fromCommandArg(parts[1]);
-		openSelfOr(name, page != null ? page : PvTab.HOME);
+		PvTab.Route route = routeFor(parts[1]);
+		openSelfOr(name, route.tab(), route.sub());
+	}
+
+	/** Unknown page tokens fall back to Home. */
+	static PvTab.Route routeFor(String page) {
+		PvTab.Route route = PvTab.routeFromCommandArg(page);
+		return route == null ? new PvTab.Route(PvTab.HOME, null) : route;
 	}
 
 	public static void openSelfOr(String name) {
@@ -110,6 +118,10 @@ public final class ProfileViewerOpener {
 	}
 
 	public static void openSelfOr(String name, PvTab tab) {
+		openSelfOr(name, tab, null);
+	}
+
+	public static void openSelfOr(String name, PvTab tab, PvSubTab sub) {
 		Minecraft client = Minecraft.getInstance();
 		if (client == null || client.player == null) {
 			return;
@@ -117,7 +129,7 @@ public final class ProfileViewerOpener {
 		String target = name == null || name.isBlank()
 			? client.player.getGameProfile().name()
 			: name.trim();
-		open(target, tab);
+		open(target, tab, sub);
 	}
 
 	public static void open(String name) {
@@ -125,6 +137,10 @@ public final class ProfileViewerOpener {
 	}
 
 	public static void open(String name, PvTab tab) {
+		open(name, tab, null);
+	}
+
+	public static void open(String name, PvTab tab, PvSubTab sub) {
 		Minecraft client = Minecraft.getInstance();
 		if (client == null) {
 			return;
@@ -134,6 +150,7 @@ public final class ProfileViewerOpener {
 			pendingName = client.player.getGameProfile().name();
 		}
 		pendingTab = tab;
+		pendingSub = sub;
 		// Defer past chat close so ChatScreen does not immediately replace us.
 		openDelayTicks = 2;
 	}
@@ -148,11 +165,13 @@ public final class ProfileViewerOpener {
 		}
 		String name = pendingName;
 		PvTab tab = pendingTab == null ? PvTab.HOME : pendingTab;
+		PvSubTab sub = pendingSub;
 		pendingName = null;
 		pendingTab = null;
+		pendingSub = null;
 		if (name == null || name.isBlank()) {
 			return;
 		}
-		client.setScreen(new ProfileViewerScreen(name, tab));
+		client.setScreen(new ProfileViewerScreen(name, tab, sub));
 	}
 }

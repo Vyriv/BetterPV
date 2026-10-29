@@ -47,9 +47,9 @@ public final class VisitorsPage {
 		this.maxScroll = Math.max(0, rows * (cellH + SLOT_GAP) - gridH);
 		this.scroll = Math.min(this.scroll, this.maxScroll);
 
-		ItemStack grey = new ItemStack(Items.GRAY_DYE);
-		ItemStack yellow = new ItemStack(Items.YELLOW_DYE);
-		ItemStack green = new ItemStack(Items.LIME_DYE);
+		ItemStack grey = new ItemStack(Items.DYE.gray());
+		ItemStack yellow = new ItemStack(Items.DYE.yellow());
+		ItemStack green = new ItemStack(Items.DYE.lime());
 
 		g.enableScissor(lx, gridTop, lx + lw, gridTop + gridH);
 		int baseY = gridTop - this.scroll;

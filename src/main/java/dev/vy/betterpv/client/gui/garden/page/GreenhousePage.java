@@ -83,8 +83,8 @@ public final class GreenhousePage {
 		this.maxScroll = Math.max(0, gridRows * (cellH + SLOT_GAP) - gridH);
 		this.scroll = Math.min(this.scroll, this.maxScroll);
 
-		ItemStack lime = new ItemStack(Items.LIME_DYE);
-		ItemStack yellow = new ItemStack(Items.YELLOW_DYE);
+		ItemStack lime = new ItemStack(Items.DYE.lime());
+		ItemStack yellow = new ItemStack(Items.DYE.yellow());
 
 		if (rows.isEmpty()) {
 			PvDraw.textCentered(g, font, "No greenhouse crops", x + leftW + GAP + rightW / 2, y + h / 2, PvDraw.COLOR_MUTED);

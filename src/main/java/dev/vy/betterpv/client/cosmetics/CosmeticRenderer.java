@@ -158,6 +158,6 @@ public final class CosmeticRenderer {
 	private static void chat(String text) {
 		Minecraft client = Minecraft.getInstance();
 		if (client.gui == null) return;
-		client.gui.getChat().addClientSystemMessage(Component.literal(text));
+		client.gui.hud.getChat().addClientSystemMessage(Component.literal(text));
 	}
 }

@@ -47,7 +47,7 @@ BetterPV uses data, APIs and formulas from a few community projects:
 - [Athen](https://athen.aerii.xyz/prices) - prices
 - [SkyHelper Prices](https://github.com/SkyHelperBot/Prices) - price data and fallback pricing
 - [SkyCofl](https://sky.coflnet.com) - auction history
-- [EliteBot](https://api.elitebot.dev) - Jacob contest history and farming weight
+- [Elite](https://api.eliteskyblock.com) - Jacob contest history and farming weight
 - [SkyCrypt](https://skycrypt.co) - networth/application worth references
 - Senither - weight formula
 - Lily - weight formula

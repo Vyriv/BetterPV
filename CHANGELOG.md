@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.11 — Elite attribution update
+
+### Changed
+- Elite attribution credits now link to [eliteskyblock.com](https://eliteskyblock.com) (was elitebot.dev)
+
 ## 1.2.1 — Minecraft support update
 
 BetterPV now tracks the Minecraft versions people actually play. No fancy feature work this time — just keeping the mod on the right releases.

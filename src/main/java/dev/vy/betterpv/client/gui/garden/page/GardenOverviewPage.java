@@ -405,7 +405,7 @@ public final class GardenOverviewPage {
 				));
 			}
 		}
-		tip.add(PvTooltip.Line.of("Provided by elitebot.dev", CREDIT_C));
+		tip.add(PvTooltip.Line.of("Provided by eliteskyblock.com", CREDIT_C));
 		return tip;
 	}
 

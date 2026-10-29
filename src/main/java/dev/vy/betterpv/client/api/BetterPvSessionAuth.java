@@ -348,7 +348,7 @@ public final class BetterPvSessionAuth {
 			if (mc.gui == null) {
 				return;
 			}
-			mc.gui.getChat().addClientSystemMessage(authFailChat(report, failure));
+			mc.gui.hud.getChat().addClientSystemMessage(authFailChat(report, failure));
 		});
 	}
 
@@ -911,7 +911,7 @@ public final class BetterPvSessionAuth {
 	}
 
 	private static long connectionGeneration(Minecraft client) {
-		if (client.screen instanceof ConnectScreen || client.player == null || client.level == null
+		if (client.gui.screen() instanceof ConnectScreen || client.player == null || client.level == null
 			|| client.getConnection() == null || !client.getConnection().isAcceptingMessages()) return -1L;
 		return CONNECTION_GATE.permit(client.getConnection());
 	}

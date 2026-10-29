@@ -1,0 +1,34 @@
+# Changelog
+
+## 1.2.12 — Jacob contests from Hypixel
+
+Jacob contest history no longer depends on Elite’s contests API. The Jacob tab reads participations straight from Hypixel profile data (`jacobs_contest.contests`), with dates derived from SkyBlock contest keys so the list still sorts newest-first.
+
+### Changed
+- Contest history source: Hypixel SkyBlock profile data instead of Elite `/contests`
+- Contest timestamps inferred from Hypixel contest keys (`year:month_day:crop`) for relative dates and sorting
+- Contests with fewer than 100 crops collected are ignored (same as in-game)
+- Missing `claimed_medal` is derived from `claimed_position` / `claimed_participants`
+
+### Removed
+- Elite contest history fetch, parse path, and Jacob tab credit line (Elite remains for farming weight only)
+
+## 1.2.11 — Elite attribution update
+
+### Changed
+- Elite attribution credits now link to [eliteskyblock.com](https://eliteskyblock.com) (was elitebot.dev)
+
+## 1.2.1 — Minecraft support update
+
+BetterPV now tracks the Minecraft versions people actually play. No fancy feature work this time — just keeping the mod on the right releases.
+
+### Added
+- Support for **Minecraft 26.3** (Fabric Loader `>=0.19.3`, Fabric API `0.165.0+26.3`)
+- 26.3 compile fixes: authlib `SessionService` (was `MinecraftSessionService`) and `InputConstants.isKeyDown(int)`
+
+### Removed
+- Support for **Minecraft 26.1.2** — focusing on 26.2 and 26.3
+
+### Supported versions
+- Minecraft 26.2
+- Minecraft 26.3

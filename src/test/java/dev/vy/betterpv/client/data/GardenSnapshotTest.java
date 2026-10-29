@@ -12,4 +12,11 @@ public class GardenSnapshotTest {
 		assertEquals("WHEAT", GardenSnapshot.cropFromContestKey("10_29:WHEAT"));
 		assertEquals("WHEAT", GardenSnapshot.cropFromContestKey("WHEAT"));
 	}
+
+	@Test
+	public void contestKeyTimestampMatchesSkyBlockEpoch() {
+		// farming-weight SkyBlockTime.fromContestKey("467:4_2:WHEAT")
+		assertEquals(1_768_857_300L, GardenSnapshot.timestampFromContestKey("467:4_2:WHEAT"));
+		assertEquals(1_768_857_300L, GardenSnapshot.timestampFromContestKey("467:4_2:INK_SACK:3"));
+	}
 }

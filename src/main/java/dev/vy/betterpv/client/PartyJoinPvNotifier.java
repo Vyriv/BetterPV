@@ -99,7 +99,7 @@ public final class PartyJoinPvNotifier {
 			if (client == null || client.gui == null) {
 				continue;
 			}
-			client.gui.getChat().addClientSystemMessage(bpvLine(next.name));
+			client.gui.hud.getChat().addClientSystemMessage(bpvLine(next.name));
 		}
 	}
 

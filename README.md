@@ -8,8 +8,8 @@ Use `/pv <player>` to open it.
 
 ## Supported versions
 
-- Minecraft 26.1.2
 - Minecraft 26.2
+- Minecraft 26.3
 
 ## Features
 

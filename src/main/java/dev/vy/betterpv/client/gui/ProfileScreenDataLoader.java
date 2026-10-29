@@ -553,6 +553,6 @@ final class ProfileScreenDataLoader {
 	}
 
 	private boolean stillCurrent(Minecraft client, int generation) {
-		return client.screen == this.screen && this.screen.isLoadGeneration(generation);
+		return client.gui.screen() == this.screen && this.screen.isLoadGeneration(generation);
 	}
 }

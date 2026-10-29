@@ -24,3 +24,4 @@ tmp_heads/
 
 # Assets / Resources
 assets/minecraft/lang/
+.vscode/

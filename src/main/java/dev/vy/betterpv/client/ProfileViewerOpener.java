@@ -172,6 +172,6 @@ public final class ProfileViewerOpener {
 		if (name == null || name.isBlank()) {
 			return;
 		}
-		client.setScreen(new ProfileViewerScreen(name, tab, sub));
+		client.gui.setScreen(new ProfileViewerScreen(name, tab, sub));
 	}
 }

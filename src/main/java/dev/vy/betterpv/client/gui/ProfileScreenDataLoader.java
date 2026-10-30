@@ -33,7 +33,6 @@ final class ProfileScreenDataLoader {
 	private final ProfileViewerScreen screen;
 
 	private boolean gardenFetchStarted;
-	private boolean gardenContestsFetchStarted;
 	private boolean gardenWeightFetchStarted;
 	private boolean museumFetchStarted;
 	private boolean usernameHistoryFetchStarted;
@@ -49,7 +48,6 @@ final class ProfileScreenDataLoader {
 
 	void resetForNewLoad() {
 		this.gardenFetchStarted = false;
-		this.gardenContestsFetchStarted = false;
 		this.gardenWeightFetchStarted = false;
 		this.museumFetchStarted = false;
 		this.bingoFetchStarted = false;
@@ -295,61 +293,6 @@ final class ProfileScreenDataLoader {
 		});
 	}
 
-	void ensureGardenContests() {
-		if (this.gardenContestsFetchStarted) {
-			return;
-		}
-		GardenSnapshot current = this.screen.gardenPage().snapshot();
-		UUID uuid = this.screen.playerUuid();
-		String id = this.screen.profileId();
-		if (uuid == null || id == null || id.isBlank()) {
-			this.screen.gardenPage().apply(current.withContestsError("No profile selected"));
-			this.gardenContestsFetchStarted = true;
-			return;
-		}
-		this.gardenContestsFetchStarted = true;
-		this.screen.gardenPage().apply(current.withContestsLoading());
-		int generation = this.screen.loadGeneration();
-		EliteBotApiClient.contests(uuid, id).whenComplete((opt, error) -> {
-			Minecraft client = Minecraft.getInstance();
-			if (client == null) {
-				return;
-			}
-			client.execute(() -> {
-				if (!stillCurrent(client, generation)) {
-					return;
-				}
-				GardenSnapshot base = this.screen.gardenPage().snapshot();
-				if (error != null) {
-					BetterPV.LOGGER.warn("Elite contests failed for {}", id, error);
-					if (!base.contests().isEmpty()) {
-						this.screen.gardenPage().patch(base.withContestsReady());
-					} else {
-						this.screen.gardenPage().patch(base.withContestsError(
-							error.getMessage() == null ? "Contests unavailable" : error.getMessage()
-						));
-					}
-					return;
-				}
-				if (opt == null || opt.isEmpty()) {
-					// Keep Hypixel contest list if Elite miss.
-					if (!base.contests().isEmpty()) {
-						this.screen.gardenPage().patch(base.withContestsReady());
-					} else {
-						this.screen.gardenPage().patch(base.withContestsError("Contests unavailable"));
-					}
-					return;
-				}
-				try {
-					this.screen.gardenPage().patch(base.withEliteContests(opt.get()));
-				} catch (Exception exception) {
-					BetterPV.LOGGER.warn("Elite contests parse failed for {}", id, exception);
-					this.screen.gardenPage().patch(base.withContestsError("Couldn't load contests"));
-				}
-			});
-		});
-	}
-
 	void ensureGardenWeight() {
 		if (this.gardenWeightFetchStarted) {
 			return;
@@ -553,6 +496,6 @@ final class ProfileScreenDataLoader {
 	}
 
 	private boolean stillCurrent(Minecraft client, int generation) {
-		return client.screen == this.screen && this.screen.isLoadGeneration(generation);
+		return client.gui.screen() == this.screen && this.screen.isLoadGeneration(generation);
 	}
 }

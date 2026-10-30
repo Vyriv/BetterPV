@@ -12,7 +12,6 @@ import java.util.Locale;
 import java.util.Map;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.network.chat.Component;
 
 import static dev.vy.betterpv.client.gui.garden.GardenUi.*;
 
@@ -191,10 +190,6 @@ public final class JacobPage {
 		drawFlipHint(g, font, "Click for bests", rx, ry, rw);
 		ry += font.lineHeight + 3;
 
-		String credit = Component.translatable("betterpv.garden.elite_credit").getString();
-		int creditH = Math.round(font.lineHeight * CREDIT_SCALE) + 4;
-		PvDraw.textScaled(g, font, credit, rx, y + h - PAD - Math.round(font.lineHeight * CREDIT_SCALE), CREDIT_C, CREDIT_SCALE);
-
 		if (snap.contestsLoading()) {
 			PvDraw.text(g, font, "Loading contests...", rx, ry, PvDraw.COLOR_MUTED);
 			this.maxScroll = 0;
@@ -209,7 +204,7 @@ public final class JacobPage {
 		List<GardenSnapshot.ContestEntry> contests = snap.contests();
 		int rowH = Math.max(STAT_ROW, ICON + 2);
 		int listTop = ry;
-		int listH = y + h - PAD - creditH - listTop;
+		int listH = y + h - PAD - listTop;
 		this.scrollTop = listTop;
 		this.scrollH = Math.max(0, listH);
 		this.maxScroll = Math.max(0, contests.size() * rowH - listH);

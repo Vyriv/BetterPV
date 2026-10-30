@@ -71,9 +71,9 @@ public final class FakeBanScreen extends Screen {
 
 		Button backButton;
 		if (this.minecraft != null && this.minecraft.allowsMultiplayer()) {
-			backButton = Button.builder(TO_SERVER_LIST, button -> this.minecraft.setScreen(this.parent)).width(200).build();
+			backButton = Button.builder(TO_SERVER_LIST, button -> this.minecraft.gui.setScreen(this.parent)).width(200).build();
 		} else {
-			backButton = Button.builder(TO_TITLE, button -> this.minecraft.setScreen(new TitleScreen())).width(200).build();
+			backButton = Button.builder(TO_TITLE, button -> this.minecraft.gui.setScreen(new TitleScreen())).width(200).build();
 		}
 		this.layout.addChild(backButton);
 

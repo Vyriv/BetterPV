@@ -3,13 +3,14 @@ plugins {
 	id("net.fabricmc.fabric-loom") version "1.17-SNAPSHOT" apply false
 }
 
-stonecutter active "26.1.2"
+stonecutter active "26.2"
 
 stonecutter parameters {
 	replacements {
 		// Mojang split screen/HUD ownership off Minecraft in 26.2: Minecraft#screen
 		// and Minecraft#setScreen are gone, replaced by Gui#screen()/Gui#setScreen.
-		// Canonical source (26.1.2) still targets the old Minecraft-owned API.
+		// Canonical source (26.2+) already uses the Gui-owned API; these replacements
+		// stay for switching/building across the 26.2 boundary if needed.
 		// Regex (not string()) because "client.screen" is also a plain substring of
 		// Fabric packages like "api.client.screen" — the negative lookbehind keeps
 		// those package/import paths intact.
@@ -84,6 +85,24 @@ stonecutter parameters {
 			replace(
 				"client.getVersionType()",
 				"(net.minecraft.SharedConstants.getCurrentVersion().stable() ? \"release\" : \"snapshot\")"
+			)
+		}
+
+		// authlib 10 (bundled with MC 26.3): MinecraftSessionService renamed to SessionService.
+		// Word boundaries so reverse does not mangle MinecraftSessionService itself.
+		regex(current.parsed >= "26.3") {
+			replace(
+				"\\bMinecraftSessionService\\b" to "SessionService",
+				"\\bSessionService\\b" to "MinecraftSessionService"
+			)
+		}
+
+		// 26.3: InputConstants.isKeyDown(Window, int) became isKeyDown(int).
+		// Negative lookahead keeps reverse from doubling mc.getWindow() on 26.2 source.
+		regex(current.parsed >= "26.3") {
+			replace(
+				"InputConstants\\.isKeyDown\\(mc\\.getWindow\\(\\), " to "InputConstants.isKeyDown(",
+				"InputConstants\\.isKeyDown\\((?!mc\\.getWindow\\(\\))" to "InputConstants.isKeyDown(mc.getWindow(), "
 			)
 		}
 	}

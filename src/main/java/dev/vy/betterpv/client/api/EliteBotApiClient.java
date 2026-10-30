@@ -1,6 +1,5 @@
 package dev.vy.betterpv.client.api;
 
-import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -17,15 +16,20 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import net.fabricmc.loader.api.FabricLoader;
 
 /**
  * Elite Farmers public API ({@code https://api.elitebot.dev}).
- * Used for Jacob contest history; credit in UI like SkyCofl.
+ * Used for farming weight; credit in Garden overview like SkyCofl.
  */
 public final class EliteBotApiClient {
 	private static final String BASE = "https://api.elitebot.dev";
 	private static final Duration TIMEOUT = Duration.ofSeconds(15);
 	private static final long SPACING_MS = 400L;
+	private static final String USER_AGENT = "BetterPV/" + FabricLoader.getInstance()
+		.getModContainer(BetterPV.MOD_ID)
+		.map(container -> container.getMetadata().getVersion().getFriendlyString())
+		.orElse("unknown");
 
 	private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 	private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(2, r -> {
@@ -36,17 +40,6 @@ public final class EliteBotApiClient {
 	private static long nextRequestAtMillis;
 
 	private EliteBotApiClient() {
-	}
-
-	/** Contest participations for a profile (newest-first from API). */
-	public static CompletableFuture<Optional<JsonArray>> contests(UUID playerUuid, String profileId) {
-		if (playerUuid == null || profileId == null || profileId.isBlank()) {
-			return CompletableFuture.completedFuture(Optional.empty());
-		}
-		String player = HypixelApiClient.undashed(playerUuid);
-		String profile = profileId.trim().replace("-", "").toLowerCase();
-		String url = BASE + "/contests/" + player + "/" + profile;
-		return CompletableFuture.supplyAsync(() -> getArray(url), EXECUTOR);
 	}
 
 	/** Farming weight for a profile. */
@@ -60,39 +53,10 @@ public final class EliteBotApiClient {
 		return CompletableFuture.supplyAsync(() -> getObject(url), EXECUTOR);
 	}
 
-	private static Optional<JsonArray> getArray(String url) {
-		waitForSlot();
-		try {
-			HttpRequest request = HttpRequest.newBuilder(URI.create(url)).timeout(TIMEOUT).GET().build();
-			HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
-			if (response.statusCode() < 200 || response.statusCode() >= 300 || response.body() == null || response.body().isBlank()) {
-				BetterPV.LOGGER.warn("Elite GET {} status={}", url, response.statusCode());
-				return Optional.empty();
-			}
-			JsonElement el = JsonParser.parseString(response.body());
-			if (el.isJsonArray()) {
-				return Optional.of(el.getAsJsonArray());
-			}
-			return Optional.empty();
-		} catch (IOException | InterruptedException exception) {
-			BetterPV.LOGGER.warn("Elite GET {} failed", url, exception);
-			if (exception instanceof InterruptedException) {
-				Thread.currentThread().interrupt();
-			}
-			return Optional.empty();
-		} catch (RuntimeException exception) {
-			if (!SoftDataFailure.isSoft(exception)) {
-				throw exception;
-			}
-			BetterPV.LOGGER.warn("Elite GET {} parse failed", url, exception);
-			return Optional.empty();
-		}
-	}
-
 	private static Optional<JsonObject> getObject(String url) {
 		waitForSlot();
 		try {
-			HttpRequest request = HttpRequest.newBuilder(URI.create(url)).timeout(TIMEOUT).GET().build();
+			HttpRequest request = eliteGet(url);
 			HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
 			if (response.statusCode() < 200 || response.statusCode() >= 300 || response.body() == null || response.body().isBlank()) {
 				BetterPV.LOGGER.warn("Elite GET {} status={}", url, response.statusCode());
@@ -116,6 +80,14 @@ public final class EliteBotApiClient {
 			BetterPV.LOGGER.warn("Elite GET {} parse failed", url, exception);
 			return Optional.empty();
 		}
+	}
+
+	private static HttpRequest eliteGet(String url) {
+		return HttpRequest.newBuilder(URI.create(url))
+			.timeout(TIMEOUT)
+			.header("User-Agent", USER_AGENT)
+			.GET()
+			.build();
 	}
 
 	private static synchronized void waitForSlot() {

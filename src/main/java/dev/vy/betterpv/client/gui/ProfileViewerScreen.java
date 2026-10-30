@@ -225,7 +225,7 @@ public final class ProfileViewerScreen extends Screen {
 				return;
 			}
 			client.execute(() -> {
-				if (client.screen != this || generation != this.loadGeneration) {
+				if (client.gui.screen() != this || generation != this.loadGeneration) {
 					return;
 				}
 				if (updated == null || !updated.ok()) {
@@ -239,7 +239,7 @@ public final class ProfileViewerScreen extends Screen {
 				return;
 			}
 			client.execute(() -> {
-				if (client.screen != this || generation != this.loadGeneration) {
+				if (client.gui.screen() != this || generation != this.loadGeneration) {
 					return;
 				}
 				ProfileFetcher.LoadedProfile displayed = loaded;
@@ -284,7 +284,7 @@ public final class ProfileViewerScreen extends Screen {
 			return;
 		}
 		client.execute(() -> {
-			if (client.screen != this || !this.dataReady) {
+			if (client.gui.screen() != this || !this.dataReady) {
 				return;
 			}
 			if (this.playerUuid != null && updated.snapshot() != null
@@ -867,9 +867,6 @@ public final class ProfileViewerScreen extends Screen {
 				this.dataLoader.ensureGardenIsland();
 				this.dataLoader.ensureGardenWeight();
 				PvSubTab sub = activeSub(PvSubTab.GARDEN_OVERVIEW);
-				if (sub == PvSubTab.GARDEN_JACOB) {
-					this.dataLoader.ensureGardenContests();
-				}
 				this.gardenPage.render(g, this.font, sub, x, y, w, h, mouseX, mouseY, this.width, this.height);
 			}
 			case MINING -> {
@@ -980,7 +977,7 @@ public final class ProfileViewerScreen extends Screen {
 	private void openSearchedPlayer(String name) {
 		ProfileViewerScreen next = new ProfileViewerScreen(name);
 		next.recordSearch = true;
-		Minecraft.getInstance().setScreen(next);
+		Minecraft.getInstance().gui.setScreen(next);
 	}
 
 	private void submitPlayerSearch() {

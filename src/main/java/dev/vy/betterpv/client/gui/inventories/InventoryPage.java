@@ -99,6 +99,8 @@ public final class InventoryPage {
 	private boolean accessoryMissingView;
 	private MissingAccessories.Result missingResult;
 	private boolean missingPricedAtCompute;
+	/** When true, missing list sorts by absolute net cost; otherwise by coins per MP. */
+	private boolean missingSortByNetPrice;
 	private int missingScroll;
 	private int missingMaxScroll;
 	private List<Component> missingHoverTip;
@@ -148,6 +150,7 @@ public final class InventoryPage {
 		this.accessoryTuningsH = 0;
 		this.accessoryTuningsHover = false;
 		this.accessoryMissingView = false;
+		this.missingSortByNetPrice = false;
 		this.missingScroll = 0;
 		this.missingMaxScroll = 0;
 		this.missingHoverTip = null;
@@ -798,6 +801,9 @@ public final class InventoryPage {
 			drawAccessoryPowersFace(g, font, contentX, contentY, contentW, contentH, backW);
 		} else if (this.accessoryMissingView) {
 			int toggleW = drawAccessoryViewToggle(g, font, contentX + contentW, contentY, mouseX, mouseY, !animating);
+			String sortLabel = this.missingSortByNetPrice ? "By /MP" : "By Price";
+			toggleW += 4 + drawPanelButton(g, font, sortLabel, contentX + contentW - toggleW - 4, contentY,
+				mouseX, mouseY, !animating, this::toggleMissingSort);
 			this.accessoryTuningsW = 0;
 			this.accessoryTuningsH = 0;
 			this.accessoryTuningsHover = false;
@@ -915,6 +921,12 @@ public final class InventoryPage {
 		this.missingHoverTip = null;
 	}
 
+	private void toggleMissingSort() {
+		this.missingSortByNetPrice = !this.missingSortByNetPrice;
+		this.missingScroll = 0;
+		this.missingHoverTip = null;
+	}
+
 	private MissingAccessories.Result missingAccessories() {
 		boolean pricesReady = ItemPricer.isReady();
 		if (this.missingResult != null && (this.missingPricedAtCompute || !pricesReady)) {
@@ -969,7 +981,10 @@ public final class InventoryPage {
 
 		int listTop = countY + font.lineHeight + 6;
 		int listH = Math.max(0, y + h - listTop);
-		List<MissingAccessories.Entry> entries = result.entries();
+		List<MissingAccessories.Entry> entries = new ArrayList<>(result.entries());
+		entries.sort(this.missingSortByNetPrice
+			? MissingAccessories.byNetCost()
+			: MissingAccessories.byCoinsPerMp());
 		this.missingMaxScroll = Math.max(0, entries.size() * MISSING_ROW - listH);
 		this.missingScroll = Math.min(this.missingScroll, this.missingMaxScroll);
 		if (entries.isEmpty()) {
@@ -993,16 +1008,28 @@ public final class InventoryPage {
 			PvDraw.IconTextAlign align = PvDraw.IconTextAlign.of(rowY, MISSING_ROW, 16, font.lineHeight);
 			SkyBlockIconRenderer.draw(g, entry.id(), x + 1, align.iconY());
 
-			String perMp = entry.priced()
-				? FormatUtil.shortCoins(entry.coinsPerMp()) + "/MP"
-				: entry.soulbound() ? "Soulbound" : "No price";
-			int perMpW = font.width(perMp);
-			PvDraw.textRight(g, font, perMp, x + w - 2, align.textY(), entry.priced() ? PvDraw.COLOR_GOLD : PvDraw.COLOR_MUTED);
-			String total = entry.priced() ? "(" + FormatUtil.shortCoins(entry.netCost()) + ")" : "+" + entry.mpGain() + " MP";
-			int totalW = font.width(total) + 6;
-			PvDraw.textRight(g, font, total, x + w - 2 - perMpW - 6, align.textY(), PvDraw.COLOR_MUTED);
+			// Active sort key in gold on the right; the other metric muted in parentheses.
+			String primary;
+			String secondary;
+			if (entry.priced()) {
+				if (this.missingSortByNetPrice) {
+					primary = FormatUtil.shortCoins(entry.netCost());
+					secondary = "(" + FormatUtil.shortCoins(entry.coinsPerMp()) + "/MP)";
+				} else {
+					primary = FormatUtil.shortCoins(entry.coinsPerMp()) + "/MP";
+					secondary = "(" + FormatUtil.shortCoins(entry.netCost()) + ")";
+				}
+			} else {
+				primary = entry.soulbound() ? "Soulbound" : "No price";
+				secondary = "+" + entry.mpGain() + " MP";
+			}
+			int primaryW = font.width(primary);
+			PvDraw.textRight(g, font, primary, x + w - 2, align.textY(),
+				entry.priced() ? PvDraw.COLOR_GOLD : PvDraw.COLOR_MUTED);
+			int secondaryW = font.width(secondary) + 6;
+			PvDraw.textRight(g, font, secondary, x + w - 2 - primaryW - 6, align.textY(), PvDraw.COLOR_MUTED);
 			int nameX = x + 20;
-			int nameMax = Math.max(20, x + w - 2 - perMpW - totalW - 6 - nameX);
+			int nameMax = Math.max(20, x + w - 2 - primaryW - secondaryW - 6 - nameX);
 			PvDraw.text(g, font, trimToWidth(font, entry.name(), nameMax), nameX, align.textY(),
 				SkyBlockItemFactory.tierArgb(entry.tier()));
 		}
@@ -1665,7 +1692,7 @@ public final class InventoryPage {
 				int dyeX = startX + col * (SLOT + SLOT_GAP);
 				drawSlot(g, font, dyeX, dyeY, null, mouseX, mouseY);
 				ItemStack dye = new ItemStack(
-					col == equippedColumn ? Items.LIME_DYE : Items.LIGHT_GRAY_DYE
+					col == equippedColumn ? Items.DYE.lime() : Items.DYE.lightGray()
 				);
 				g.item(dye, dyeX + 1, dyeY + 1);
 			}

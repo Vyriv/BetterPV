@@ -165,6 +165,17 @@ public final class MagicalPowerCalculator {
 		return familyRank(id == null ? "" : id.trim().toUpperCase(Locale.ROOT));
 	}
 
+	/** Whether {@code id} (or its alias) is listed in {@code accessory_families.json}. */
+	public static boolean hasAccessoryFamily(String id) {
+		ensureFamilies();
+		if (id == null || id.isBlank()) {
+			return false;
+		}
+		String normalized = id.trim().toUpperCase(Locale.ROOT);
+		String canonical = aliasToCanonical.getOrDefault(normalized, normalized);
+		return familyById.containsKey(canonical);
+	}
+
 	public static int magicalPower(String id, String tier) {
 		String normalized = SkyBlockItemFactory.normalizeTier(tier);
 		return magicalPowerFor(id, normalized.isBlank() ? "COMMON" : normalized);

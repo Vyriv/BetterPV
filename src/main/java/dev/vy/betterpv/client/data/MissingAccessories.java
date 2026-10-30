@@ -103,9 +103,16 @@ public final class MissingAccessories {
 		// Keyed by family so ids that share one (abicases) collapse to a single suggestion.
 		Map<String, Entry> byFamily = new LinkedHashMap<>();
 		for (Candidate candidate : missing) {
-			List<String> higher = upgrades.getOrDefault(candidate.id(), List.of());
-			if (higher.stream().anyMatch(missingIds::contains) || hasMissingHigherFamilyMember(candidate.id(), missingIds)) {
-				continue;
+			// Prefer BetterPV families over NEU when present — NEU powder chains are inverted.
+			if (inAccessoryFamily(candidate.id())) {
+				if (hasMissingHigherFamilyMember(candidate.id(), missingIds)) {
+					continue;
+				}
+			} else {
+				List<String> higher = upgrades.getOrDefault(candidate.id(), List.of());
+				if (higher.stream().anyMatch(missingIds::contains)) {
+					continue;
+				}
 			}
 			OwnedTier sold = bestOwnedInChain(candidate.id(), owned, upgrades);
 			int mpGain = Math.max(0, MagicalPowerCalculator.magicalPower(candidate.id(), candidate.tier()) - sold.mp());
@@ -135,11 +142,24 @@ public final class MissingAccessories {
 			}
 		}
 
-		entries.sort(Comparator
+		// Caller sorts: {@link #byCoinsPerMp()} (best value) or {@link #byNetCost()} (cheapest absolute).
+		return new Result(List.copyOf(entries), costToMax, mpToMax, unpricedTop);
+	}
+
+	/** Cheapest coins per Magical Power first; unpriced last. */
+	public static Comparator<Entry> byCoinsPerMp() {
+		return Comparator
 			.comparing((Entry e) -> !e.priced())
 			.thenComparingDouble(e -> e.priced() ? e.coinsPerMp() : 0D)
-			.thenComparing(Entry::name, String.CASE_INSENSITIVE_ORDER));
-		return new Result(List.copyOf(entries), costToMax, mpToMax, unpricedTop);
+			.thenComparing(Entry::name, String.CASE_INSENSITIVE_ORDER);
+	}
+
+	/** Cheapest net cost first (price after selling lower tier); unpriced last. */
+	public static Comparator<Entry> byNetCost() {
+		return Comparator
+			.comparing((Entry e) -> !e.priced())
+			.thenComparingDouble(e -> e.priced() ? e.netCost() : 0D)
+			.thenComparing(Entry::name, String.CASE_INSENSITIVE_ORDER);
 	}
 
 	private static Entry better(Entry a, Entry b) {
@@ -153,20 +173,36 @@ public final class MissingAccessories {
 	}
 
 	private static boolean ownsHigherTier(String id, Set<String> owned, Map<String, List<String>> upgrades) {
+		if (inAccessoryFamily(id)) {
+			String family = MagicalPowerCalculator.accessoryFamily(id);
+			int rank = MagicalPowerCalculator.accessoryFamilyRank(id);
+			for (String ownedId : owned) {
+				if (family.equals(MagicalPowerCalculator.accessoryFamily(ownedId))
+					&& MagicalPowerCalculator.accessoryFamilyRank(ownedId) >= rank) {
+					return true;
+				}
+			}
+			return false;
+		}
 		for (String higher : upgrades.getOrDefault(id, List.of())) {
 			if (owned.contains(higher)) {
 				return true;
 			}
 		}
-		String family = MagicalPowerCalculator.accessoryFamily(id);
-		int rank = MagicalPowerCalculator.accessoryFamilyRank(id);
-		for (String ownedId : owned) {
-			if (family.equals(MagicalPowerCalculator.accessoryFamily(ownedId))
-				&& MagicalPowerCalculator.accessoryFamilyRank(ownedId) >= rank) {
-				return true;
-			}
-		}
 		return false;
+	}
+
+	/**
+	 * True when upgrade order should follow BetterPV family ranks (JSON families or abicases),
+	 * not NEU {@code talisman_upgrades}.
+	 */
+	private static boolean inAccessoryFamily(String id) {
+		if (MagicalPowerCalculator.hasAccessoryFamily(id)) {
+			return true;
+		}
+		// Abicases share the synthetic {@code ABICASE} family without a JSON entry.
+		String family = MagicalPowerCalculator.accessoryFamily(id);
+		return !family.equals(id);
 	}
 
 	private static boolean hasMissingHigherFamilyMember(String id, Set<String> missingIds) {

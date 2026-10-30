@@ -37,7 +37,7 @@ Scope: every player-facing string in `src/main/java` and `assets/betterpv/lang/e
 | `ProfileScreenDataLoader.java:367` | Weight parse failed | Couldn't load weight | Technical. | No |
 | `ProfileScreenDataLoader.java:234,280,335` | Missing profile id | No profile selected | Developer wording. | No |
 | `lang sub.garden_summary` | Overview (Trial) | (unchanged in the audit pass) | See approval list and decisions. | - |
-| `lang garden.elite_credit`, `GardenOverviewPage.java:336` | Contest history provided by elitebot.dev / Provided by elitebot.dev | (unchanged) | Required credit, fine as written. | - |
+| `lang garden.elite_credit`, `GardenOverviewPage.java:336` | Contest history provided by eliteskyblock.com / Provided by eliteskyblock.com | (unchanged) | Required credit, fine as written. | - |
 
 ## Home, Misc Stats, Records
 

@@ -91,7 +91,7 @@ final class ProfileSelectorController {
 					Minecraft client = Minecraft.getInstance();
 					if (client != null) {
 						client.execute(() -> {
-							if (client.screen == this.screen) {
+							if (client.gui.screen() == this.screen) {
 								this.profileCoopFlyoutScroll = 0;
 							}
 						});
@@ -678,7 +678,7 @@ final class ProfileSelectorController {
 			}
 			return;
 		}
-		Minecraft.getInstance().setScreen(this.screen.forCoopMember(name, profileId));
+		Minecraft.getInstance().gui.setScreen(this.screen.forCoopMember(name, profileId));
 	}
 
 	private record CoopMemberHit(int x, int y, int w, int h, String uuid, String name, String profileId) {
@@ -704,7 +704,7 @@ final class ProfileSelectorController {
 				return;
 			}
 			client.execute(() -> {
-				if (client.screen != this.screen || !this.screen.isLoadGeneration(generation)) {
+				if (client.gui.screen() != this.screen || !this.screen.isLoadGeneration(generation)) {
 					return;
 				}
 				if (updated == null || !updated.ok()) {
@@ -718,7 +718,7 @@ final class ProfileSelectorController {
 				return;
 			}
 			client.execute(() -> {
-				if (client.screen != this.screen || !this.screen.isLoadGeneration(generation)) {
+				if (client.gui.screen() != this.screen || !this.screen.isLoadGeneration(generation)) {
 					return;
 				}
 				if (error != null || loaded == null || !loaded.ok()) {

@@ -407,39 +407,6 @@ public final class GardenSnapshot {
 		return copy(false, false, error == null ? "Couldn't load garden" : error, contestsLoaded, contestsLoading, contestsError);
 	}
 
-	public GardenSnapshot withContestsLoading() {
-		return copy(islandLoaded, islandLoading, islandError, false, true, "");
-	}
-
-	public GardenSnapshot withContestsError(String error) {
-		return copy(islandLoaded, islandLoading, islandError, false, false, error == null ? "Contests unavailable" : error);
-	}
-
-	public GardenSnapshot withContestsReady() {
-		return copy(islandLoaded, islandLoading, islandError, true, false, "");
-	}
-
-	public GardenSnapshot withEliteContests(JsonArray array) {
-		List<ContestEntry> list = parseEliteContests(array);
-		// Prefer Elite history when present; keep Hypixel contests if Elite returned nothing useful.
-		if (list.isEmpty() && !this.contests.isEmpty()) {
-			return withContestsReady();
-		}
-		return new GardenSnapshot(
-			islandLoaded, islandLoading, islandError, true, false, "",
-			gardenLevel, gardenFill, gardenMaxed, gardenHover, gardenXp,
-			farmingLevel, farmingFill, farmingMaxed, farmingHover,
-			copper, larvaConsumed, unlockedPlotIds, plotsMax,
-			visitorsCompleted, uniqueVisitors, totalVisits, totalRejected,
-			visitorMilestone, visitorMilestoneFill, visitorMilestoneMaxed, visitorMilestoneHover,
-			uniqueVisitorMilestone, uniqueVisitorMilestoneFill, uniqueVisitorMilestoneMaxed, uniqueVisitorMilestoneHover,
-			crops, visitors, activeVisitors, composter,
-			medals, uniqueBrackets, personalBests, perks, list, gardenChips,
-			greenhouse, greenhouseMeta, farmingWeight,
-			farmingToolkitUnlocked, farmingToolkitSlots
-		);
-	}
-
 	public GardenSnapshot withFarmingWeight(FarmingWeightInfo info) {
 		return new GardenSnapshot(
 			islandLoaded, islandLoading, islandError, contestsLoaded, contestsLoading, contestsError,
@@ -940,6 +907,15 @@ public final class GardenSnapshot {
 		return new GreenhouseMeta(slots, yield, plotLimit, growth, last);
 	}
 
+	/** SkyBlock epoch (2019-06-11 17:55 UTC); contest keys encode time from this. */
+	private static final long SKYBLOCK_EPOCH_SECONDS = 1_560_275_700L;
+	private static final int SKYBLOCK_DAYS_PER_MONTH = 31;
+	private static final int SKYBLOCK_DAYS_PER_YEAR = 372;
+	/** One SkyBlock day = 20 real minutes. */
+	private static final long SKYBLOCK_DAY_SECONDS = 1_200L;
+	/** Hypixel stores sub-threshold joins; the game ignores them, so we do too. */
+	private static final long MIN_CONTEST_COLLECTED = 100L;
+
 	private static List<ContestEntry> parseHypixelContests(JsonObject jacobs) {
 		JsonObject contests = jacobs == null ? null : Leveling.obj(jacobs.get("contests"));
 		if (contests == null) {
@@ -951,40 +927,57 @@ public final class GardenSnapshot {
 				continue;
 			}
 			JsonObject c = e.getValue().getAsJsonObject();
-			String crop = cropFromContestKey(e.getKey());
-			String medal = stringOf(c, "claimed_medal");
-			if (medal.isBlank()) {
-				medal = "none";
-			}
-			out.add(contestEntry(crop, longOf(c, "collected"), medal.toLowerCase(Locale.ROOT),
-				positionOf(c, "claimed_position"), intOf(c, "claimed_participants"), 0L));
-		}
-		return out;
-	}
-
-	private static List<ContestEntry> parseEliteContests(JsonArray array) {
-		if (array == null) {
-			return List.of();
-		}
-		List<ContestEntry> out = new ArrayList<>();
-		for (JsonElement el : array) {
-			if (!el.isJsonObject()) {
+			long collected = longOf(c, "collected");
+			if (collected < MIN_CONTEST_COLLECTED) {
 				continue;
 			}
-			JsonObject c = el.getAsJsonObject();
-			String crop = eliteCrop(c.get("crop"));
-			String medal = eliteMedal(c.get("medal"));
-			out.add(contestEntry(
-				crop,
-				longOf(c, "collected"),
-				medal,
-				positionOf(c, "position"),
-				intOf(c, "participants"),
-				longOf(c, "timestamp")
-			));
+			String crop = cropFromContestKey(e.getKey());
+			int position = positionOf(c, "claimed_position");
+			int participants = intOf(c, "claimed_participants");
+			String medal = stringOf(c, "claimed_medal");
+			if (medal.isBlank()) {
+				medal = medalFromPlacement(position, participants);
+			}
+			out.add(contestEntry(crop, collected, medal.toLowerCase(Locale.ROOT),
+				position, participants, timestampFromContestKey(e.getKey())));
 		}
 		out.sort(Comparator.comparingLong(ContestEntry::timestampSeconds).reversed());
 		return out;
+	}
+
+	/**
+	 * Bracket from 0-based {@code claimed_position} / {@code claimed_participants}
+	 * when Hypixel omits {@code claimed_medal} (same thresholds as Elite farming-weight).
+	 * <p>
+	 * Hypixel brackets include one extra player beyond the raw percentage. With a 0-based
+	 * position that is exactly {@code position <= floor(participants * pct)} — not
+	 * {@code <}, and not a 1-based {@code placement <= floor(...)} (that drops the +1).
+	 */
+	static String medalFromPlacement(int position, int participants) {
+		if (position < 0 || participants <= 0) {
+			return "none";
+		}
+		if (position <= bracketCut(participants, 0.02)) {
+			return "diamond";
+		}
+		if (position <= bracketCut(participants, 0.05)) {
+			return "platinum";
+		}
+		if (position <= bracketCut(participants, 0.1)) {
+			return "gold";
+		}
+		if (position <= bracketCut(participants, 0.3)) {
+			return "silver";
+		}
+		if (position <= bracketCut(participants, 0.6)) {
+			return "bronze";
+		}
+		return "none";
+	}
+
+	/** Inclusive last 0-based index for a Jacob % bracket (Elite / Hypixel +1 slot). */
+	static int bracketCut(int participants, double fraction) {
+		return (int) Math.floor(participants * fraction);
 	}
 
 	private static ContestEntry contestEntry(
@@ -1003,40 +996,6 @@ public final class GardenSnapshot {
 		);
 	}
 
-	private static String eliteCrop(JsonElement el) {
-		if (el == null || el.isJsonNull()) {
-			return "";
-		}
-		if (el.isJsonPrimitive()) {
-			if (el.getAsJsonPrimitive().isNumber()) {
-				return GardenData.eliteCropId(el.getAsInt());
-			}
-			return GardenData.eliteCropId(el.getAsString());
-		}
-		return "";
-	}
-
-	private static String eliteMedal(JsonElement el) {
-		if (el == null || el.isJsonNull()) {
-			return "none";
-		}
-		if (el.isJsonPrimitive()) {
-			if (el.getAsJsonPrimitive().isNumber()) {
-				return GardenData.eliteMedalName(el.getAsInt());
-			}
-			String raw = el.getAsString();
-			if (raw == null || raw.isBlank()) {
-				return "none";
-			}
-			try {
-				return GardenData.eliteMedalName(Integer.parseInt(raw.trim()));
-			} catch (NumberFormatException ignored) {
-				return raw.toLowerCase(Locale.ROOT);
-			}
-		}
-		return "none";
-	}
-
 	static String cropFromContestKey(String key) {
 		if (key == null || key.isBlank()) {
 			return "";
@@ -1047,6 +1006,41 @@ public final class GardenSnapshot {
 		}
 		int second = key.indexOf(':', first + 1);
 		return second >= 0 ? key.substring(second + 1) : key.substring(first + 1);
+	}
+
+	/**
+	 * Unix seconds for a Hypixel contest key {@code year:month_day:CROP}.
+	 * Year is zero-indexed; month and day are 1-indexed (farming-weight SkyBlockTime).
+	 */
+	static long timestampFromContestKey(String key) {
+		if (key == null || key.isBlank()) {
+			return 0L;
+		}
+		int first = key.indexOf(':');
+		if (first < 0) {
+			return 0L;
+		}
+		int second = key.indexOf(':', first + 1);
+		String yearStr = key.substring(0, first);
+		String monthDay = second >= 0 ? key.substring(first + 1, second) : key.substring(first + 1);
+		int us = monthDay.indexOf('_');
+		if (us < 0) {
+			return 0L;
+		}
+		try {
+			int year = Integer.parseInt(yearStr);
+			int month = Integer.parseInt(monthDay.substring(0, us));
+			int day = Integer.parseInt(monthDay.substring(us + 1));
+			if (month < 1 || day < 1) {
+				return 0L;
+			}
+			long elapsedDays = (long) year * SKYBLOCK_DAYS_PER_YEAR
+				+ (long) (month - 1) * SKYBLOCK_DAYS_PER_MONTH
+				+ (day - 1);
+			return SKYBLOCK_EPOCH_SECONDS + elapsedDays * SKYBLOCK_DAY_SECONDS;
+		} catch (NumberFormatException ignored) {
+			return 0L;
+		}
 	}
 
 	static List<GreenhouseRow> buildGreenhouse(List<String> discovered, List<String> analyzed) {
@@ -1226,8 +1220,8 @@ public final class GardenSnapshot {
 
 	/**
 	 * Per-crop highest unique medal as filled orb count (bronze→silver→gold→platinum→diamond).
-	 * Prefers Hypixel {@code unique_brackets} crop lists; merges Elite/Hypixel contest medals
-	 * when bracket crop ids are missing so the Jacob crop-medal row is not stuck on "None yet".
+	 * Prefers Hypixel {@code unique_brackets} crop lists; merges contest medals when bracket
+	 * crop ids are missing so the Jacob crop-medal row is not stuck on "None yet".
 	 */
 	public List<CropMedal> cropMedals() {
 		Map<String, Integer> filledByCrop = new LinkedHashMap<>();
@@ -1247,7 +1241,7 @@ public final class GardenSnapshot {
 				filledByCrop.merge(key.isBlank() ? cropId : key, rank, Math::max);
 			}
 		}
-		// Always allow contest medals to fill gaps (Elite async / count-only unique_brackets).
+		// Fill gaps from claimed contest medals (count-only unique_brackets).
 		for (ContestEntry contest : contests) {
 			if (contest == null) {
 				continue;

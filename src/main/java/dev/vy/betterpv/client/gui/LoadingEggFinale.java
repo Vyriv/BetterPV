@@ -51,9 +51,9 @@ public final class LoadingEggFinale {
 		long now = System.currentTimeMillis();
 		switch (step) {
 			case CLOSE_PV -> {
-				Screen screen = client.screen;
+				Screen screen = client.gui.screen();
 				if (screen instanceof ProfileViewerScreen) {
-					client.setScreen(null);
+					client.gui.setScreen(null);
 				}
 				step = Step.WAIT_AFTER_CLOSE;
 				nextAtMs = now + jitter(900, 1100);

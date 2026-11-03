@@ -18,8 +18,8 @@ import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 
 /**
- * Builds the coloured {@code [BPV] Click to open <name>'s pv.} chat line,
- * posted ~1s after a live party-join message so it does not stack instantly.
+ * Builds the coloured {@code [BPV] Click to open <name>'s pv. [Dungeons] [Kuudra]}
+ * chat line, posted ~1s after a live party-join message so it does not stack instantly.
  *
  * <p>Scheduling is tied to {@link ClientReceiveMessageEvents} only. Chat history
  * restore (Chat Patches / More Chat History) also calls {@code addMessage}, and
@@ -99,7 +99,7 @@ public final class PartyJoinPvNotifier {
 			if (client == null || client.gui == null) {
 				continue;
 			}
-			client.gui.getChat().addClientSystemMessage(bpvLine(next.name));
+			client.gui.hud.getChat().addClientSystemMessage(bpvLine(next.name));
 		}
 	}
 
@@ -134,18 +134,34 @@ public final class PartyJoinPvNotifier {
 	}
 
 	static Component bpvLine(String name) {
-		String cmd = "/pv " + name;
-		Style click = Style.EMPTY
-			.withClickEvent(new ClickEvent.RunCommand(cmd))
-			.withHoverEvent(new HoverEvent.ShowText(
-				Component.literal("Open " + name + "'s BetterPV").withStyle(ChatFormatting.YELLOW)
-			));
+		MutableComponent main = Component.empty();
+		main.append(Component.literal("[BPV] ").withStyle(Style.EMPTY.withColor(0x5B8CFF).withBold(true)));
+		main.append(Component.literal("Click to open ").withStyle(Style.EMPTY.withColor(0xAAAAAA)));
+		main.append(Component.literal(name).withStyle(Style.EMPTY.withColor(0xFFD36A).withUnderlined(true)));
+		main.append(Component.literal("'s pv.").withStyle(Style.EMPTY.withColor(0xAAAAAA)));
+		main.withStyle(clickStyle("/pv " + name, "Open " + name + "'s BetterPV"));
+
 		MutableComponent line = Component.empty();
-		line.append(Component.literal("[BPV] ").withStyle(Style.EMPTY.withColor(0x5B8CFF).withBold(true)));
-		line.append(Component.literal("Click to open ").withStyle(Style.EMPTY.withColor(0xAAAAAA)));
-		line.append(Component.literal(name).withStyle(Style.EMPTY.withColor(0xFFD36A).withUnderlined(true)));
-		line.append(Component.literal("'s pv.").withStyle(Style.EMPTY.withColor(0xAAAAAA)));
-		return line.withStyle(click);
+		line.append(main);
+		line.append(Component.literal(" "));
+		line.append(Component.literal("[Dungeons]").withStyle(
+			clickStyle("/pv " + name + " dungeons", "Open " + name + "'s Dungeons")
+				.withColor(0x55FF55)
+		));
+		line.append(Component.literal(" "));
+		line.append(Component.literal("[Kuudra]").withStyle(
+			clickStyle("/pv " + name + " crimson", "Open " + name + "'s Crimson")
+				.withColor(0xFF6B6B)
+		));
+		return line;
+	}
+
+	private static Style clickStyle(String command, String hover) {
+		return Style.EMPTY
+			.withClickEvent(new ClickEvent.RunCommand(command))
+			.withHoverEvent(new HoverEvent.ShowText(
+				Component.literal(hover).withStyle(ChatFormatting.YELLOW)
+			));
 	}
 
 	private record Pending(String name, long atMs) {

@@ -48,11 +48,13 @@ public final class ChatClickProcessor {
 		if (component == null) {
 			return null;
 		}
-		String channelName = usernameFromChannelChat(stripLegacy(component.getString()));
-		Component remapped = remapTree(component, channelName);
+		String plainMessage = stripLegacy(component.getString());
+		String channelName = usernameFromChannelChat(plainMessage);
+		boolean friendsList = FriendsListTooltip.isFriendsList(plainMessage);
+		Component remapped = remapTree(component, channelName, friendsList);
 		if (channelName != null && !alreadyHasPvClick(remapped)) {
 			MutableComponent copy = remapped.copy();
-			copy.setStyle(pvStyle(copy.getStyle(), channelName));
+			copy.setStyle(pvStyle(copy.getStyle(), channelName, false));
 			return copy;
 		}
 		return remapped;
@@ -73,9 +75,9 @@ public final class ChatClickProcessor {
 		return username;
 	}
 
-	private static Component remapTree(Component component, String fallbackName) {
+	private static Component remapTree(Component component, String fallbackName, boolean friendsList) {
 		List<Component> siblings = component.getSiblings();
-		Style remappedStyle = remapStyle(component.getStyle(), fallbackName, component.plainCopy().getString());
+		Style remappedStyle = remapStyle(component.getStyle(), fallbackName, component.plainCopy().getString(), friendsList);
 		boolean styleChanged = remappedStyle != component.getStyle();
 
 		MutableComponent output = component.copy();
@@ -86,7 +88,7 @@ public final class ChatClickProcessor {
 
 		boolean childChanged = false;
 		for (Component sibling : siblings) {
-			Component next = remapTree(sibling, fallbackName);
+			Component next = remapTree(sibling, fallbackName, friendsList);
 			output.append(next);
 			if (next != sibling) {
 				childChanged = true;
@@ -99,7 +101,7 @@ public final class ChatClickProcessor {
 		return output;
 	}
 
-	private static Style remapStyle(Style style, String fallbackName, String spanText) {
+	private static Style remapStyle(Style style, String fallbackName, String spanText, boolean friendsList) {
 		if (style == null) {
 			return style;
 		}
@@ -118,10 +120,10 @@ public final class ChatClickProcessor {
 			return style;
 		}
 		if (isSocialOrProfileClick(click) || looksLikeSocialHover(hoverPlain(style))) {
-			return pvStyle(style, name);
+			return pvStyle(style, name, friendsList);
 		}
 		if (fallbackName != null && click != null && shouldReplaceChannelClick(click)) {
-			return pvStyle(style, name);
+			return pvStyle(style, name, false);
 		}
 		return style;
 	}
@@ -305,9 +307,12 @@ public final class ChatClickProcessor {
 		return t.toLowerCase(Locale.ROOT);
 	}
 
-	private static Style pvStyle(Style style, String name) {
+	private static Style pvStyle(Style style, String name, boolean friendsList) {
 		Component tip = Component.translatable("betterpv.chat.click_pv", name);
 		Style base = style == null ? Style.EMPTY : style;
+		if (friendsList) {
+			tip = FriendsListTooltip.tooltip(base.getHoverEvent(), tip);
+		}
 		return base
 			.withClickEvent(new ClickEvent.RunCommand("/pv " + name))
 			.withHoverEvent(new HoverEvent.ShowText(tip));

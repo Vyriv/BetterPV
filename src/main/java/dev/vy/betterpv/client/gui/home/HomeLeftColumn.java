@@ -82,14 +82,12 @@ final class HomeLeftColumn {
 
 	private static String NW_LABEL;
 	private static String WEIGHT_LABEL;
-	private static String PURSE_LABEL;
-	private static String BANK_LABEL;
+	private static String COINS_LABEL;
 	private static String SKILL_AVG_LABEL;
 	private static int NW_LABEL_W = -1;
 	private static int SKILL_AVG_LABEL_W = -1;
 	private static int WEIGHT_LABEL_W = -1;
-	private static int PURSE_LABEL_W = -1;
-	private static int BANK_LABEL_W = -1;
+	private static int COINS_LABEL_W = -1;
 
 	void clearCaches() {
 		this.cachedStyledName = null;
@@ -409,11 +407,14 @@ final class HomeLeftColumn {
 		drawSkillAverage(g, font, x, ty, w, snapshot, zones);
 
 		ty += layout.line;
-		String bankValue = FormatUtil.shortCoins(snapshot.bankCoins());
+		Component coinsValue = Component.empty()
+			.append(PvDraw.styled(HomeTooltips.coinsShort(snapshot.purseCoins()), PvDraw.COLOR_GOLD, true))
+			.append(PvDraw.styled(" / ", PvDraw.COLOR_MUTED, false))
+			.append(PvDraw.styled(HomeTooltips.coinsShort(snapshot.bankCoins()), PvDraw.COLOR_GOLD, true));
 		Component bankLine = Component.empty()
-			.append(PvDraw.styled(BANK_LABEL, 0xFF55FF55, false))
-			.append(PvDraw.styled(bankValue, PvDraw.COLOR_GOLD, true));
-		int bankW = BANK_LABEL_W + font.width(PvDraw.styled(bankValue, PvDraw.COLOR_GOLD, true));
+			.append(PvDraw.styled(COINS_LABEL, 0xFF55FF55, false))
+			.append(coinsValue);
+		int bankW = COINS_LABEL_W + font.width(coinsValue);
 		int bankX = x + (w - bankW) / 2;
 		g.text(font, bankLine, bankX, ty, PvDraw.COLOR_WHITE, false);
 		this.bankHitX = bankX;
@@ -646,16 +647,14 @@ final class HomeLeftColumn {
 		if (NW_LABEL == null) {
 			NW_LABEL = Component.translatable("betterpv.home.networth_label").getString();
 			WEIGHT_LABEL = Component.translatable("betterpv.home.weight_label").getString();
-			PURSE_LABEL = Component.translatable("betterpv.home.purse_label").getString();
-			BANK_LABEL = Component.translatable("betterpv.home.bank_label").getString();
+			COINS_LABEL = Component.translatable("betterpv.home.coins_label").getString();
 			SKILL_AVG_LABEL = Component.translatable("betterpv.home.skill_avg_label").getString();
 		}
 		if (NW_LABEL_W < 0) {
 			NW_LABEL_W = font.width(NW_LABEL);
 			SKILL_AVG_LABEL_W = font.width(SKILL_AVG_LABEL);
 			WEIGHT_LABEL_W = font.width(WEIGHT_LABEL);
-			PURSE_LABEL_W = font.width(PURSE_LABEL);
-			BANK_LABEL_W = font.width(BANK_LABEL);
+			COINS_LABEL_W = font.width(COINS_LABEL);
 		}
 	}
 

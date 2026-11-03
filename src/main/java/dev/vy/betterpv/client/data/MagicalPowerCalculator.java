@@ -43,7 +43,7 @@ public final class MagicalPowerCalculator {
 		"COMMON", "UNCOMMON", "RARE", "EPIC", "LEGENDARY", "MYTHIC", "DIVINE", "SPECIAL", "VERY_SPECIAL"
 	);
 	private static final List<String> RECOMB_LADDER = List.of(
-		"COMMON", "UNCOMMON", "RARE", "EPIC", "LEGENDARY", "MYTHIC"
+		"COMMON", "UNCOMMON", "RARE", "EPIC", "LEGENDARY", "MYTHIC", "DIVINE"
 	);
 
 	private static final Pattern LORE_RARITY = Pattern.compile(
@@ -115,8 +115,9 @@ public final class MagicalPowerCalculator {
 		for (Candidate c : bestByFamily.values()) {
 			total += magicalPowerFor(c.id(), c.tier());
 		}
-		if (riftPrismConsumed && !hasRiftPrismItem) {
-			total += 11;
+		if (riftPrismConsumed) {
+			// Consuming the RARE prism replaces its ordinary 8 MP with 11 permanent MP.
+			total += hasRiftPrismItem ? 3 : 11;
 		}
 		if (hasAbicase && abiphoneContacts > 0) {
 			total += abiphoneContacts / 2;
@@ -141,16 +142,25 @@ public final class MagicalPowerCalculator {
 	}
 
 	public static boolean riftPrismConsumed(JsonObject member) {
+		return Boolean.TRUE.equals(riftPrismConsumedState(member));
+	}
+
+	/** Null means the profile does not expose enough Rift access data to determine the state. */
+	public static Boolean riftPrismConsumedState(JsonObject member) {
 		if (member == null) {
-			return false;
+			return null;
 		}
 		JsonObject rift = obj(member.get("rift"));
 		JsonObject access = rift == null ? null : obj(rift.get("access"));
-		if (access == null || !access.has("consumed_prism")) {
-			return false;
+		if (access == null) {
+			return null;
 		}
 		JsonElement el = access.get("consumed_prism");
-		return el != null && el.isJsonPrimitive() && el.getAsBoolean();
+		// Hypixel omits false booleans from many member payloads. An available access object with no key is unconsumed.
+		if (el == null || el.isJsonNull()) {
+			return false;
+		}
+		return el.isJsonPrimitive() && el.getAsJsonPrimitive().isBoolean() ? el.getAsBoolean() : null;
 	}
 
 	/** Family root from {@code accessory_families.json}, or the id itself when it has no family. */
@@ -165,15 +175,36 @@ public final class MagicalPowerCalculator {
 		return familyRank(id == null ? "" : id.trim().toUpperCase(Locale.ROOT));
 	}
 
+	/** Whether {@code id} (or its alias) is listed in {@code accessory_families.json}. */
+	public static boolean hasAccessoryFamily(String id) {
+		ensureFamilies();
+		if (id == null || id.isBlank()) {
+			return false;
+		}
+		String normalized = id.trim().toUpperCase(Locale.ROOT);
+		String canonical = aliasToCanonical.getOrDefault(normalized, normalized);
+		return familyById.containsKey(canonical);
+	}
+
 	public static int magicalPower(String id, String tier) {
 		String normalized = SkyBlockItemFactory.normalizeTier(tier);
 		return magicalPowerFor(id, normalized.isBlank() ? "COMMON" : normalized);
 	}
 
-	private static int magicalPowerFor(String id, String tier) {
-		if ("RIFT_PRISM".equals(id)) {
-			return 11;
+	/** Rarity after one valid recombobulator application, or the input rarity when it cannot increase. */
+	public static String recombobulatedTier(String tier) {
+		return bumpTier(SkyBlockItemFactory.normalizeTier(tier));
+	}
+
+	/** Effective rarity from the profile item's lore and NBT, including a recombobulator. */
+	public static String effectiveTier(String id, InventorySnapshot.Slot slot) {
+		if (slot == null) {
+			return "";
 		}
+		return effectiveTier(id, slot.extraAttributes(), slot.lore());
+	}
+
+	private static int magicalPowerFor(String id, String tier) {
 		int base = MP_BY_TIER.getOrDefault(tier, 0);
 		if ("HEGEMONY_ARTIFACT".equals(id)) {
 			return base * 2;

@@ -41,13 +41,7 @@ public final class MiningPage {
 	}
 
 	public boolean mouseClicked(double mx, double my) {
-		if (this.lastSub == PvSubTab.MINING_HOTM) {
-			return this.hotm.mouseClicked(mx, my);
-		}
-		if (this.lastSub == PvSubTab.MINING_GLACITE) {
-			return this.glacite.mouseClicked(mx, my);
-		}
-		return this.overview.mouseClicked(mx, my);
+		return this.lastSub == PvSubTab.MINING_HOTM && this.hotm.mouseClicked(mx, my);
 	}
 
 	public void render(
@@ -62,9 +56,6 @@ public final class MiningPage {
 				case MINING_HOTM -> this.hotm.onEnter();
 				case MINING_GLACITE -> this.glacite.onEnter();
 				default -> this.overview.onEnter();
-			}
-			if (mode != PvSubTab.MINING_OVERVIEW) {
-				this.overview.leaveOverview();
 			}
 		}
 

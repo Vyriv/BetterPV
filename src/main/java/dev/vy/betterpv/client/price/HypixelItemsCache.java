@@ -47,7 +47,7 @@ public final class HypixelItemsCache {
 	/** Kick a fetch now if nothing is loaded yet (the startup fetch fails before session auth exists). */
 	public static void requestIfEmpty() {
 		long now = System.currentTimeMillis();
-		if (items.isEmpty() && BetterPvSessionAuth.remainingAuthCooldownMillis() == 0L && !IN_FLIGHT.get() && now - lastRequestMs > 5_000L) {
+		if (items.isEmpty() && BetterPvSessionAuth.canFetchResources() && !IN_FLIGHT.get() && now - lastRequestMs > 5_000L) {
 			lastRequestMs = now;
 			EXECUTOR.execute(HypixelItemsCache::refreshSafely);
 		}

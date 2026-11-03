@@ -71,6 +71,34 @@ public final class PlayerCustomizationRegistry {
 		return snapshot.scoreboardGradientNameCandidates;
 	}
 
+	static NameStyleMatcher.Index nameplateDisplayMatcher() {
+		return snapshot.matchers.nameplateDisplay;
+	}
+
+	static NameStyleMatcher.Index tabDisplayMatcher() {
+		return snapshot.matchers.tabDisplay;
+	}
+
+	static NameStyleMatcher.Index chatHeaderNameMatcher() {
+		return snapshot.matchers.chatHeader;
+	}
+
+	static NameStyleMatcher.Index gradientNameMatcher() {
+		return snapshot.matchers.gradient;
+	}
+
+	static NameStyleMatcher.Index scoreboardDisplayNameMatcher() {
+		return snapshot.matchers.scoreboardDisplay;
+	}
+
+	static NameStyleMatcher.Index scoreboardStyledNameMatcher() {
+		return snapshot.matchers.scoreboardStyled;
+	}
+
+	static NameStyleMatcher.Index fontNameMatcher() {
+		return snapshot.matchers.font;
+	}
+
 	public static PlayerCustomization find(GameProfile profile) {
 		if (profile == null) return null;
 		Snapshot current = snapshot;
@@ -148,6 +176,16 @@ public final class PlayerCustomizationRegistry {
 		ComparatorByCandidateLength.sort(scoreboardDisplayNameCandidates);
 		ComparatorByCandidateLength.sort(scoreboardStyledNameCandidates);
 		ComparatorByCandidateLength.sort(scoreboardGradientNameCandidates);
+		List<NameCandidate> fontNameCandidates = new ArrayList<>(chatHeaderNameCandidates);
+		fontNameCandidates.addAll(gradientNameCandidates);
+		NameMatchers matchers = new NameMatchers(
+			NameStyleMatcher.compile(nameplateDisplayCandidates),
+			NameStyleMatcher.compile(tabDisplayCandidates),
+			NameStyleMatcher.compile(chatHeaderNameCandidates),
+			NameStyleMatcher.compile(gradientNameCandidates),
+			NameStyleMatcher.compile(scoreboardDisplayNameCandidates),
+			NameStyleMatcher.compile(scoreboardStyledNameCandidates),
+			NameStyleMatcher.compile(fontNameCandidates));
 
 		snapshot = new Snapshot(
 			snapshot.version + 1L,
@@ -163,6 +201,7 @@ public final class PlayerCustomizationRegistry {
 			List.copyOf(scoreboardDisplayNameCandidates),
 			List.copyOf(scoreboardStyledNameCandidates),
 			List.copyOf(scoreboardGradientNameCandidates),
+			matchers,
 			effectiveEntries.stream().anyMatch(PlayerCustomization::hasCapeCustomization));
 	}
 
@@ -471,10 +510,18 @@ public final class PlayerCustomizationRegistry {
 			List<NameCandidate> chatHeaderNameCandidates,
 			List<NameCandidate> styledNameCandidates, List<NameCandidate> gradientNameCandidates,
 			List<NameCandidate> scoreboardDisplayNameCandidates, List<NameCandidate> scoreboardStyledNameCandidates,
-			List<NameCandidate> scoreboardGradientNameCandidates, boolean hasCapeCustomizations) {
+			List<NameCandidate> scoreboardGradientNameCandidates, NameMatchers matchers, boolean hasCapeCustomizations) {
 		static Snapshot empty() {
-			return new Snapshot(0L, List.of(), Map.of(), Map.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), false);
+			NameStyleMatcher.Index empty = NameStyleMatcher.compile(List.of());
+			return new Snapshot(0L, List.of(), Map.of(), Map.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+				new NameMatchers(empty, empty, empty, empty, empty, empty, empty), false);
 		}
+	}
+
+	private record NameMatchers(NameStyleMatcher.Index nameplateDisplay, NameStyleMatcher.Index tabDisplay,
+	                            NameStyleMatcher.Index chatHeader, NameStyleMatcher.Index gradient,
+	                            NameStyleMatcher.Index scoreboardDisplay, NameStyleMatcher.Index scoreboardStyled,
+	                            NameStyleMatcher.Index font) {
 	}
 
 	private static final class ComparatorByCandidateLength {

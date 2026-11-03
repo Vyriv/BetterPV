@@ -7,6 +7,7 @@ import dev.vy.betterpv.client.data.InventorySnapshot;
 import dev.vy.betterpv.client.data.PetLoreResolver;
 import dev.vy.betterpv.client.data.PetSnapshot;
 import dev.vy.betterpv.client.gui.PvDraw;
+import dev.vy.betterpv.client.networth.NbtAttrs;
 import dev.vy.betterpv.client.neu.NeuRepoCache;
 import dev.vy.betterpv.client.neu.SkyBlockPackCache;
 import java.util.ArrayList;
@@ -20,9 +21,11 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.CustomData;
@@ -357,6 +360,35 @@ public final class SkyBlockItemFactory {
 		return texturedHead(value);
 	}
 
+	/**
+	 * Stack for the home mannequin / worn preview. Unlike {@link #toStack}, body pieces keep a real
+	 * armor material (so CIT packs can retexture them) and skull helmets stay as textured heads.
+	 * {@code ExtraAttributes.skin} / {@code dye_item} are preserved for cosmetics.
+	 */
+	public static ItemStack toEquippedStack(InventorySnapshot.Slot slot) {
+		if (slot == null || slot.isEmpty()) {
+			return ItemStack.EMPTY;
+		}
+		CompoundTag attrs = slot.extraAttributes();
+		ItemStack stack = equippedBase(slot.id()).copy();
+		if (stack.isEmpty()) {
+			return ItemStack.EMPTY;
+		}
+		stack.setCount(1);
+		if (slot.dyeColor() != null && LegacyMaterialMap.isLeather(stack.getItem())) {
+			stack.set(DataComponents.DYED_COLOR, new DyedItemColor(slot.dyeColor() & 0xFFFFFF));
+		}
+		if (stack.is(Items.PLAYER_HEAD)) {
+			applyEquippedSkullTexture(stack, slot, attrs);
+		}
+		applyEquippedItemModel(stack, slot.id(), attrs);
+		applySkyBlockIdentity(stack, slot.id(), attrs);
+		if (stack.is(Items.PLAYER_HEAD) && !SkullTextureApplier.isTexturedPlayerHead(stack)) {
+			return ItemStack.EMPTY;
+		}
+		return stack;
+	}
+
 	public static ItemStack toStack(InventorySnapshot.Slot slot) {
 		if (slot == null || slot.isEmpty()) {
 			return ItemStack.EMPTY;
@@ -550,16 +582,147 @@ public final class SkyBlockItemFactory {
 	 * Stamp SkyBlock id onto {@code custom_data} so CIT packs (FurfSky) can match.
 	 */
 	public static void applySkyBlockIdentity(ItemStack stack, String skyblockId) {
+		applySkyBlockIdentity(stack, skyblockId, null);
+	}
+
+	/**
+	 * Stamp SkyBlock id plus live cosmetics ({@code skin}, {@code dye_item}) for worn preview / CIT.
+	 */
+	public static void applySkyBlockIdentity(ItemStack stack, String skyblockId, CompoundTag liveAttrs) {
 		if (stack == null || stack.isEmpty() || skyblockId == null || skyblockId.isBlank()) {
 			return;
 		}
 		String id = skyblockId.toUpperCase(Locale.ROOT);
+		String skin = liveAttrs == null ? null : NbtAttrs.string(liveAttrs, "skin");
+		String dyeItem = liveAttrs == null ? null : NbtAttrs.string(liveAttrs, "dye_item");
 		CustomData.update(DataComponents.CUSTOM_DATA, stack, tag -> {
 			tag.putString("id", id);
 			CompoundTag extra = new CompoundTag();
 			extra.putString("id", id);
+			if (skin != null && !skin.isBlank()) {
+				extra.putString("skin", skin);
+			}
+			if (dyeItem != null && !dyeItem.isBlank()) {
+				extra.putString("dye_item", dyeItem);
+			}
 			tag.put("ExtraAttributes", extra);
 		});
+	}
+
+	/**
+	 * Icon builders often resolve skinned body armor to {@code PLAYER_HEAD}. For worn preview, promote
+	 * chest/legs/boots to a real armor item; leave skull helmets as heads (converting them to diamond
+	 * helmets is what produced the wrong fin/glow on the mannequin).
+	 */
+	private static ItemStack equippedBase(String skyblockId) {
+		ItemStack base = baseStack(skyblockId);
+		if (!base.is(Items.PLAYER_HEAD)) {
+			return base;
+		}
+		Item armor = resolveWearableArmorItem(skyblockId);
+		return armor != null ? new ItemStack(armor) : base;
+	}
+
+	private static Item resolveWearableArmorItem(String skyblockId) {
+		if (skyblockId == null || skyblockId.isBlank()) {
+			return null;
+		}
+		JsonObject def = HypixelItemResolver.hypixelDef(skyblockId);
+		if (def != null && def.has("material") && def.get("material").isJsonPrimitive()) {
+			String material = def.get("material").getAsString();
+			int durability = 0;
+			if (def.has("durability") && def.get("durability").isJsonPrimitive()) {
+				try {
+					durability = def.get("durability").getAsInt();
+				} catch (RuntimeException ignored) {
+				}
+			}
+			Item fromMaterial = LegacyMaterialMap.resolveMaterial(material, skyblockId, durability);
+			if (isWearableArmor(fromMaterial)) {
+				return fromMaterial;
+			}
+			// Explicit skull material → keep PLAYER_HEAD (Spirit Mask, skyblock head helmets, etc.).
+			if (material != null) {
+				String mat = material.toUpperCase(Locale.ROOT);
+				if (mat.contains("SKULL") || mat.equals("PLAYER_HEAD")) {
+					return null;
+				}
+			}
+		}
+		// Only promote body pieces from a skull icon → armor. Never guess helmets (they stay heads).
+		String model = itemModel(skyblockId);
+		String upper = skyblockId.toUpperCase(Locale.ROOT);
+		boolean bodyPiece = upper.contains("CHESTPLATE") || upper.contains("TUNIC")
+			|| upper.contains("LEGGINGS") || upper.contains("PANTS")
+			|| upper.contains("BOOTS");
+		if (model != null && !model.isBlank() && bodyPiece) {
+			Item guessed = LegacyMaterialMap.guessFromId(skyblockId);
+			return isWearableBodyArmor(guessed) ? guessed : null;
+		}
+		return null;
+	}
+
+	private static boolean isWearableArmor(Item item) {
+		return isWearableBodyArmor(item) || isWearableHelmet(item);
+	}
+
+	private static boolean isWearableHelmet(Item item) {
+		if (item == null || item == Items.PLAYER_HEAD || item == Items.PAPER) {
+			return false;
+		}
+		return BuiltInRegistries.ITEM.getKey(item).getPath().endsWith("_helmet");
+	}
+
+	private static boolean isWearableBodyArmor(Item item) {
+		if (item == null || item == Items.PLAYER_HEAD || item == Items.PAPER) {
+			return false;
+		}
+		String path = BuiltInRegistries.ITEM.getKey(item).getPath();
+		return path.endsWith("_chestplate")
+			|| path.endsWith("_leggings")
+			|| path.endsWith("_boots");
+	}
+
+	private static void applyEquippedSkullTexture(
+		ItemStack stack,
+		InventorySnapshot.Slot slot,
+		CompoundTag attrs
+	) {
+		String value = slot.skullValue();
+		String signature = slot.skullSignature();
+		if ((value == null || value.isBlank()) && attrs != null) {
+			String skinId = NbtAttrs.string(attrs, "skin");
+			if (skinId != null && !skinId.isBlank()) {
+				JsonObject skinDef = HypixelItemResolver.hypixelDef(skinId);
+				value = HypixelItemResolver.extractHypixelSkinValue(skinDef);
+				signature = HypixelItemResolver.extractHypixelSkinSignature(skinDef);
+				if (HypixelItemResolver.isBrokenHypixelPlaceholderSkin(value)) {
+					value = null;
+					signature = null;
+				}
+			}
+		}
+		if (value != null && !value.isBlank()) {
+			SkullTextureApplier.applyValue(stack, value, signature);
+		}
+	}
+
+	private static void applyEquippedItemModel(ItemStack stack, String skyblockId, CompoundTag attrs) {
+		String model = null;
+		String skinId = attrs == null ? null : NbtAttrs.string(attrs, "skin");
+		if (skinId != null && !skinId.isBlank()) {
+			model = itemModel(skinId);
+		}
+		if (model == null || model.isBlank()) {
+			model = itemModel(skyblockId);
+		}
+		if (model == null || model.isBlank()) {
+			return;
+		}
+		Identifier modelId = Identifier.tryParse(model.trim());
+		if (modelId != null) {
+			stack.set(DataComponents.ITEM_MODEL, modelId);
+		}
 	}
 
 	private static ItemStack baseStack(String skyblockId) {

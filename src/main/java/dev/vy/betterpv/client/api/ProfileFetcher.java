@@ -32,6 +32,7 @@ import dev.vy.betterpv.client.networth.InventoryDecoder;
 import dev.vy.betterpv.client.networth.NetworthBreakdown;
 import dev.vy.betterpv.client.networth.NetworthCalculator;
 import dev.vy.betterpv.client.networth.NetworthMode;
+import dev.vy.betterpv.client.price.HypixelItemsCache;
 import dev.vy.betterpv.client.price.ItemPricer;
 import dev.vy.betterpv.client.weight.WeightBreakdown;
 import dev.vy.betterpv.client.weight.WeightCalculator;
@@ -299,6 +300,8 @@ public final class ProfileFetcher {
 			return authFut
 				.thenCompose(ignored -> {
 					logStage(cleaned, "auth", startedNanos, correlation);
+					// The startup fetch fails before session auth; load item data alongside the profile.
+					HypixelItemsCache.requestIfEmpty();
 					return HypixelApiClient.skyblockProfiles(id.uuid(), correlation);
 				})
 				.thenCompose(profilesOpt -> {

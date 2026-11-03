@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Locale;
+import java.util.function.Predicate;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientSendMessageEvents;
 import net.fabricmc.loader.api.FabricLoader;
@@ -82,10 +83,14 @@ public final class CosmeticRenderer {
 	}
 
 	private static String owner(String mode) {
+		return resolveOwner(mode, id -> FabricLoader.getInstance().isModLoaded(id));
+	}
+
+	static String resolveOwner(String mode, Predicate<String> isModLoaded) {
 		return switch (mode) {
 			case "auto" -> {
 				for (String id : AUTO_PRIORITY) {
-					if (FabricLoader.getInstance().isModLoaded(id)) yield id;
+					if (isModLoaded.test(id)) yield id;
 				}
 				yield null;
 			}
@@ -115,7 +120,7 @@ public final class CosmeticRenderer {
 		};
 	}
 
-	private static String normalize(String value) {
+	static String normalize(String value) {
 		if (value == null) return null;
 		return switch (value.trim().toLowerCase(Locale.ROOT)) {
 			case "auto" -> "auto";
@@ -158,6 +163,6 @@ public final class CosmeticRenderer {
 	private static void chat(String text) {
 		Minecraft client = Minecraft.getInstance();
 		if (client.gui == null) return;
-		client.gui.getChat().addClientSystemMessage(Component.literal(text));
+		client.gui.hud.getChat().addClientSystemMessage(Component.literal(text));
 	}
 }

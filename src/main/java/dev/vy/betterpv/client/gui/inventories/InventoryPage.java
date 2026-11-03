@@ -3,6 +3,7 @@ package dev.vy.betterpv.client.gui.inventories;
 import dev.vy.betterpv.client.data.FormatUtil;
 import dev.vy.betterpv.client.data.InventorySnapshot;
 import dev.vy.betterpv.client.data.MissingAccessories;
+import dev.vy.betterpv.client.data.MissingAccessoryTooltip;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
 import dev.vy.betterpv.client.gui.SkyBlockStats;
@@ -55,6 +56,7 @@ public final class InventoryPage {
 	private static final int FLIP_MS = 480;
 	private static final int POWERS_ROW = 12;
 	private static final int MISSING_ROW = 18;
+	private static final int MISSING_FOLLOW_UP_INDENT = 10;
 
 	private InventorySnapshot snapshot = InventorySnapshot.empty();
 	private InventoryPane pane = InventoryPane.INVENTORY;
@@ -99,6 +101,12 @@ public final class InventoryPage {
 	private boolean accessoryMissingView;
 	private MissingAccessories.Result missingResult;
 	private boolean missingPricedAtCompute;
+	private boolean missingRecipesAtCompute;
+	/** When true, missing list sorts by absolute net cost; otherwise by coins per MP. */
+	private boolean missingSortByNetPrice;
+	private List<MissingAccessories.Entry> missingOrdered;
+	private MissingAccessories.Result missingOrderedFor;
+	private boolean missingOrderedByNetPrice;
 	private int missingScroll;
 	private int missingMaxScroll;
 	private List<Component> missingHoverTip;
@@ -148,6 +156,7 @@ public final class InventoryPage {
 		this.accessoryTuningsH = 0;
 		this.accessoryTuningsHover = false;
 		this.accessoryMissingView = false;
+		this.missingSortByNetPrice = false;
 		this.missingScroll = 0;
 		this.missingMaxScroll = 0;
 		this.missingHoverTip = null;
@@ -798,6 +807,9 @@ public final class InventoryPage {
 			drawAccessoryPowersFace(g, font, contentX, contentY, contentW, contentH, backW);
 		} else if (this.accessoryMissingView) {
 			int toggleW = drawAccessoryViewToggle(g, font, contentX + contentW, contentY, mouseX, mouseY, !animating);
+			String sortLabel = this.missingSortByNetPrice ? "By /MP" : "By Price";
+			toggleW += 4 + drawPanelButton(g, font, sortLabel, contentX + contentW - toggleW - 4, contentY,
+				mouseX, mouseY, !animating, this::toggleMissingSort);
 			this.accessoryTuningsW = 0;
 			this.accessoryTuningsH = 0;
 			this.accessoryTuningsHover = false;
@@ -915,31 +927,73 @@ public final class InventoryPage {
 		this.missingHoverTip = null;
 	}
 
+	private void toggleMissingSort() {
+		this.missingSortByNetPrice = !this.missingSortByNetPrice;
+		this.missingScroll = 0;
+		this.missingHoverTip = null;
+	}
+
 	private MissingAccessories.Result missingAccessories() {
 		boolean pricesReady = ItemPricer.isReady();
-		if (this.missingResult != null && (this.missingPricedAtCompute || !pricesReady)) {
+		boolean recipesReady = NeuRepoCache.isReady();
+		if (this.missingResult != null && (this.missingPricedAtCompute || !pricesReady)
+			&& (this.missingRecipesAtCompute || !recipesReady)) {
 			return this.missingResult;
 		}
 		if (HypixelItemsCache.allItems().isEmpty()) {
 			HypixelItemsCache.requestIfEmpty();
 			return null;
 		}
-		List<String> owned = new ArrayList<>();
-		for (InventorySnapshot.Page bagPage : pagesFor(InventoryPane.ACCESSORY_BAG)) {
-			for (InventorySnapshot.Slot slot : bagPage.slots()) {
-				if (slot != null && !slot.isEmpty() && slot.id() != null) {
-					owned.add(slot.id());
-				}
-			}
-		}
-		this.missingResult = MissingAccessories.compute(owned);
+		List<MissingAccessories.OwnedAccessory> owned = missingAccessoryOwnership();
+		this.missingResult = MissingAccessories.compute(new MissingAccessories.Profile(
+			owned,
+			this.snapshot.inventoryApi(),
+			this.snapshot.accessoryInfo().riftPrismConsumed()
+		));
 		this.missingPricedAtCompute = pricesReady;
+		this.missingRecipesAtCompute = recipesReady;
 		List<String> ids = new ArrayList<>(this.missingResult.entries().size());
 		for (MissingAccessories.Entry entry : this.missingResult.entries()) {
 			ids.add(entry.id());
 		}
 		SkyBlockItemFactory.prefetchIds(ids);
 		return this.missingResult;
+	}
+
+	/** All decoded places an accessory can be stored, so higher family tiers outside the bag suppress false upgrades. */
+	private List<MissingAccessories.OwnedAccessory> missingAccessoryOwnership() {
+		List<MissingAccessories.OwnedAccessory> owned = new ArrayList<>();
+		addOwnedAccessories(owned, this.snapshot.inventory(), "Inventory");
+		for (InventorySnapshot.Page page : this.snapshot.accessoryBag()) {
+			addOwnedAccessories(owned, page, MissingAccessories.ACCESSORY_BAG);
+		}
+		for (InventorySnapshot.Page page : this.snapshot.enderChest()) {
+			addOwnedAccessories(owned, page, "Ender Chest");
+		}
+		for (InventorySnapshot.Page page : this.snapshot.backpacks()) {
+			addOwnedAccessories(owned, page, page.title());
+		}
+		if (this.snapshot.personalVaultPresent()) {
+			addOwnedAccessories(owned, this.snapshot.personalVault(), "Personal Vault");
+		}
+		if (this.snapshot.timePocketPresent()) {
+			addOwnedAccessories(owned, this.snapshot.timePocket(), "Time Pocket");
+		}
+		return owned;
+	}
+
+	private static void addOwnedAccessories(
+		List<MissingAccessories.OwnedAccessory> owned, InventorySnapshot.Page page, String location
+	) {
+		if (page == null) {
+			return;
+		}
+		for (InventorySnapshot.Slot slot : page.slots()) {
+			MissingAccessories.OwnedAccessory accessory = MissingAccessories.OwnedAccessory.fromSlot(slot, location);
+			if (accessory != null) {
+				owned.add(accessory);
+			}
+		}
 	}
 
 	private void drawAccessoryMissingFace(
@@ -965,11 +1019,22 @@ public final class InventoryPage {
 		if (result.unpricedTop() > 0) {
 			count += "  ·  " + FormatUtil.commas(result.unpricedTop()) + " unpriced";
 		}
+		if (result.unknownStates() > 0) {
+			count += "  ·  " + FormatUtil.commas(result.unknownStates()) + " unknown";
+		}
 		PvDraw.text(g, font, trimToWidth(font, count, w), x, countY, PvDraw.COLOR_MUTED);
 
 		int listTop = countY + font.lineHeight + 6;
 		int listH = Math.max(0, y + h - listTop);
-		List<MissingAccessories.Entry> entries = result.entries();
+		if (this.missingOrdered == null || this.missingOrderedFor != result
+			|| this.missingOrderedByNetPrice != this.missingSortByNetPrice) {
+			this.missingOrdered = MissingAccessories.ordered(result.entries(), this.missingSortByNetPrice
+				? MissingAccessories.byNetCost()
+				: MissingAccessories.byCoinsPerMp());
+			this.missingOrderedFor = result;
+			this.missingOrderedByNetPrice = this.missingSortByNetPrice;
+		}
+		List<MissingAccessories.Entry> entries = this.missingOrdered;
 		this.missingMaxScroll = Math.max(0, entries.size() * MISSING_ROW - listH);
 		this.missingScroll = Math.min(this.missingScroll, this.missingMaxScroll);
 		if (entries.isEmpty()) {
@@ -991,18 +1056,39 @@ public final class InventoryPage {
 				this.missingHoverTip = missingTooltip(entry);
 			}
 			PvDraw.IconTextAlign align = PvDraw.IconTextAlign.of(rowY, MISSING_ROW, 16, font.lineHeight);
-			SkyBlockIconRenderer.draw(g, entry.id(), x + 1, align.iconY());
+			int indent = entry.prerequisite() == null ? 0 : MISSING_FOLLOW_UP_INDENT;
+			SkyBlockIconRenderer.draw(g, entry.id(), x + 1 + indent, align.iconY());
 
-			String perMp = entry.priced()
-				? FormatUtil.shortCoins(entry.coinsPerMp()) + "/MP"
-				: entry.soulbound() ? "Soulbound" : "No price";
-			int perMpW = font.width(perMp);
-			PvDraw.textRight(g, font, perMp, x + w - 2, align.textY(), entry.priced() ? PvDraw.COLOR_GOLD : PvDraw.COLOR_MUTED);
-			String total = entry.priced() ? "(" + FormatUtil.shortCoins(entry.netCost()) + ")" : "+" + entry.mpGain() + " MP";
-			int totalW = font.width(total) + 6;
-			PvDraw.textRight(g, font, total, x + w - 2 - perMpW - 6, align.textY(), PvDraw.COLOR_MUTED);
-			int nameX = x + 20;
-			int nameMax = Math.max(20, x + w - 2 - perMpW - totalW - 6 - nameX);
+			// Active sort key in gold on the right; the other metric muted in parentheses.
+			String primary;
+			String secondary;
+			if (entry.type() == MissingAccessories.UpgradeType.MOVE_TO_BAG) {
+				primary = "Free";
+				secondary = "(+" + entry.mpGain() + " MP)";
+			} else if (entry.priced()) {
+				if (this.missingSortByNetPrice) {
+					primary = FormatUtil.shortCoins(entry.netCost());
+					secondary = "(" + FormatUtil.shortCoins(entry.coinsPerMp()) + "/MP)";
+				} else {
+					primary = FormatUtil.shortCoins(entry.coinsPerMp()) + "/MP";
+					secondary = "(" + FormatUtil.shortCoins(entry.netCost()) + ")";
+				}
+			} else {
+				primary = switch (entry.priceStatus()) {
+					case NOT_PRICED -> "Progression";
+					case UNKNOWN_STATE -> "Unknown";
+					case STALE -> "Stale price";
+					default -> entry.soulbound() ? "Soulbound" : "No price";
+				};
+				secondary = entry.unknownState() ? "(state unknown)" : "+" + entry.mpGain() + " MP";
+			}
+			int primaryW = font.width(primary);
+			PvDraw.textRight(g, font, primary, x + w - 2, align.textY(),
+				entry.priced() ? PvDraw.COLOR_GOLD : PvDraw.COLOR_MUTED);
+			int secondaryW = font.width(secondary) + 6;
+			PvDraw.textRight(g, font, secondary, x + w - 2 - primaryW - 6, align.textY(), PvDraw.COLOR_MUTED);
+			int nameX = x + 20 + indent;
+			int nameMax = Math.max(20, x + w - 2 - primaryW - secondaryW - 6 - nameX);
 			PvDraw.text(g, font, trimToWidth(font, entry.name(), nameMax), nameX, align.textY(),
 				SkyBlockItemFactory.tierArgb(entry.tier()));
 		}
@@ -1012,38 +1098,25 @@ public final class InventoryPage {
 	private static List<Component> missingTooltip(MissingAccessories.Entry entry) {
 		List<Component> lines = new ArrayList<>();
 		lines.add(PvDraw.styled(entry.name(), SkyBlockItemFactory.tierArgb(entry.tier()), true));
-		lines.add(PvDraw.styled(entry.tier().replace('_', ' '), SkyBlockItemFactory.tierArgb(entry.tier()), false));
-		lines.add(Component.empty());
-		MutableComponent price = Component.empty();
-		price.append(PvDraw.styled("Price ", PvDraw.COLOR_MUTED, false));
-		price.append(entry.priced()
-			? PvDraw.styled(FormatUtil.commas(Math.round(entry.price())), PvDraw.COLOR_GOLD, false)
-			: PvDraw.styled(entry.soulbound() ? "Soulbound" : "No price", PvDraw.COLOR_MUTED, false));
-		lines.add(price);
-		if (entry.soldId() != null) {
-			MutableComponent sold = Component.empty();
-			sold.append(PvDraw.styled("After selling ", PvDraw.COLOR_MUTED, false));
-			sold.append(PvDraw.styled(entry.soldName(), PvDraw.COLOR_TEXT, false));
-			if (entry.soldPrice() > 0D) {
-				sold.append(PvDraw.styled(" +" + FormatUtil.shortCoins(entry.soldPrice()), PvDraw.COLOR_GOLD, false));
+		for (MissingAccessoryTooltip.Line line : MissingAccessoryTooltip.lines(entry)) {
+			if (line.spacer()) {
+				lines.add(Component.empty());
+				continue;
 			}
-			lines.add(sold);
-			if (entry.priced()) {
-				MutableComponent net = Component.empty();
-				net.append(PvDraw.styled("Net cost ", PvDraw.COLOR_MUTED, false));
-				net.append(PvDraw.styled(FormatUtil.commas(Math.round(entry.netCost())), PvDraw.COLOR_GOLD, false));
-				lines.add(net);
+			int color = switch (line.tone()) {
+				case MUTED -> PvDraw.COLOR_MUTED;
+				case TEXT -> PvDraw.COLOR_TEXT;
+				case GOLD -> PvDraw.COLOR_GOLD;
+				case AQUA -> 0xFF55FFFF;
+			};
+			if (line.label() == null) {
+				lines.add(PvDraw.styled(line.value(), color, false));
+				continue;
 			}
-		}
-		MutableComponent mp = Component.empty();
-		mp.append(PvDraw.styled("Magical Power ", PvDraw.COLOR_MUTED, false));
-		mp.append(PvDraw.styled("+" + entry.mpGain(), 0xFF55FFFF, false));
-		lines.add(mp);
-		if (entry.priced() && entry.mpGain() > 0) {
-			MutableComponent perMp = Component.empty();
-			perMp.append(PvDraw.styled("Coins per MP ", PvDraw.COLOR_MUTED, false));
-			perMp.append(PvDraw.styled(FormatUtil.shortCoins(entry.coinsPerMp()), PvDraw.COLOR_GOLD, false));
-			lines.add(perMp);
+			MutableComponent row = Component.empty();
+			row.append(PvDraw.styled(line.label() + ": ", PvDraw.COLOR_MUTED, false));
+			row.append(PvDraw.styled(line.value(), color, false));
+			lines.add(row);
 		}
 		return lines;
 	}
@@ -1665,7 +1738,7 @@ public final class InventoryPage {
 				int dyeX = startX + col * (SLOT + SLOT_GAP);
 				drawSlot(g, font, dyeX, dyeY, null, mouseX, mouseY);
 				ItemStack dye = new ItemStack(
-					col == equippedColumn ? Items.LIME_DYE : Items.LIGHT_GRAY_DYE
+					col == equippedColumn ? Items.DYE.lime() : Items.DYE.lightGray()
 				);
 				g.item(dye, dyeX + 1, dyeY + 1);
 			}

@@ -14,7 +14,6 @@ public final class NetworthBreakdown {
 	/** Hypixel store pack: gems for $4.99. */
 	private static final double GEMS_PER_PACK = 675.0;
 	private static final double USD_PER_PACK = 4.99;
-	private static final int MAX_ITEM_ROWS = 12;
 
 	public record ItemLine(String id, String label, long count, double value) {
 	}
@@ -66,11 +65,6 @@ public final class NetworthBreakdown {
 	}
 
 	public List<PvTooltip.Line> tooltipStyledLines(NetworthMode mode) {
-		return tooltipStyledLines(mode, false);
-	}
-
-	/** @param showItems per-item rows for every category (Home passes left shift) */
-	public List<PvTooltip.Line> tooltipStyledLines(NetworthMode mode, boolean showItems) {
 		List<PvTooltip.Line> lines = new ArrayList<>();
 		lines.add(new PvTooltip.Line(List.of(
 			PvTooltip.Span.of("Networth: ", PvDraw.COLOR_WHITE),
@@ -80,7 +74,6 @@ public final class NetworthBreakdown {
 			lines.add(PvTooltip.Line.of(modeLine(mode), PvDraw.COLOR_MUTED));
 		}
 		lines.add(PvTooltip.Line.of("", PvDraw.COLOR_MUTED));
-		boolean anyItems = false;
 		for (Line line : this.categories) {
 			if (line.value() <= 0) {
 				continue;
@@ -92,41 +85,10 @@ public final class NetworthBreakdown {
 				PvTooltip.Span.of(value, PvDraw.COLOR_GOLD),
 				PvTooltip.Span.of(" (" + share(line.value()) + ")", PvDraw.COLOR_MUTED)
 			)));
-			List<ItemLine> items = line.items();
-			if (items.isEmpty()) {
-				continue;
-			}
-			anyItems = true;
-			if (!showItems) {
-				continue;
-			}
-			int shown = Math.min(MAX_ITEM_ROWS, items.size());
-			for (int i = 0; i < shown; i++) {
-				ItemLine item = items.get(i);
-				String countBit = item.count() > 1L ? " ×" + FormatUtil.commas(item.count()) : "";
-				lines.add(new PvTooltip.Line(List.of(
-					PvTooltip.Span.of("  " + item.label() + countBit + ": ", PvDraw.COLOR_MUTED),
-					PvTooltip.Span.of(FormatUtil.shortCoins(Math.round(item.value())), PvDraw.COLOR_GOLD)
-				)));
-			}
-			if (items.size() > shown) {
-				double rest = 0;
-				for (int i = shown; i < items.size(); i++) {
-					rest += items.get(i).value();
-				}
-				lines.add(PvTooltip.Line.of(
-					"  +" + (items.size() - shown) + " more items: " + FormatUtil.shortCoins(Math.round(rest)),
-					PvDraw.COLOR_MUTED
-				));
-			}
-		}
-		if (anyItems && !showItems) {
-			lines.add(PvTooltip.Line.of("Hold L-shift for item values", PvDraw.COLOR_MUTED));
 		}
 		if (!this.note.isBlank()) {
 			lines.add(PvTooltip.Line.of(this.note, PvDraw.COLOR_MUTED));
 		}
-		lines.add(PvTooltip.Line.of("Prices: BetterPV, SkyHelper fallback", PvDraw.COLOR_MUTED));
 		lines.add(PvTooltip.Line.of("", PvDraw.COLOR_MUTED));
 		lines.add(profileValueLine());
 		lines.add(PvTooltip.Line.of("(Price estimated with cookies)", PvDraw.COLOR_MUTED));

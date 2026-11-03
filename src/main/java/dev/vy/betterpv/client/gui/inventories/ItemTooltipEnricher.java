@@ -1,5 +1,8 @@
 package dev.vy.betterpv.client.gui.inventories;
 
+import dev.vy.betterpv.client.data.ArmorColorClassifier;
+import dev.vy.betterpv.client.data.ArmorColorService;
+import dev.vy.betterpv.client.data.ArmorColorTooltip;
 import dev.vy.betterpv.client.data.FormatUtil;
 import dev.vy.betterpv.client.data.InventorySnapshot;
 import dev.vy.betterpv.client.gui.SkyBlockSymbols;
@@ -58,8 +61,37 @@ final class ItemTooltipEnricher {
 		if (includeEstimatedValue) {
 			appendEstimatedValueHint(lines, slot);
 		}
+		appendArmorColor(lines, slot);
 		appendCreatedDate(lines, slot);
 		return lines;
+	}
+
+	/** Leather colour hex plus its classification, directly under the item name. */
+	static void appendArmorColor(List<Component> lines, InventorySnapshot.Slot slot) {
+		if (lines == null) {
+			return;
+		}
+		ArmorColorClassifier.Result result = ArmorColorService.classify(slot);
+		if (result == null) {
+			return;
+		}
+		List<String> plain = new ArrayList<>(lines.size());
+		for (Component line : lines) {
+			plain.add(line == null ? null : line.getString());
+		}
+		List<Component> colorLines = new ArrayList<>();
+		for (ArmorColorTooltip.Line model : ArmorColorTooltip.lines(result)) {
+			MutableComponent line = Component.empty();
+			for (ArmorColorTooltip.Segment segment : model.segments()) {
+				line.append(Component.literal(segment.text()).withStyle(segmentStyle(segment.rgb())));
+			}
+			colorLines.add(line);
+		}
+		ArmorColorTooltip.insertBelowName(lines, colorLines, ArmorColorTooltip.existingColorLine(plain, result.rgb()));
+	}
+
+	private static Style segmentStyle(int rgb) {
+		return Style.EMPTY.withColor(rgb).withItalic(false);
 	}
 
 	/** Rebuild T7 rainbow enchants from current time (cached lore bakes a static rainbow). */

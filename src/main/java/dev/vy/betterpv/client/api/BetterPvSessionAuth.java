@@ -229,6 +229,11 @@ public final class BetterPvSessionAuth {
 		return Math.max(0L, nextMojangAuthAttemptAtMillis - System.currentTimeMillis());
 	}
 
+	/** True when an authenticated resource request can go out now without forcing a new Mojang proof. */
+	public static boolean canFetchResources() {
+		return SessionAuthPolicy.resourceFetchAllowed(isTokenValid(), remainingAuthCooldownMillis());
+	}
+
 	private static boolean cooldownActive() {
 		synchronized (LOCK) {
 			long remaining = remainingAuthCooldownMillis();
@@ -348,7 +353,7 @@ public final class BetterPvSessionAuth {
 			if (mc.gui == null) {
 				return;
 			}
-			mc.gui.getChat().addClientSystemMessage(authFailChat(report, failure));
+			mc.gui.hud.getChat().addClientSystemMessage(authFailChat(report, failure));
 		});
 	}
 
@@ -911,7 +916,7 @@ public final class BetterPvSessionAuth {
 	}
 
 	private static long connectionGeneration(Minecraft client) {
-		if (client.screen instanceof ConnectScreen || client.player == null || client.level == null
+		if (client.gui.screen() instanceof ConnectScreen || client.player == null || client.level == null
 			|| client.getConnection() == null || !client.getConnection().isAcceptingMessages()) return -1L;
 		return CONNECTION_GATE.permit(client.getConnection());
 	}

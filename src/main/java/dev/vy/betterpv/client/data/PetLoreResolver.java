@@ -64,7 +64,7 @@ public final class PetLoreResolver {
 		return "§7[Lvl " + pet.level() + "] " + tierColor + pet.displayName();
 	}
 
-	public record PetType(String type, String name, String tier, String neuId) {
+	public record PetType(String type, String name, String tier, int tierIndex, String neuId) {
 	}
 
 	private static final String[] PET_TIERS = {"COMMON", "UNCOMMON", "RARE", "EPIC", "LEGENDARY", "MYTHIC", "DIVINE", "SPECIAL", "VERY_SPECIAL"};
@@ -93,7 +93,7 @@ public final class PetLoreResolver {
 				String stripped = (bracket >= 0 ? raw.substring(bracket + 2) : raw).replaceAll("§.", "").trim();
 				if (!stripped.isEmpty()) name = stripped;
 			}
-			out.add(new PetType(type, name, PET_TIERS[best], neuId));
+			out.add(new PetType(type, name, PET_TIERS[best], best, neuId));
 		}
 		out.sort(java.util.Comparator.comparing((PetType p) -> p.name().toLowerCase(Locale.ROOT)));
 		return out;

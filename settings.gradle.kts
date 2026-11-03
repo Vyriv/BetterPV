@@ -14,7 +14,7 @@ plugins {
 rootProject.name = "BetterPV"
 
 stonecutter.create(rootProject) {
-	version("26.1.2").buildscript = "build.gradle"
 	version("26.2").buildscript = "build.gradle"
-	vcsVersion = "26.1.2"
+	version("26.3").buildscript = "build.gradle"
+	vcsVersion = "26.2"
 }

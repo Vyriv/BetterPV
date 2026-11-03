@@ -1,7 +1,6 @@
 package dev.vy.betterpv.client.gui.home;
 
 import com.google.gson.JsonObject;
-import com.mojang.blaze3d.platform.InputConstants;
 import dev.vy.betterpv.client.data.PlayerStatsSnapshot;
 import dev.vy.betterpv.client.data.PlayerStatus;
 import dev.vy.betterpv.client.data.ProfileSnapshot;
@@ -13,7 +12,6 @@ import dev.vy.betterpv.client.networth.NetworthMode;
 import dev.vy.betterpv.client.slayer.SlayerCalcOverlay;
 import dev.vy.betterpv.client.weight.WeightBreakdown;
 import dev.vy.betterpv.client.weight.WeightSystem;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.world.item.ItemStack;
@@ -484,12 +482,9 @@ public final class HomePage {
 				styledTip = activeWeight().tooltipStyledLines();
 			}
 		} else if (onProfileFace && this.leftColumn.hitNetworth(mouseX, mouseY)) {
-			styledTip = activeNetworth().tooltipStyledLines(
-				networthMode(),
-				leftShiftDown()
-			);
+			styledTip = activeNetworth().tooltipStyledLines(networthMode());
 		} else if (onProfileFace && this.leftColumn.hitBank(mouseX, mouseY)) {
-			styledTip = HomeTooltips.bank(this.snapshot);
+			styledTip = HomeTooltips.coins(this.snapshot);
 		} else if (phase == SbXpExpandPhase.CLOSED || phase == SbXpExpandPhase.OPEN
 			|| this.leftColumn.showingStatsFace()) {
 			for (HoverZone zone : this.zones) {
@@ -522,15 +517,6 @@ public final class HomePage {
 
 	private WeightBreakdown activeWeight() {
 		return this.weightSystem == WeightSystem.SENITHER ? this.senither : this.lily;
-	}
-
-	/** GUI screens do not keep {@code options.keyShift} updated; poll GLFW instead. */
-	private static boolean leftShiftDown() {
-		Minecraft mc = Minecraft.getInstance();
-		if (mc == null || mc.getWindow() == null) {
-			return false;
-		}
-		return InputConstants.isKeyDown(mc.getWindow(), InputConstants.KEY_LSHIFT);
 	}
 
 	private Layout measure(Font font, int w) {

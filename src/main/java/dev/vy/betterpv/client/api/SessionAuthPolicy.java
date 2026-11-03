@@ -38,6 +38,11 @@ final class SessionAuthPolicy {
 		return Action.PROOF;
 	}
 
+	/** The Mojang proof cooldown only matters when no live JWT exists to sign the request. */
+	static boolean resourceFetchAllowed(boolean tokenValid, long proofCooldownMillis) {
+		return tokenValid || proofCooldownMillis <= 0L;
+	}
+
 	static RenewOutcome classifyRenewal(int status, String cause) {
 		if (status >= 200 && status < 300) return RenewOutcome.RENEWED;
 		// An API without the refresh route behaves like the old proof-only flow.

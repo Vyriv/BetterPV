@@ -57,75 +57,30 @@ public abstract class FontCosmeticsMixin {
 	@ModifyVariable(method = "prepareText(Ljava/lang/String;FFIZI)Lnet/minecraft/client/gui/Font$PreparedText;", at = @At("HEAD"), argsOnly = true)
 	private String vypv$decoratePreparedString(String text) {
 		if (!vypv$shouldDecorateRenderedText()) return text;
-		return vypv$decorateSafely(() -> {
-			String styled = text;
-			if (NameStyler.hasChatHeaderStyles()) {
-				styled = NameStyler.applyChatHeaderToString(styled);
-			}
-			if (NameStyler.hasGradientStyles()) {
-				styled = NameStyler.applyGradientToString(styled);
-			}
-			return styled;
-		});
+		return vypv$decorateSafely(() -> NameStyler.decorateFontText(text));
 	}
 
 	@ModifyVariable(method = "prepareText(Lnet/minecraft/util/FormattedCharSequence;FFIZZI)Lnet/minecraft/client/gui/Font$PreparedText;", at = @At("HEAD"), argsOnly = true)
 	private FormattedCharSequence vypv$decoratePreparedOrderedText(FormattedCharSequence text) {
 		if (text == null || !vypv$shouldDecorateRenderedText()) return text;
-		return vypv$decorateSafely(() -> {
-			FormattedCharSequence styled = text;
-			if (NameStyler.hasChatHeaderStyles()) {
-				styled = NameStyler.applyChatHeaderToOrderedText(styled);
-			}
-			if (NameStyler.hasGradientStyles()) {
-				styled = NameStyler.applyGradientToOrderedText(styled);
-			}
-			return styled;
-		});
+		return vypv$decorateSafely(() -> NameStyler.decorateFontText(text));
 	}
 
 	@ModifyVariable(method = "width(Ljava/lang/String;)I", at = @At("HEAD"), argsOnly = true)
 	private String vypv$decorateMeasuredString(String text) {
 		if (!vypv$shouldDecorateMeasuredText()) return text;
-		return vypv$decorateSafely(() -> {
-			String styled = text;
-			if (NameStyler.hasChatHeaderStyles()) {
-				styled = NameStyler.applyChatHeaderToString(styled);
-			}
-			if (NameStyler.hasGradientStyles()) {
-				styled = NameStyler.applyGradientToString(styled);
-			}
-			return styled;
-		});
+		return vypv$decorateSafely(() -> NameStyler.decorateFontText(text));
 	}
 
 	@ModifyVariable(method = "width(Lnet/minecraft/network/chat/FormattedText;)I", at = @At("HEAD"), argsOnly = true)
 	private FormattedText vypv$decorateMeasuredText(FormattedText text) {
 		if (text == null || !vypv$shouldDecorateMeasuredText()) return text;
-		return vypv$decorateSafely(() -> {
-			FormattedText styled = text;
-			if (NameStyler.hasChatHeaderStyles()) {
-				styled = NameStyler.applyChatHeaderToFormattedText(styled);
-			}
-			if (NameStyler.hasGradientStyles()) {
-				styled = NameStyler.applyGradientToFormattedText(styled);
-			}
-			return styled;
-		});
+		return vypv$decorateSafely(() -> NameStyler.decorateFontText(text));
 	}
 
 	@ModifyVariable(method = "width(Lnet/minecraft/util/FormattedCharSequence;)I", at = @At("HEAD"), argsOnly = true)
 	private FormattedCharSequence vypv$decorateMeasuredOrderedText(FormattedCharSequence text) {
 		if (text == null || !vypv$shouldDecorateMeasuredText()) return text;
-		return vypv$decorateSafely(() -> {
-			FormattedCharSequence styled = text;
-			if (NameStyler.hasChatHeaderStyles()) {
-				styled = NameStyler.applyChatHeaderToOrderedText(styled);
-			}
-			if (NameStyler.hasGradientStyles()) {
-				styled = NameStyler.applyGradientToOrderedText(styled);
-			}
-			return styled;
-		});
+		return vypv$decorateSafely(() -> NameStyler.decorateFontText(text));
 	}
 }

@@ -2,32 +2,23 @@ package dev.vy.betterpv.client.gui.foraging.page;
 
 import static dev.vy.betterpv.client.gui.foraging.ForagingUi.BAR_AFTER;
 import static dev.vy.betterpv.client.gui.foraging.ForagingUi.BAR_FORAGE;
-import static dev.vy.betterpv.client.gui.foraging.ForagingUi.COLOR_MAXED;
 import static dev.vy.betterpv.client.gui.foraging.ForagingUi.ENABLED;
-import static dev.vy.betterpv.client.gui.foraging.ForagingUi.FLIP_MS;
-import static dev.vy.betterpv.client.gui.foraging.ForagingUi.FOREST_COLOR;
 import static dev.vy.betterpv.client.gui.foraging.ForagingUi.GAP;
 import static dev.vy.betterpv.client.gui.foraging.ForagingUi.ICON;
 import static dev.vy.betterpv.client.gui.foraging.ForagingUi.ITEM_SLOT_BG;
 import static dev.vy.betterpv.client.gui.foraging.ForagingUi.ITEM_SLOT_BORDER;
 import static dev.vy.betterpv.client.gui.foraging.ForagingUi.PAD;
-import static dev.vy.betterpv.client.gui.foraging.ForagingUi.PANEL_HOVER;
-import static dev.vy.betterpv.client.gui.foraging.ForagingUi.SEP_GAP;
 import static dev.vy.betterpv.client.gui.foraging.ForagingUi.SLOT;
 import static dev.vy.betterpv.client.gui.foraging.ForagingUi.SLOT_GAP;
 import static dev.vy.betterpv.client.gui.foraging.ForagingUi.STAT_ROW;
 
-import dev.vy.betterpv.client.data.DungeonSnapshot;
 import dev.vy.betterpv.client.data.FishFamilyData;
 import dev.vy.betterpv.client.data.FormatUtil;
 import dev.vy.betterpv.client.data.ForagingSnapshot;
-import dev.vy.betterpv.client.dungeons.EssencePerkTips;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
-import dev.vy.betterpv.client.gui.essence.EssenceIcons;
 import dev.vy.betterpv.client.gui.foraging.ForagingUi;
 import dev.vy.betterpv.client.gui.foraging.ForagingUi.HoverZone;
-import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -38,41 +29,12 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
-/** Foraging overview subtab (left stats + flip panel). */
+/** Foraging overview subtab (left stats + gifts / PBs / whispers / harp panel). */
 public final class ForagingOverviewPage {
 	private final List<HoverZone> zones = new ArrayList<>();
 
-	private boolean rightEssenceFace;
-	private long rightFlipStartMs;
-	private boolean rightFlipTarget;
-	private int rightHitX;
-	private int rightHitY;
-	private int rightHitW;
-	private int rightHitH;
-
 	public void reset() {
 		this.zones.clear();
-		this.rightEssenceFace = false;
-		this.rightFlipStartMs = 0L;
-		this.rightHitW = 0;
-	}
-
-	public void onLeave() {
-		this.rightEssenceFace = false;
-		this.rightFlipStartMs = 0L;
-		this.rightHitW = 0;
-	}
-
-	public boolean mouseClicked(double mx, double my) {
-		if (ForagingUi.hit(mx, my, this.rightHitX, this.rightHitY, this.rightHitW, this.rightHitH)) {
-			if (this.rightFlipStartMs != 0L) {
-				return true;
-			}
-			this.rightFlipTarget = !this.rightEssenceFace;
-			this.rightFlipStartMs = System.currentTimeMillis();
-			return true;
-		}
-		return false;
 	}
 
 	public void render(
@@ -84,65 +46,13 @@ public final class ForagingOverviewPage {
 		int leftW = w - rightW - GAP;
 		PvDraw.innerPanel(g, x, y, leftW, h);
 		drawOverviewLeft(g, font, snapshot, x, y, leftW, h, mx, my);
-		drawRightFlipPanel(g, font, snapshot, x + leftW + GAP, y, rightW, h, mx, my);
+		int rightX = x + leftW + GAP;
+		PvDraw.innerPanel(g, rightX, y, rightW, h);
+		drawContestsFace(g, font, snapshot, rightX, y, rightW, h);
 	}
 
 	public void drawHover(GuiGraphicsExtractor g, Font font, int mx, int my, int screenW, int screenH) {
 		ForagingUi.drawHover(g, font, this.zones, mx, my, screenW, screenH);
-	}
-
-	private void drawRightFlipPanel(
-		GuiGraphicsExtractor g, Font font, ForagingSnapshot snapshot,
-		int x, int y, int w, int h, int mx, int my
-	) {
-		this.rightHitX = x;
-		this.rightHitY = y;
-		this.rightHitW = w;
-		this.rightHitH = h;
-
-		boolean hovered = mx >= x && mx < x + w && my >= y && my < y + h;
-		float flipProgress = 0F;
-		boolean animating = this.rightFlipStartMs != 0L;
-		if (animating) {
-			flipProgress = Math.min(1F, (System.currentTimeMillis() - this.rightFlipStartMs) / (float) FLIP_MS);
-			if (flipProgress >= 1F) {
-				this.rightEssenceFace = this.rightFlipTarget;
-				this.rightFlipStartMs = 0L;
-				animating = false;
-				flipProgress = 0F;
-			}
-		}
-		float eased = animating ? ForagingUi.easeInOutCubic(flipProgress) : 0F;
-		float angle = eased * (float) Math.PI;
-		boolean showEssence = animating
-			? (Math.cos(angle) < 0.0 ? this.rightFlipTarget : this.rightEssenceFace)
-			: this.rightEssenceFace;
-		float scaleX = 1F;
-		float scaleY = 1F;
-		if (animating) {
-			scaleX = Math.max(0.04F, Math.abs((float) Math.cos(angle)));
-			scaleY = 1F - (1F - scaleX) * 0.06F;
-		}
-
-		float cxFlip = x + w / 2F;
-		float cyFlip = y + h / 2F;
-		g.pose().pushMatrix();
-		g.pose().translate(cxFlip, cyFlip);
-		g.pose().scale(scaleX, scaleY);
-		g.pose().translate(-cxFlip, -cyFlip);
-
-		PvDraw.innerPanel(g, x, y, w, h);
-		if (hovered && !animating) {
-			PvDraw.fill(g, x + 1, y + 1, w - 2, h - 2, PANEL_HOVER);
-		}
-
-		if (showEssence) {
-			drawForestEssenceFace(g, font, snapshot, x, y, w, h);
-		} else {
-			drawContestsFace(g, font, snapshot, x, y, w, h);
-		}
-
-		g.pose().popMatrix();
 	}
 
 	private void drawOverviewLeft(
@@ -193,7 +103,7 @@ public final class ForagingOverviewPage {
 			if (found) {
 				ForagingUi.drawFishFamilyIcon(g, id, bx + 1, by + 1);
 			} else {
-				g.item(new ItemStack(Items.GRAY_DYE), bx + 1, by + 1);
+				g.item(new ItemStack(Items.DYE.gray()), bx + 1, by + 1);
 			}
 			this.zones.add(HoverZone.of(bx, by, SLOT, SLOT, List.of(
 				PvTooltip.Line.of(FishFamilyData.displayName(id), found ? PvDraw.COLOR_TEXT : PvDraw.COLOR_MUTED),
@@ -344,13 +254,19 @@ public final class ForagingOverviewPage {
 		ry += font.lineHeight + 3;
 		List<ForagingSnapshot.WhisperPool> pools = snapshot.whisperPools();
 		if (pools.isEmpty()) {
-			ForagingUi.statLine(g, font, "Total", "-", rx, ry, rw, PvDraw.COLOR_MUTED);
+			ry = ForagingUi.statLine(g, font, "Total", "-", rx, ry, rw, PvDraw.COLOR_MUTED);
 		} else {
 			for (ForagingSnapshot.WhisperPool pool : pools) {
 				int poolColor = whisperPoolColor(pool.id());
 				this.zones.add(HoverZone.of(rx, ry, rw, STAT_ROW, HotfPage.whisperTip(pool, poolColor)));
 				ry = ForagingUi.statLine(g, font, pool.label(), HotfPage.whisperValue(pool), rx, ry, rw, poolColor) + 1;
 			}
+		}
+
+		int bottom = y + h - PAD;
+		ry = ForagingUi.sectionSeparator(g, font, x, ry + 2, w);
+		if (ry + font.lineHeight + 2 + STAT_ROW <= bottom) {
+			drawMelodySection(g, font, snapshot, rx, ry, rw, bottom);
 		}
 	}
 
@@ -365,72 +281,4 @@ public final class ForagingOverviewPage {
 		};
 	}
 
-	private void drawForestEssenceFace(
-		GuiGraphicsExtractor g, Font font, ForagingSnapshot snapshot, int x, int y, int w, int h
-	) {
-		int cx = x + PAD;
-		int cy = y + PAD;
-		int innerW = w - PAD * 2;
-		int bottom = y + h - PAD;
-		DungeonSnapshot.EssenceShop shop = snapshot.forestShop();
-
-		List<ForagingSnapshot.HarpSong> songs = snapshot.harpSongs();
-		int melodyHeader = font.lineHeight + 2 + STAT_ROW + 2;
-		int melodyCols = Math.max(2, Math.min(Math.max(1, songs.size()), Math.max(1, innerW / 40)));
-		int melodyRows = songs.isEmpty() ? 1 : (songs.size() + melodyCols - 1) / melodyCols;
-		int melodyBlock = melodyHeader + melodyRows * (ICON + 3) + SEP_GAP + 4;
-		int shopsBottom = Math.max(cy + 48, bottom - melodyBlock);
-
-		// Full 16px icons - no fractional scale (that softens item textures).
-		int headerH = Math.max(16, font.lineHeight + 2);
-		PvDraw.IconTextAlign headerAlign = PvDraw.IconTextAlign.of(cy, headerH, 16, font.lineHeight);
-		g.item(essenceIcon(shop.iconId()), cx, headerAlign.iconY());
-		String bal = FormatUtil.commas(shop.balance());
-		int balW = PvDraw.widthBold(font, bal);
-		int headerLabelX = cx + 16 + 4;
-		int nameMax = Math.max(8, innerW - (headerLabelX - cx) - balW - 4);
-		PvDraw.textBold(g, font, ForagingUi.trim(font, shop.name() + " Essence", nameMax),
-			headerLabelX, headerAlign.textY(), FOREST_COLOR);
-		PvDraw.textBold(g, font, bal, cx + innerW - balW, headerAlign.textY(), FOREST_COLOR);
-
-		int ly = cy + headerH + 6;
-		List<DungeonSnapshot.EssencePerk> perks = shop.perks();
-		int colGap = 10;
-		int colW = Math.max(80, (innerW - colGap) / 2);
-		int perkRows = Math.max(1, (perks.size() + 1) / 2);
-		int availPerkH = Math.max(font.lineHeight + 2, shopsBottom - ly);
-		int rowH = Math.max(16, Math.max(font.lineHeight + 2, Math.min(20, availPerkH / perkRows)));
-		for (int i = 0; i < perks.size(); i++) {
-			DungeonSnapshot.EssencePerk perk = perks.get(i);
-			int col = i % 2;
-			int row = i / 2;
-			int px = cx + col * (colW + colGap);
-			int py = ly + row * rowH;
-			if (py + font.lineHeight > shopsBottom) {
-				break;
-			}
-			PvDraw.IconTextAlign rowAlign = PvDraw.IconTextAlign.of(py, rowH, 16, font.lineHeight);
-			g.item(forestPerkIcon(perk.id()), px, rowAlign.iconY());
-			String right = perk.level() + "/" + perk.maxLevel();
-			int rightW = font.width(right);
-			int labelX = px + 16 + 3;
-			String left = ForagingUi.trim(font, perk.name(), Math.max(8, colW - 16 - 3 - rightW - 4));
-			int valueColor = perk.maxed() ? COLOR_MAXED : PvDraw.COLOR_TEXT;
-			PvDraw.text(g, font, left, labelX, rowAlign.textY(), PvDraw.COLOR_MUTED);
-			PvDraw.textRight(g, font, right, px + colW, rowAlign.textY(), valueColor);
-			this.zones.add(HoverZone.of(px, py, colW, rowH, EssencePerkTips.tip(perk)));
-		}
-
-		int sepY = ForagingUi.sectionSeparator(g, font, x, shopsBottom, w);
-		drawMelodySection(g, font, snapshot, cx, sepY, innerW, bottom);
-	}
-
-	private static ItemStack essenceIcon(String skyblockId) {
-		ItemStack stack = SkyBlockItemFactory.iconStack(skyblockId == null ? "" : skyblockId);
-		return stack == null || stack.isEmpty() ? new ItemStack(Items.FLOWERING_AZALEA_LEAVES) : stack;
-	}
-
-	private static ItemStack forestPerkIcon(String perkId) {
-		return EssenceIcons.perk(perkId);
-	}
 }

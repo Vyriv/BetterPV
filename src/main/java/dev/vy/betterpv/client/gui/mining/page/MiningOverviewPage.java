@@ -1,14 +1,11 @@
 package dev.vy.betterpv.client.gui.mining.page;
 
 import dev.vy.betterpv.client.data.ColeWeight;
-import dev.vy.betterpv.client.data.DungeonSnapshot;
 import dev.vy.betterpv.client.data.FormatUtil;
 import dev.vy.betterpv.client.data.MiningSnapshot;
 import dev.vy.betterpv.client.data.PlayerStatsSnapshot;
-import dev.vy.betterpv.client.dungeons.EssencePerkTips;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
-import dev.vy.betterpv.client.gui.essence.EssenceIcons;
 import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import dev.vy.betterpv.client.gui.mining.MiningUi;
 import dev.vy.betterpv.client.gui.mining.MiningUi.HoverZone;
@@ -24,13 +21,6 @@ import net.minecraft.world.item.Items;
 
 public final class MiningOverviewPage {
 	private static final int CRYSTAL_ICON = 14;
-	private static final int FLIP_MS = 480;
-	private static final int PANEL_HOVER = 0x0AFFFFFF;
-	private static final int GOLD_COLOR = 0xFFFFAA00;
-	private static final int DIAMOND_COLOR = 0xFF55FFFF;
-	private static final int ESSENCE_HEADER_ICON = 16;
-	private static final int ESSENCE_PERK_ICON = 10;
-	private static final int COLOR_MAXED = 0xFF7CFF9A;
 	private static final String[] SKILL_STATS = { "mining_speed", "mining_fortune", "pristine", "mining_spread" };
 	private static final List<String> STAT_EXCLUSIONS = List.of(
 		"Excludes held tool, set bonuses,",
@@ -42,44 +32,12 @@ public final class MiningOverviewPage {
 	private int scrollTop;
 	private int scrollH;
 
-	private boolean crystalsEssenceFace;
-	private long crystalsFlipStartMs;
-	private boolean crystalsFlipTarget;
-	private int crystalsHitX;
-	private int crystalsHitY;
-	private int crystalsHitW;
-	private int crystalsHitH;
-
-	/** Profile apply: HEAD only zeroed shared scroll, not the crystals flip face. */
 	public void resetScroll() {
 		this.scroll = 0;
 	}
 
 	public void onEnter() {
 		this.scroll = 0;
-	}
-
-	public void leaveOverview() {
-		this.crystalsEssenceFace = false;
-		this.crystalsFlipStartMs = 0L;
-		this.crystalsHitW = 0;
-		this.crystalsHitH = 0;
-	}
-
-	public boolean mouseClicked(double mx, double my) {
-		if (this.crystalsHitW <= 0 || this.crystalsHitH <= 0) {
-			return false;
-		}
-		if (mx < this.crystalsHitX || mx >= this.crystalsHitX + this.crystalsHitW
-			|| my < this.crystalsHitY || my >= this.crystalsHitY + this.crystalsHitH) {
-			return false;
-		}
-		if (this.crystalsFlipStartMs != 0L) {
-			return true;
-		}
-		this.crystalsFlipTarget = !this.crystalsEssenceFace;
-		this.crystalsFlipStartMs = System.currentTimeMillis();
-		return true;
 	}
 
 	public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
@@ -157,62 +115,9 @@ public final class MiningOverviewPage {
 			}
 		}
 
-		drawCrystalsPanel(g, font, snapshot, zones, x + leftW + MiningUi.GAP, y, rightW, h, mx, my);
-	}
-
-	private void drawCrystalsPanel(
-		GuiGraphicsExtractor g, Font font, MiningSnapshot snapshot, List<HoverZone> zones,
-		int x, int y, int w, int h, int mx, int my
-	) {
-		this.crystalsHitX = x;
-		this.crystalsHitY = y;
-		this.crystalsHitW = w;
-		this.crystalsHitH = h;
-
-		boolean hovered = mx >= x && mx < x + w && my >= y && my < y + h;
-		float flipProgress = 0F;
-		boolean animating = this.crystalsFlipStartMs != 0L;
-		if (animating) {
-			flipProgress = Math.min(1F, (System.currentTimeMillis() - this.crystalsFlipStartMs) / (float) FLIP_MS);
-			if (flipProgress >= 1F) {
-				this.crystalsEssenceFace = this.crystalsFlipTarget;
-				this.crystalsFlipStartMs = 0L;
-				animating = false;
-				flipProgress = 0F;
-			}
-		}
-		float eased = animating ? easeInOutCubic(flipProgress) : 0F;
-		float angle = eased * (float) Math.PI;
-		boolean showEssence = animating
-			? (Math.cos(angle) < 0.0 ? this.crystalsFlipTarget : this.crystalsEssenceFace)
-			: this.crystalsEssenceFace;
-		float scaleX = 1F;
-		float scaleY = 1F;
-		if (animating) {
-			scaleX = Math.max(0.04F, Math.abs((float) Math.cos(angle)));
-			scaleY = 1F - (1F - scaleX) * 0.06F;
-		}
-
-		float cxFlip = x + w / 2F;
-		float cyFlip = y + h / 2F;
-		g.pose().pushMatrix();
-		g.pose().translate(cxFlip, cyFlip);
-		g.pose().scale(scaleX, scaleY);
-		g.pose().translate(-cxFlip, -cyFlip);
-
-		PvDraw.innerPanel(g, x, y, w, h);
-		if (hovered && !animating) {
-			PvDraw.fill(g, x + 1, y + 1, w - 2, h - 2, PANEL_HOVER);
-		}
-
-		if (showEssence) {
-			this.maxScroll = 0;
-			drawMiningEssenceFace(g, font, snapshot, zones, x, y, w, h);
-		} else {
-			drawCrystalsFace(g, font, snapshot, zones, x, y, w, h);
-		}
-
-		g.pose().popMatrix();
+		int rightX = x + leftW + MiningUi.GAP;
+		PvDraw.innerPanel(g, rightX, y, rightW, h);
+		drawCrystalsFace(g, font, snapshot, zones, rightX, y, rightW, h);
 	}
 
 	private void drawCrystalsFace(
@@ -295,105 +200,6 @@ public final class MiningOverviewPage {
 				snapshot.precursorTalked() ? "Yes" : "No",
 				rx, hy, rw, snapshot.precursorTalked() ? MiningUi.PLACED : PvDraw.COLOR_MUTED);
 		}
-	}
-
-	/** Gold / Diamond essence shops stacked full-width (names fit; rows fill each half). */
-	private void drawMiningEssenceFace(
-		GuiGraphicsExtractor g, Font font, MiningSnapshot snapshot, List<HoverZone> zones, int x, int y, int w, int h
-	) {
-		int pad = 6;
-		int cx = x + pad;
-		int cy = y + pad;
-		int innerW = w - pad * 2;
-		int bottom = y + h - pad;
-		int innerH = Math.max(0, bottom - cy);
-		int sectionGap = 8;
-		int halfH = Math.max(40, (innerH - sectionGap) / 2);
-
-		int headerH = Math.max(ESSENCE_HEADER_ICON, font.lineHeight + 2);
-		int goldTop = cy;
-		int goldBottom = cy + halfH;
-		int diamondTop = goldBottom + sectionGap;
-		int diamondBottom = bottom;
-
-		int goldPerks = Math.max(1, snapshot.goldShop().perks().size());
-		int diamondPerks = Math.max(1, snapshot.diamondShop().perks().size());
-		int goldBody = Math.max(0, goldBottom - goldTop - headerH - 4);
-		int diamondBody = Math.max(0, diamondBottom - diamondTop - headerH - 4);
-		int goldRowH = Math.max(font.lineHeight + 2, Math.max(ESSENCE_PERK_ICON + 3, goldBody / goldPerks));
-		int diamondRowH = Math.max(font.lineHeight + 2, Math.max(ESSENCE_PERK_ICON + 3, diamondBody / diamondPerks));
-
-		drawMiningEssenceColumn(
-			g, font, snapshot.goldShop(), zones, cx, goldTop, innerW, headerH, goldRowH, goldBottom, GOLD_COLOR
-		);
-
-		int sepY = goldBottom + sectionGap / 2;
-		PvDraw.fill(g, cx, sepY, innerW, 1, PvDraw.COLOR_BORDER);
-
-		drawMiningEssenceColumn(
-			g, font, snapshot.diamondShop(), zones, cx, diamondTop, innerW, headerH, diamondRowH, diamondBottom, DIAMOND_COLOR
-		);
-	}
-
-	private void drawMiningEssenceColumn(
-		GuiGraphicsExtractor g,
-		Font font,
-		DungeonSnapshot.EssenceShop shop,
-		List<HoverZone> zones,
-		int x,
-		int y,
-		int w,
-		int headerH,
-		int rowH,
-		int bottom,
-		int headerColor
-	) {
-		int headerIcon = ESSENCE_HEADER_ICON;
-		int perkIcon = ESSENCE_PERK_ICON;
-		int gap = 3;
-		int headerLabelX = x + headerIcon + gap;
-		PvDraw.IconTextAlign headerAlign = PvDraw.IconTextAlign.of(y, headerH, headerIcon, font.lineHeight);
-
-		MiningUi.drawItemIcon(g, essenceIcon(shop.iconId()), x, headerAlign.iconY(), headerIcon);
-		String name = shop.name();
-		String bal = FormatUtil.commas(shop.balance());
-		int balW = PvDraw.widthBold(font, bal);
-		int nameMax = Math.max(8, w - (headerLabelX - x) - balW - 4);
-		PvDraw.textBold(g, font, MiningUi.trim(font, name, nameMax), headerLabelX, headerAlign.textY(), headerColor);
-		PvDraw.textBold(g, font, bal, x + w - balW, headerAlign.textY(), headerColor);
-
-		int perkLabelX = x + perkIcon + gap;
-		int ly = y + headerH + 4;
-		for (DungeonSnapshot.EssencePerk perk : shop.perks()) {
-			if (ly + font.lineHeight > bottom) {
-				break;
-			}
-			PvDraw.IconTextAlign rowAlign = PvDraw.IconTextAlign.of(ly, rowH, perkIcon, font.lineHeight);
-			MiningUi.drawItemIcon(g, miningEssencePerkIcon(perk.id()), x, rowAlign.iconY(), perkIcon);
-			String right = perk.level() + "/" + perk.maxLevel();
-			int rightW = font.width(right);
-			String left = MiningUi.trim(font, perk.name(), Math.max(8, w - (perkLabelX - x) - rightW - 4));
-			int valueColor = perk.maxed() ? COLOR_MAXED : PvDraw.COLOR_TEXT;
-			PvDraw.text(g, font, left, perkLabelX, rowAlign.textY(), PvDraw.COLOR_MUTED);
-			PvDraw.textRight(g, font, right, x + w, rowAlign.textY(), valueColor);
-			zones.add(HoverZone.of(x, ly, w, rowH, EssencePerkTips.tip(perk)));
-			ly += rowH;
-		}
-	}
-
-	private static ItemStack essenceIcon(String skyblockId) {
-		ItemStack stack = SkyBlockItemFactory.iconStack(skyblockId == null ? "" : skyblockId);
-		return stack == null || stack.isEmpty() ? new ItemStack(Items.PLAYER_HEAD) : stack;
-	}
-
-	private static ItemStack miningEssencePerkIcon(String perkId) {
-		return EssenceIcons.perk(perkId);
-	}
-
-	private static float easeInOutCubic(float t) {
-		return t < 0.5F
-			? 4F * t * t * t
-			: 1F - (float) Math.pow(-2F * t + 2F, 3) / 2F;
 	}
 
 	private void drawCrystalCell(

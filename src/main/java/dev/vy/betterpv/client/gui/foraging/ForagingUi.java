@@ -20,8 +20,6 @@ public final class ForagingUi {
 	public static final int BAR_LABEL_GAP = 2;
 	public static final int BAR_AFTER = 4;
 	public static final int STAT_ROW = 12;
-	public static final int FLIP_MS = 480;
-	public static final int PANEL_HOVER = 0x0AFFFFFF;
 	public static final int BAR_FORAGE = 0xFF55AA55;
 	public static final int BAR_HUNT = 0xFFAA7733;
 	public static final int ENABLED = 0xFF55FF55;
@@ -34,7 +32,6 @@ public final class ForagingUi {
 	public static final int ITEM_SLOT_BORDER = 0xFF2A2A35;
 	public static final int ITEM_SLOT_LOCKED_BG = 0xFF3A1010;
 	public static final int ITEM_SLOT_LOCKED_BORDER = 0xFFCC3333;
-	public static final int FOREST_COLOR = 0xFF55AA55;
 	public static final int COLOR_MAXED = 0xFF7CFF9A;
 	public static final int SEP_GAP = 10;
 
@@ -111,10 +108,6 @@ public final class ForagingUi {
 
 	public static boolean hit(double mx, double my, int x, int y, int w, int h) {
 		return w > 0 && h > 0 && mx >= x && mx < x + w && my >= y && my < y + h;
-	}
-
-	public static float easeInOutCubic(float t) {
-		return t < 0.5F ? 4F * t * t * t : 1F - (float) Math.pow(-2F * t + 2F, 3) / 2F;
 	}
 
 	public static String formatRaceMs(long ms) {

@@ -3,32 +3,23 @@ package dev.vy.betterpv.client.gui.crimson.page;
 import static dev.vy.betterpv.client.gui.crimson.CrimsonUi.BARB_COLOR;
 import static dev.vy.betterpv.client.gui.crimson.CrimsonUi.DOJO_COLOR;
 import static dev.vy.betterpv.client.gui.crimson.CrimsonUi.ENABLED;
-import static dev.vy.betterpv.client.gui.crimson.CrimsonUi.FLIP_MS;
 import static dev.vy.betterpv.client.gui.crimson.CrimsonUi.GAP;
 import static dev.vy.betterpv.client.gui.crimson.CrimsonUi.ITEM_SLOT_BG;
 import static dev.vy.betterpv.client.gui.crimson.CrimsonUi.KUUDRA_COLOR;
 import static dev.vy.betterpv.client.gui.crimson.CrimsonUi.MAGE_COLOR;
 import static dev.vy.betterpv.client.gui.crimson.CrimsonUi.PAD;
-import static dev.vy.betterpv.client.gui.crimson.CrimsonUi.PANEL_HOVER;
-import static dev.vy.betterpv.client.gui.crimson.CrimsonUi.SHOP_HEADER_COLOR;
 import static dev.vy.betterpv.client.gui.crimson.CrimsonUi.STAT_ROW;
 import static dev.vy.betterpv.client.gui.crimson.CrimsonUi.drawItemIcon;
-import static dev.vy.betterpv.client.gui.crimson.CrimsonUi.easeInOutCubic;
 import static dev.vy.betterpv.client.gui.crimson.CrimsonUi.formatAgo;
 import static dev.vy.betterpv.client.gui.crimson.CrimsonUi.sectionSeparator;
 import static dev.vy.betterpv.client.gui.crimson.CrimsonUi.statLine;
-import static dev.vy.betterpv.client.gui.crimson.CrimsonUi.trim;
 
 import dev.vy.betterpv.client.data.CrimsonSnapshot;
-import dev.vy.betterpv.client.data.DungeonSnapshot;
 import dev.vy.betterpv.client.data.FormatUtil;
-import dev.vy.betterpv.client.dungeons.EssencePerkTips;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
 import dev.vy.betterpv.client.gui.crimson.CrimsonUi;
 import dev.vy.betterpv.client.gui.crimson.CrimsonUi.HoverZone;
-import dev.vy.betterpv.client.gui.essence.EssenceIcons;
-import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -38,42 +29,22 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
-/** Crimson Overview: factions, essence, Dojo / Crimson Essence Shop flip panel. */
+/** Crimson Overview: factions, essence, Dojo panel. */
 public final class CrimsonOverviewPage {
-	/** false = Dojo face shown (default), true = Crimson Essence Shop face shown. */
-	private boolean showingShop;
-	private boolean flipTarget;
-	private long flipStartMs;
-	private int flipHitX;
-	private int flipHitY;
-	private int flipHitW;
-	private int flipHitH;
 	private final List<HoverZone> zones = new ArrayList<>();
-
-	public boolean mouseClicked(double mx, double my) {
-		if (mx >= this.flipHitX && mx < this.flipHitX + this.flipHitW
-			&& my >= this.flipHitY && my < this.flipHitY + this.flipHitH) {
-			if (this.flipStartMs == 0L) {
-				this.flipTarget = !this.showingShop;
-				this.flipStartMs = System.currentTimeMillis();
-			}
-			return true;
-		}
-		return false;
-	}
 
 	public void render(
 		GuiGraphicsExtractor g, Font font, CrimsonSnapshot snapshot,
 		int x, int y, int w, int h, int mouseX, int mouseY, int screenW, int screenH
 	) {
 		this.zones.clear();
-		this.flipHitW = 0;
-		this.flipHitH = 0;
 		int rightW = Math.max(200, w * 52 / 100);
 		int leftW = w - rightW - GAP;
 		PvDraw.innerPanel(g, x, y, leftW, h);
 		drawOverviewLeft(g, font, snapshot, x, y, leftW, h, mouseX, mouseY);
-		drawRightFlipPanel(g, font, snapshot, x + leftW + GAP, y, rightW, h, mouseX, mouseY);
+		int rightX = x + leftW + GAP;
+		PvDraw.innerPanel(g, rightX, y, rightW, h);
+		drawDojoFace(g, font, snapshot, rightX, y, rightW, h);
 	}
 
 	public void renderTooltip(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH) {
@@ -297,60 +268,6 @@ public final class CrimsonOverviewPage {
 		)));
 	}
 
-	private void drawRightFlipPanel(
-		GuiGraphicsExtractor g, Font font, CrimsonSnapshot snapshot,
-		int x, int y, int w, int h, int mx, int my
-	) {
-		this.flipHitX = x;
-		this.flipHitY = y;
-		this.flipHitW = w;
-		this.flipHitH = h;
-
-		boolean hovered = mx >= x && mx < x + w && my >= y && my < y + h;
-		float flipProgress = 0F;
-		boolean animating = this.flipStartMs != 0L;
-		if (animating) {
-			flipProgress = Math.min(1F, (System.currentTimeMillis() - this.flipStartMs) / (float) FLIP_MS);
-			if (flipProgress >= 1F) {
-				this.showingShop = this.flipTarget;
-				this.flipStartMs = 0L;
-				animating = false;
-				flipProgress = 0F;
-			}
-		}
-		float eased = animating ? easeInOutCubic(flipProgress) : 0F;
-		float angle = eased * (float) Math.PI;
-		boolean showShop = animating
-			? (Math.cos(angle) < 0.0 ? this.flipTarget : this.showingShop)
-			: this.showingShop;
-		float scaleX = 1F;
-		float scaleY = 1F;
-		if (animating) {
-			scaleX = Math.max(0.04F, Math.abs((float) Math.cos(angle)));
-			scaleY = 1F - (1F - scaleX) * 0.06F;
-		}
-
-		float cxFlip = x + w / 2F;
-		float cyFlip = y + h / 2F;
-		g.pose().pushMatrix();
-		g.pose().translate(cxFlip, cyFlip);
-		g.pose().scale(scaleX, scaleY);
-		g.pose().translate(-cxFlip, -cyFlip);
-
-		PvDraw.innerPanel(g, x, y, w, h);
-		if (hovered && !animating) {
-			PvDraw.fill(g, x + 1, y + 1, w - 2, h - 2, PANEL_HOVER);
-		}
-
-		if (showShop) {
-			drawShopFace(g, font, snapshot, x, y, w, h);
-		} else {
-			drawDojoFace(g, font, snapshot, x, y, w, h);
-		}
-
-		g.pose().popMatrix();
-	}
-
 	private void drawDojoFace(GuiGraphicsExtractor g, Font font, CrimsonSnapshot snapshot, int x, int y, int w, int h) {
 		int lx = x + PAD;
 		int ly = y + PAD;
@@ -422,78 +339,5 @@ public final class CrimsonOverviewPage {
 			case FIREBALL -> new ItemStack(Items.FIRE_CHARGE);
 			case LOCK_HEAD -> new ItemStack(Items.ENDER_EYE);
 		};
-	}
-
-	private void drawShopFace(GuiGraphicsExtractor g, Font font, CrimsonSnapshot snapshot, int x, int y, int w, int h) {
-		int lx = x + PAD;
-		int ly = y + PAD;
-		int lw = w - PAD * 2;
-		int bottom = y + h - PAD;
-
-		DungeonSnapshot.EssenceShop shop = snapshot.crimsonShop();
-		int headerIcon = 16;
-		int headerH = Math.max(headerIcon, font.lineHeight + 2);
-		PvDraw.IconTextAlign headerAlign = PvDraw.IconTextAlign.of(ly, headerH, headerIcon, font.lineHeight);
-
-		drawItemIcon(g, essenceIcon(shop.iconId()), lx, headerAlign.iconY(), headerIcon);
-		int labelX = lx + headerIcon + 4;
-		String bal = FormatUtil.commas(shop.balance());
-		int balW = PvDraw.widthBold(font, bal);
-		int nameMax = Math.max(8, lw - (labelX - lx) - balW - 4);
-		PvDraw.textBold(g, font, trim(font, "Crimson", nameMax), labelX, headerAlign.textY(), SHOP_HEADER_COLOR);
-		PvDraw.textBold(g, font, bal, lx + lw - balW, headerAlign.textY(), SHOP_HEADER_COLOR);
-
-		int perkIconSize = 12;
-		int rowH = Math.max(font.lineHeight + 2, perkIconSize + 2);
-		int colGap = 10;
-		int colW = Math.max(40, (lw - colGap) / 2);
-		int leftCol = lx;
-		int rightCol = lx + colW + colGap;
-		List<DungeonSnapshot.EssencePerk> perks = shop.perks();
-		int mid = (perks.size() + 1) / 2;
-
-		drawShopPerkColumn(g, font, perks.subList(0, Math.min(mid, perks.size())),
-			leftCol, ly + headerH + 4, colW, rowH, perkIconSize, bottom);
-		if (mid < perks.size()) {
-			drawShopPerkColumn(g, font, perks.subList(mid, perks.size()),
-				rightCol, ly + headerH + 4, colW, rowH, perkIconSize, bottom);
-		}
-	}
-
-	private void drawShopPerkColumn(
-		GuiGraphicsExtractor g, Font font, List<DungeonSnapshot.EssencePerk> perks,
-		int x, int y, int w, int rowH, int perkIconSize, int bottom
-	) {
-		int perkLabelX = x + perkIconSize + 3;
-		int ry = y;
-		for (DungeonSnapshot.EssencePerk perk : perks) {
-			if (ry + font.lineHeight > bottom) {
-				break;
-			}
-			PvDraw.IconTextAlign rowAlign = PvDraw.IconTextAlign.of(ry, rowH, perkIconSize, font.lineHeight);
-			drawItemIcon(g, shopPerkIcon(perk.id()), x, rowAlign.iconY(), perkIconSize);
-			String right = perk.level() + "/" + perk.maxLevel();
-			int rightW = font.width(right);
-			String left = trim(font, perk.name(), Math.max(8, w - (perkLabelX - x) - rightW - 4));
-			int valueColor = perk.maxed() ? ENABLED : PvDraw.COLOR_TEXT;
-			PvDraw.text(g, font, left, perkLabelX, rowAlign.textY(), PvDraw.COLOR_MUTED);
-			PvDraw.textRight(g, font, right, x + w, rowAlign.textY(), valueColor);
-			this.zones.add(HoverZone.of(x, ry, w, rowH, EssencePerkTips.tip(perk)));
-			ry += rowH;
-		}
-	}
-
-	private static ItemStack essenceIcon(String skyblockId) {
-		String id = skyblockId == null || skyblockId.isBlank() ? "ESSENCE_CRIMSON" : skyblockId;
-		ItemStack stack = SkyBlockItemFactory.iconStack(id);
-		if (stack == null || stack.isEmpty() || stack.is(Items.PAPER) || stack.is(Items.BARRIER)) {
-			return new ItemStack(Items.NETHER_STAR);
-		}
-		return stack;
-	}
-
-	/** Crimson essence shop row icons (vanilla stand-ins matching the GUI). */
-	private static ItemStack shopPerkIcon(String perkId) {
-		return EssenceIcons.perk(perkId, Items.NETHER_STAR);
 	}
 }

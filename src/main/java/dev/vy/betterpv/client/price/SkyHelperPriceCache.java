@@ -17,7 +17,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 /**
- * SkyHelper {@code pricesV2.json} - needed for leveled pet keys and missing Athen IDs.
+ * SkyHelper {@code pricesV2.json} - needed for leveled pet keys and IDs missing from Vyriv prices.
  */
 public final class SkyHelperPriceCache {
 	private static final URI PRICES_URI = URI.create(
@@ -34,6 +34,7 @@ public final class SkyHelperPriceCache {
 
 	private static volatile Map<String, Double> prices = Map.of();
 	private static volatile boolean ready;
+	private static volatile long lastSuccessfulRefreshMillis;
 
 	private SkyHelperPriceCache() {
 	}
@@ -45,6 +46,10 @@ public final class SkyHelperPriceCache {
 
 	public static boolean isReady() {
 		return ready && !prices.isEmpty();
+	}
+
+	public static long lastSuccessfulRefreshMillis() {
+		return lastSuccessfulRefreshMillis;
 	}
 
 	public static Double get(String itemId) {
@@ -84,6 +89,7 @@ public final class SkyHelperPriceCache {
 		}
 		if (!next.isEmpty()) {
 			prices = Map.copyOf(next);
+			lastSuccessfulRefreshMillis = System.currentTimeMillis();
 			ready = true;
 			BetterPV.LOGGER.info("Loaded {} SkyHelper price entries", next.size());
 		}

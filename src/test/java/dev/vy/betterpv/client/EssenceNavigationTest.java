@@ -67,9 +67,15 @@ public final class EssenceNavigationTest {
 	}
 
 	@Test
-	public void homeKeepsItsSubtabsAndAddsEssenceLast() {
+	public void homeKeepsItsSubtabsThenEssenceAndRankings() {
 		assertArrayEquals(
-			new PvSubTab[] { PvSubTab.HOME_OVERVIEW, PvSubTab.HOME_MISC, PvSubTab.HOME_RECORDS, PvSubTab.HOME_ESSENCE },
+			new PvSubTab[] {
+				PvSubTab.HOME_OVERVIEW,
+				PvSubTab.HOME_MISC,
+				PvSubTab.HOME_RECORDS,
+				PvSubTab.HOME_ESSENCE,
+				PvSubTab.HOME_RANKINGS
+			},
 			PvTab.HOME.subTabs()
 		);
 	}

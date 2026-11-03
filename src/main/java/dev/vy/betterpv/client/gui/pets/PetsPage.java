@@ -87,12 +87,18 @@ public final class PetsPage {
 		this.scroll = 0;
 		SkyBlockItemFactory.prefetchPets(this.snapshot);
 		java.util.Set<String> owned = new java.util.HashSet<>();
+		java.util.Map<String, Integer> ownedBestTier = new java.util.HashMap<>();
 		for (PetSnapshot.Entry pet : this.snapshot.pets()) {
-			owned.add(pet.type().toUpperCase(Locale.ROOT));
+			String key = pet.type().toUpperCase(Locale.ROOT);
+			owned.add(key);
+			ownedBestTier.merge(key, pet.tierIndex(), Math::max);
 		}
 		List<PetLoreResolver.PetType> missing = new ArrayList<>();
 		for (PetLoreResolver.PetType type : PetLoreResolver.petTypes()) {
-			if (!owned.contains(type.type()) && PetListRules.showAsMissing(type.type(), owned)) {
+			String key = type.type().toUpperCase(Locale.ROOT);
+			Integer have = ownedBestTier.get(key);
+			boolean missingHighest = have == null || have < type.tierIndex();
+			if (missingHighest && PetListRules.showAsMissing(key, owned)) {
 				missing.add(type);
 			}
 		}
@@ -379,9 +385,10 @@ public final class PetsPage {
 		SkyBlockIconRenderer.draw(g, SkyBlockItemFactory.iconStack(pet.neuId()), pet.neuId(), ix, iy, ITEM_ICON);
 		if (hovered) {
 			int rarity = SkyBlockItemFactory.tierArgb(pet.tier()) & 0xFFFFFF;
+			String tierLabel = InventoryDecoder.prettyWords(pet.tier());
 			this.hoverPetTip = List.of(
 				Component.literal(pet.name()).withColor(rarity),
-				Component.literal("Missing").withColor(0xFF5555)
+				Component.literal("Missing " + tierLabel).withColor(0xFF5555)
 			);
 		}
 	}

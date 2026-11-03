@@ -19,9 +19,7 @@ public final class CrimsonUi {
 	public static final int SLOT_GAP = 3;
 	public static final int ITEM_SLOT_BG = 0xFF101018;
 	public static final int ITEM_SLOT_BORDER = 0xFF2A2A35;
-	public static final int FLIP_MS = 480;
 	public static final int SEP_GAP = 10;
-	public static final int PANEL_HOVER = 0x0AFFFFFF;
 	/** Mages - light purple. */
 	public static final int MAGE_COLOR = 0xFFD97FFF;
 	/** Barbarians - light red. */
@@ -30,8 +28,6 @@ public final class CrimsonUi {
 	public static final int KUUDRA_COLOR = 0xFFFF5555;
 	/** Dojo - gold. */
 	public static final int DOJO_COLOR = 0xFFFFAA00;
-	/** Crimson essence shop header - red. */
-	public static final int SHOP_HEADER_COLOR = 0xFFFF5555;
 	public static final int ENABLED = 0xFF55FF55;
 	public static final int DISABLED = 0xFF555555;
 
@@ -88,10 +84,6 @@ public final class CrimsonUi {
 				return;
 			}
 		}
-	}
-
-	public static float easeInOutCubic(float t) {
-		return t < 0.5F ? 4F * t * t * t : 1F - (float) Math.pow(-2F * t + 2F, 3) / 2F;
 	}
 
 	public static String formatAgo(long ms) {

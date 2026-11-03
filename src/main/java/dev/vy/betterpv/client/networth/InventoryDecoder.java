@@ -539,7 +539,15 @@ public final class InventoryDecoder {
 			}
 		}
 		int current = MagicalPowerCalculator.fromMember(member);
-		return new InventorySnapshot.AccessoryInfo(current, highest, power, tunings, bagUpgrades, unlockedPowers);
+		return new InventorySnapshot.AccessoryInfo(
+			current,
+			highest,
+			power,
+			tunings,
+			bagUpgrades,
+			unlockedPowers,
+			MagicalPowerCalculator.riftPrismConsumedState(member)
+		);
 	}
 
 	public static RiftInventories parseRiftUi(JsonObject member) {

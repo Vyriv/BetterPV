@@ -1,0 +1,26 @@
+{
+	"_attribution": "Fairy, Crystal, Spook, glitched and variable-colour hex values are Hypixel SkyBlock game facts as documented by the Skyblocker community (github.com/SkyblockerMod/Skyblocker, LGPL-3.0). Only the values are used here; BetterPV's classification code is its own.",
+	"crystal": ["1F0030", "46085E", "54146E", "5D1C78", "63237D", "6A2C82", "7E4196", "8E51A6", "9C64B3", "A875BD", "B88BC9", "C6A3D4", "D9C1E3", "E5D1ED", "EFE1F5", "FCF3FF"],
+	"fairy": ["330066", "4C0099", "660033", "660066", "6600CC", "7F00FF", "99004C", "990099", "9933FF", "B266FF", "CC0066", "CC00CC", "CC99FF", "E5CCFF", "FF007F", "FF00FF", "FF3399", "FF33FF", "FF66B2", "FF66FF", "FF99CC", "FF99FF", "FFCCE5", "FFCCFF"],
+	"spook": ["000000", "070008", "0E000F", "150017", "1B001F", "220027", "29002E", "300036", "37003E", "3E0046", "45004D", "4C0055", "52005D", "590065", "60006C", "670074", "6E007C", "750084", "7C008B", "830093", "89009B", "9000A3", "9700AA", "993399", "9E00B2"],
+	"glitched": {
+		"family": {
+			"FFDC51": "SHARK_SCALE",
+			"F7DA33": "FROZEN_BLAZE",
+			"606060": "BAT_PERSON"
+		},
+		"wither": {
+			"CHESTPLATE": {"E7413C": "POWER_WITHER_CHESTPLATE", "45413C": "TANK_WITHER_CHESTPLATE", "4A14B7": "SPEED_WITHER_CHESTPLATE", "1793C4": "WISE_WITHER_CHESTPLATE", "000000": "WITHER_CHESTPLATE"},
+			"LEGGINGS": {"E75C3C": "POWER_WITHER_LEGGINGS", "65605A": "TANK_WITHER_LEGGINGS", "5D2FB9": "SPEED_WITHER_LEGGINGS", "17A8C4": "WISE_WITHER_LEGGINGS", "000000": "WITHER_LEGGINGS"},
+			"BOOTS": {"E76E3C": "POWER_WITHER_BOOTS", "88837E": "TANK_WITHER_BOOTS", "8969C8": "SPEED_WITHER_BOOTS", "1CD4E4": "WISE_WITHER_BOOTS", "000000": "WITHER_BOOTS"}
+		},
+		"black_wither_after_ms": 1605830400000
+	},
+	"variable": {
+		"RANCHERS": ["CC5500", "000000"],
+		"REAPER": ["1B1B1B", "FF0000"],
+		"ADAPTIVE_CHESTPLATE": ["3ABE78", "82E3D8", "BFBCB2", "D579FF", "FF4242", "FFC234"],
+		"ADAPTIVE": ["169F57", "2AB5A5", "6E00A0", "BB0000", "BFBCB2", "FFF7E6"]
+	},
+	"unpredictable": ["LEATHER_", "GHOST_BOOTS"]
+}

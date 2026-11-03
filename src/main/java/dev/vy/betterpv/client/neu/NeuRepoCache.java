@@ -339,6 +339,10 @@ public final class NeuRepoCache {
 		return Files.isRegularFile(path) ? path : null;
 	}
 
+	public static Collection<JsonObject> items() {
+		return java.util.Collections.unmodifiableCollection(ITEMS.values());
+	}
+
 	public static JsonObject get(String internalName) {
 		if (internalName == null || internalName.isBlank()) {
 			return null;

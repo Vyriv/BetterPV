@@ -83,6 +83,14 @@ tasks.withType(Test).configureEach {
 	workingDir = layout.buildDirectory.get().asFile
 }
 
+tasks.register("benchmarkNameStyleMatcher", JavaExec) {
+	group = "verification"
+	description = "Runs the cosmetic name matcher microbenchmark."
+	dependsOn("testClasses")
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "dev.vy.betterpv.client.cosmetics.NameStyleMatcherBenchmark"
+}
+
 tasks.withType(Jar).configureEach {
 	from(rootProject.file("LICENSE")) {
 		into("META-INF")

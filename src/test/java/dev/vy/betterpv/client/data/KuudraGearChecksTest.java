@@ -134,6 +134,16 @@ public class KuudraGearChecksTest {
 	}
 
 	@Test
+	public void starredBonemerangAndLastBreathCount() {
+		Result r = compute(items(
+			owned(item("STARRED_BONE_BOOMERANG", null, null, 0, "ultimate_rend", 5)),
+			owned(item("STARRED_LAST_BREATH", null, null, 0, "ultimate_duplex", 1))
+		));
+		assertEquals(1, group(r.items(), "Rend Bonemerang").owned());
+		assertEquals(1, group(r.items(), "Last Breath (Duplex I)").owned());
+	}
+
+	@Test
 	public void goldenDragonCopiesKeepTheirOwnMetadata() {
 		PetSnapshot.Entry maxed = pet(200, "PET_ITEM_MINOS_RELIC", 10);
 		PetSnapshot.Entry low = pet(102, "", 0);

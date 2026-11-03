@@ -28,9 +28,6 @@ public final class CrimsonPage {
 	}
 
 	public boolean mouseClicked(double mx, double my) {
-		if (this.activeSub == PvSubTab.CRIMSON_OVERVIEW) {
-			return this.overview.mouseClicked(mx, my);
-		}
 		if (this.activeSub == PvSubTab.CRIMSON_ABIPHONE) {
 			return this.abiphone.mouseClicked(mx, my);
 		}

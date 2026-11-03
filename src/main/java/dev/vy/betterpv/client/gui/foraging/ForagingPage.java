@@ -34,13 +34,7 @@ public final class ForagingPage {
 	}
 
 	public boolean mouseClicked(double mx, double my) {
-		if (this.lastSub == PvSubTab.FORAGING_ATTRIBUTE_SHARDS) {
-			return this.attributeShards.mouseClicked(mx, my);
-		}
-		if (this.lastSub != PvSubTab.FORAGING_OVERVIEW) {
-			return false;
-		}
-		return this.overview.mouseClicked(mx, my);
+		return this.lastSub == PvSubTab.FORAGING_ATTRIBUTE_SHARDS && this.attributeShards.mouseClicked(mx, my);
 	}
 
 	public boolean mouseScrolled(double mouseX, double mouseY, double scrollY, PvSubTab sub) {
@@ -61,9 +55,6 @@ public final class ForagingPage {
 			this.lastSub = mode;
 			this.attributeShards.resetScroll();
 			this.hunting.resetScroll();
-			if (mode != PvSubTab.FORAGING_OVERVIEW) {
-				this.overview.onLeave();
-			}
 		}
 
 		switch (mode) {

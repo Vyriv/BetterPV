@@ -8,7 +8,6 @@ import dev.vy.betterpv.client.dungeons.ClassLevelQuery;
 import dev.vy.betterpv.client.dungeons.ClassXpCalculator;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
-import dev.vy.betterpv.client.gui.essence.EssenceShopColumn;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -39,15 +38,6 @@ public final class DungeonPage {
 	private static final int HELP_ICON_COLOR = 0xFF9A9AAC;
 	private static final int HELP_ICON_HOVER = 0xFF5B8CFF;
 	private static final String HELP_MARK = "(?)";
-	private static final int FLIP_MS = 480;
-	private static final int PANEL_HOVER = 0x0AFFFFFF;
-	/** Wither essence: light gray so the header reads at the same weight as Ice/Spider/Dragon. */
-	private static final int WITHER_COLOR = 0xFFAAAAAA;
-	/** Undead essence - pink. */
-	private static final int UNDEAD_COLOR = 0xFFFF8EC8;
-	private static final int ICE_COLOR = 0xFF55FFFF;
-	private static final int SPIDER_COLOR = 0xFF55FF55;
-	private static final int DRAGON_COLOR = 0xFFFF5555;
 	private static final int NORMAL_FLOOR_COLOR = 0xFF7CB87C;
 	private static final int MASTER_FLOOR_COLOR = 0xFFB85A5A;
 
@@ -62,22 +52,6 @@ public final class DungeonPage {
 	private String classLevelText = "";
 	private FieldFocus focus = FieldFocus.NONE;
 	private boolean replaceOnType;
-
-	private boolean runsEssenceFace;
-	private long runsFlipStartMs;
-	private boolean runsFlipTarget;
-	private int runsHitX;
-	private int runsHitY;
-	private int runsHitW;
-	private int runsHitH;
-
-	private boolean classEssenceFace;
-	private long classFlipStartMs;
-	private boolean classFlipTarget;
-	private int classHitX;
-	private int classHitY;
-	private int classHitW;
-	private int classHitH;
 
 	public void apply(DungeonSnapshot data) {
 		this.data = data == null ? DungeonSnapshot.empty() : data;
@@ -148,45 +122,7 @@ public final class DungeonPage {
 			blurField();
 			return true;
 		}
-		if (clickRunsPanel(mx, my)) {
-			return true;
-		}
-		if (clickClassPanel(mx, my)) {
-			return true;
-		}
 		return false;
-	}
-
-	private boolean clickRunsPanel(double mouseX, double mouseY) {
-		if (this.runsHitW <= 0 || this.runsHitH <= 0) {
-			return false;
-		}
-		if (mouseX < this.runsHitX || mouseX >= this.runsHitX + this.runsHitW
-			|| mouseY < this.runsHitY || mouseY >= this.runsHitY + this.runsHitH) {
-			return false;
-		}
-		if (this.runsFlipStartMs != 0L) {
-			return true;
-		}
-		this.runsFlipTarget = !this.runsEssenceFace;
-		this.runsFlipStartMs = System.currentTimeMillis();
-		return true;
-	}
-
-	private boolean clickClassPanel(double mouseX, double mouseY) {
-		if (this.classHitW <= 0 || this.classHitH <= 0) {
-			return false;
-		}
-		if (mouseX < this.classHitX || mouseX >= this.classHitX + this.classHitW
-			|| mouseY < this.classHitY || mouseY >= this.classHitY + this.classHitH) {
-			return false;
-		}
-		if (this.classFlipStartMs != 0L) {
-			return true;
-		}
-		this.classFlipTarget = !this.classEssenceFace;
-		this.classFlipStartMs = System.currentTimeMillis();
-		return true;
 	}
 
 	public boolean isCalcButton(double mx, double my) {
@@ -405,14 +341,13 @@ public final class DungeonPage {
 			totalY = firstFloorY + floorBlock + usedGaps + totalGap;
 		}
 		FloorLayout floors = new FloorLayout(firstFloorY, lineH, gap, totalY);
-		drawRunsPanel(g, font, leftX, runsY, leftW, runsH, floors, mouseX, mouseY);
-		drawRightColumn(g, font, rightX, y, rightW, h, floors.totalY(), mouseX, mouseY);
+		PvDraw.innerPanel(g, leftX, runsY, leftW, runsH);
+		drawRunsFace(g, font, leftX, runsY, leftW, floors);
+		PvDraw.innerPanel(g, rightX, y, rightW, h);
+		drawClassStatsFace(g, font, rightX, y, rightW, h, floors.totalY());
 	}
 
 	public void renderTooltip(GuiGraphicsExtractor g, Font font, int mouseX, int mouseY, int screenW, int screenH) {
-		if (this.runsFlipStartMs != 0L || this.classFlipStartMs != 0L) {
-			return;
-		}
 		for (HoverZone zone : this.zones) {
 			if (mouseX >= zone.x && mouseX < zone.x + zone.w && mouseY >= zone.y && mouseY < zone.y + zone.h) {
 				if (zone.lines != null && !zone.lines.isEmpty()) {
@@ -666,60 +601,6 @@ public final class DungeonPage {
 		}
 	}
 
-	private void drawRightColumn(
-		GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, int totalY, int mouseX, int mouseY
-	) {
-		this.classHitX = x;
-		this.classHitY = y;
-		this.classHitW = w;
-		this.classHitH = h;
-
-		boolean hovered = mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + h;
-		float flipProgress = 0F;
-		boolean animating = this.classFlipStartMs != 0L;
-		if (animating) {
-			flipProgress = Math.min(1F, (System.currentTimeMillis() - this.classFlipStartMs) / (float) FLIP_MS);
-			if (flipProgress >= 1F) {
-				this.classEssenceFace = this.classFlipTarget;
-				this.classFlipStartMs = 0L;
-				animating = false;
-				flipProgress = 0F;
-			}
-		}
-		float eased = animating ? easeInOutCubic(flipProgress) : 0F;
-		float angle = eased * (float) Math.PI;
-		boolean showEssence = animating
-			? (Math.cos(angle) < 0.0 ? this.classFlipTarget : this.classEssenceFace)
-			: this.classEssenceFace;
-		float scaleX = 1F;
-		float scaleY = 1F;
-		if (animating) {
-			scaleX = Math.max(0.04F, Math.abs((float) Math.cos(angle)));
-			scaleY = 1F - (1F - scaleX) * 0.06F;
-		}
-
-		float cxFlip = x + w / 2F;
-		float cyFlip = y + h / 2F;
-		g.pose().pushMatrix();
-		g.pose().translate(cxFlip, cyFlip);
-		g.pose().scale(scaleX, scaleY);
-		g.pose().translate(-cxFlip, -cyFlip);
-
-		this.classHitH = h;
-		PvDraw.innerPanel(g, x, y, w, h);
-		if (hovered && !animating) {
-			PvDraw.fill(g, x + 1, y + 1, w - 2, h - 2, PANEL_HOVER);
-		}
-
-		if (showEssence) {
-			drawWitherUndeadEssenceFace(g, font, x + PAD, y + PAD, w - PAD * 2, h - PAD * 2, !animating);
-		} else {
-			drawClassStatsFace(g, font, x, y, w, h, totalY);
-		}
-
-		g.pose().popMatrix();
-	}
-
 	private void drawClassStatsFace(GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, int totalY) {
 		int cx = x + PAD;
 		int barW = w - PAD * 2;
@@ -816,106 +697,6 @@ public final class DungeonPage {
 		}
 	}
 
-	private void drawWitherUndeadEssenceFace(
-		GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, boolean registerHovers
-	) {
-		int gap = 20;
-		int colW = Math.max(40, (w - gap) / 2);
-		int sepX = x + colW + gap / 2;
-		drawEssenceColumnFit(g, font, this.data.witherShop(), x, y, colW, h, WITHER_COLOR, 3, registerHovers);
-		PvDraw.fill(g, sepX, y, 1, h, PvDraw.COLOR_BORDER);
-		drawEssenceColumnFit(
-			g, font, this.data.undeadShop(), x + colW + gap, y, colW, h, UNDEAD_COLOR, 3, registerHovers
-		);
-	}
-
-	private void drawIceSpiderDragonEssenceFace(
-		GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, boolean registerHovers
-	) {
-		int gap = 8;
-		int colW = Math.max(40, (w - gap * 2) / 3);
-		int c0 = x;
-		int c1 = x + colW + gap;
-		int c2 = c1 + colW + gap;
-		drawEssenceColumnFit(g, font, this.data.iceShop(), c0, y, colW, h, ICE_COLOR, 0, registerHovers);
-		PvDraw.fill(g, c0 + colW + gap / 2, y, 1, h, PvDraw.COLOR_BORDER);
-		drawEssenceColumnFit(g, font, this.data.spiderShop(), c1, y, colW, h, SPIDER_COLOR, 0, registerHovers);
-		PvDraw.fill(g, c1 + colW + gap / 2, y, 1, h, PvDraw.COLOR_BORDER);
-		drawEssenceColumnFit(g, font, this.data.dragonShop(), c2, y, colW, h, DRAGON_COLOR, 0, registerHovers);
-	}
-
-	private void drawEssenceColumnFit(
-		GuiGraphicsExtractor g,
-		Font font,
-		DungeonSnapshot.EssenceShop shop,
-		int x,
-		int y,
-		int w,
-		int h,
-		int headerColor,
-		int rowGap,
-		boolean registerHovers
-	) {
-		EssenceShopColumn.draw(
-			g, font, shop, x, y, w, h, headerColor, rowGap,
-			registerHovers ? (zx, zy, zw, zh, lines) -> this.zones.add(new HoverZone(zx, zy, zw, zh, lines)) : null
-		);
-	}
-
-	private void drawRunsPanel(
-		GuiGraphicsExtractor g, Font font, int x, int y, int w, int h, FloorLayout floors, int mouseX, int mouseY
-	) {
-		this.runsHitX = x;
-		this.runsHitY = y;
-		this.runsHitW = w;
-		this.runsHitH = h;
-
-		boolean hovered = mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + h;
-		float flipProgress = 0F;
-		boolean animating = this.runsFlipStartMs != 0L;
-		if (animating) {
-			flipProgress = Math.min(1F, (System.currentTimeMillis() - this.runsFlipStartMs) / (float) FLIP_MS);
-			if (flipProgress >= 1F) {
-				this.runsEssenceFace = this.runsFlipTarget;
-				this.runsFlipStartMs = 0L;
-				animating = false;
-				flipProgress = 0F;
-			}
-		}
-		float eased = animating ? easeInOutCubic(flipProgress) : 0F;
-		float angle = eased * (float) Math.PI;
-		boolean showEssence = animating
-			? (Math.cos(angle) < 0.0 ? this.runsFlipTarget : this.runsEssenceFace)
-			: this.runsEssenceFace;
-		float scaleX = 1F;
-		float scaleY = 1F;
-		if (animating) {
-			scaleX = Math.max(0.04F, Math.abs((float) Math.cos(angle)));
-			scaleY = 1F - (1F - scaleX) * 0.06F;
-		}
-
-		float cxFlip = x + w / 2F;
-		float cyFlip = y + h / 2F;
-		g.pose().pushMatrix();
-		g.pose().translate(cxFlip, cyFlip);
-		g.pose().scale(scaleX, scaleY);
-		g.pose().translate(-cxFlip, -cyFlip);
-
-		this.runsHitH = h;
-		PvDraw.innerPanel(g, x, y, w, h);
-		if (hovered && !animating) {
-			PvDraw.fill(g, x + 1, y + 1, w - 2, h - 2, PANEL_HOVER);
-		}
-
-		if (showEssence) {
-			drawIceSpiderDragonEssenceFace(g, font, x + PAD, y + PAD, w - PAD * 2, h - PAD * 2, !animating);
-		} else {
-			drawRunsFace(g, font, x, y, w, floors);
-		}
-
-		g.pose().popMatrix();
-	}
-
 	private void drawRunsFace(GuiGraphicsExtractor g, Font font, int x, int y, int w, FloorLayout floors) {
 		int cx = x + PAD;
 		int innerW = w - PAD * 2;
@@ -948,12 +729,6 @@ public final class DungeonPage {
 
 		drawTotalLine(g, font, leftCol, floors.totalY(), colW, normalTotal);
 		drawTotalLine(g, font, rightCol, floors.totalY(), colW, masterTotal);
-	}
-
-	private static float easeInOutCubic(float t) {
-		return t < 0.5F
-			? 4F * t * t * t
-			: 1F - (float) Math.pow(-2F * t + 2F, 3) / 2F;
 	}
 
 	private void drawTotalLine(

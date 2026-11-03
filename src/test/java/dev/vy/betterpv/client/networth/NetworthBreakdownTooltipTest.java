@@ -33,7 +33,7 @@ public class NetworthBreakdownTooltipTest {
 	@Test
 	public void totalsAreUnchangedAndSharesShown() {
 		NetworthBreakdown nw = sample(3);
-		List<String> lines = text(nw.tooltipStyledLines(NetworthMode.NORMAL, false));
+		List<String> lines = text(nw.tooltipStyledLines(NetworthMode.NORMAL));
 		assertEquals("Networth: 3,970,000", lines.get(0));
 		assertEquals("Mode: Normal (cosmetics included, soulbound included)", lines.get(1));
 		assertTrue(lines.contains("Inventory: 2,970,000 (74.8%)"));
@@ -41,21 +41,11 @@ public class NetworthBreakdownTooltipTest {
 	}
 
 	@Test
-	public void itemsHiddenUntilShiftWithHint() {
-		List<String> hidden = text(sample(3).tooltipStyledLines(NetworthMode.NORMAL, false));
-		assertTrue(hidden.contains("Hold L-shift for item values"));
-		assertFalse(hidden.stream().anyMatch(l -> l.startsWith("  Item")));
-
-		List<String> shown = text(sample(3).tooltipStyledLines(NetworthMode.NORMAL, true));
-		assertFalse(shown.contains("Hold L-shift for item values"));
-		assertTrue(shown.stream().anyMatch(l -> l.startsWith("  Item 0: ")));
-	}
-
-	@Test
-	public void overflowRowShowsRemainingValue() {
-		List<String> shown = text(sample(14).tooltipStyledLines(NetworthMode.NORMAL, true));
-		// Items 12 and 13 are 880k + 870k.
-		assertTrue(shown.toString(), shown.stream().anyMatch(l -> l.startsWith("  +2 more items: 1.75m")));
+	public void noShiftItemRowsOrFooterHints() {
+		List<String> lines = text(sample(3).tooltipStyledLines(NetworthMode.NORMAL));
+		assertFalse(lines.stream().anyMatch(l -> l.startsWith("  Item")));
+		assertFalse(lines.stream().anyMatch(l -> l.contains("Hold L-shift")));
+		assertFalse(lines.stream().anyMatch(l -> l.startsWith("Prices:")));
 	}
 
 	@Test

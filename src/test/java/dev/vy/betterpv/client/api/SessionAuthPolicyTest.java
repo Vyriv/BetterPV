@@ -20,6 +20,13 @@ public final class SessionAuthPolicyTest {
 	private static final UUID BOB = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
 
 	@Test
+	public void liveTokenAllowsResourceFetchDuringProofCooldown() {
+		assertTrue(SessionAuthPolicy.resourceFetchAllowed(true, 58_145L));
+		assertTrue(SessionAuthPolicy.resourceFetchAllowed(false, 0L));
+		assertFalse(SessionAuthPolicy.resourceFetchAllowed(false, 58_145L));
+	}
+
+	@Test
 	public void renewsOnlyLiveRenewableTokens() {
 		assertEquals(Action.USE_CACHED, SessionAuthPolicy.nextAction(true, false, 0L));
 		assertEquals(Action.RENEW, SessionAuthPolicy.nextAction(true, true, HOUR));

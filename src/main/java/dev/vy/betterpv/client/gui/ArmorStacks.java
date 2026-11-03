@@ -33,9 +33,11 @@ public final class ArmorStacks {
 				stack.displayName(),
 				stack.dyeColor(),
 				stack.skullValue(),
-				stack.skullSignature()
+				stack.skullSignature(),
+				stack.extraAttributes(),
+				stack.soulbound()
 			);
-			ItemStack rendered = SkyBlockItemFactory.toStack(slot);
+			ItemStack rendered = SkyBlockItemFactory.toEquippedStack(slot);
 			if (rendered != null && !rendered.isEmpty()) {
 				armor[i] = rendered;
 			}

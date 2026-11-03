@@ -311,7 +311,7 @@ public final class KuudraGearChecks {
 		Numbering numbering = new Numbering();
 		List<Entry> withRend = new ArrayList<>();
 		List<Entry> without = new ArrayList<>();
-		for (Owned owned : matching(in, "BONE_BOOMERANG"::equals)) {
+		for (Owned owned : matching(in, orStarred("BONE_BOOMERANG"))) {
 			Map<String, Integer> ench = enchants(owned.stack());
 			int rendLvl = level(ench, "ultimate_rend");
 			int piercing = level(ench, "piercing");
@@ -351,7 +351,7 @@ public final class KuudraGearChecks {
 	private static Group lastBreath(Inputs in) {
 		Numbering numbering = new Numbering();
 		List<Entry> entries = new ArrayList<>();
-		for (Owned owned : matching(in, "LAST_BREATH"::equals)) {
+		for (Owned owned : matching(in, orStarred("LAST_BREATH"))) {
 			int duplex = level(enchants(owned.stack()), DUPLEX);
 			Check check = duplex == 1
 				? Check.of("Duplex", "I", CheckState.OK)
@@ -669,6 +669,11 @@ public final class KuudraGearChecks {
 			}
 		}
 		return out;
+	}
+
+	// Fragged dungeon copies use a STARRED_ id but are the same item.
+	private static Predicate<String> orStarred(String id) {
+		return candidate -> id.equals(candidate) || ("STARRED_" + id).equals(candidate);
 	}
 
 	/** Higher rarity first; Dungeonbreaker and Pickonimbus sort last since they're limited-use tools. */

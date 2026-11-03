@@ -1,6 +1,5 @@
 package dev.vy.betterpv.client.api;
 
-import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -15,17 +14,23 @@ import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import net.fabricmc.loader.api.FabricLoader;
 
 /**
- * Elite Farmers public API ({@code https://api.elitebot.dev}).
- * Used for Jacob contest history; credit in UI like SkyCofl.
+ * Elite Farmers public API ({@code https://api.eliteskyblock.com}, formerly api.elitebot.dev).
+ * Used for farming weight (credited in Garden overview) and leaderboard ranks (Rankings tab).
  */
 public final class EliteBotApiClient {
-	private static final String BASE = "https://api.elitebot.dev";
+	private static final String BASE = "https://api.eliteskyblock.com";
 	private static final Duration TIMEOUT = Duration.ofSeconds(15);
 	private static final long SPACING_MS = 400L;
+	private static final String USER_AGENT = "BetterPV/" + FabricLoader.getInstance()
+		.getModContainer(BetterPV.MOD_ID)
+		.map(container -> container.getMetadata().getVersion().getFriendlyString())
+		.orElse("unknown");
 
 	private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 	private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(2, r -> {
@@ -34,19 +39,14 @@ public final class EliteBotApiClient {
 		return t;
 	});
 	private static long nextRequestAtMillis;
+	private static final long RANKS_TTL_MS = 5L * 60L * 1000L;
+	private static final ConcurrentHashMap<String, CachedBody> RANKS_CACHE = new ConcurrentHashMap<>();
+	private static final InFlightRequestRegistry<String, Optional<JsonObject>> RANKS_IN_FLIGHT = new InFlightRequestRegistry<>();
 
-	private EliteBotApiClient() {
+	private record CachedBody(JsonObject body, long fetchedAtMs) {
 	}
 
-	/** Contest participations for a profile (newest-first from API). */
-	public static CompletableFuture<Optional<JsonArray>> contests(UUID playerUuid, String profileId) {
-		if (playerUuid == null || profileId == null || profileId.isBlank()) {
-			return CompletableFuture.completedFuture(Optional.empty());
-		}
-		String player = HypixelApiClient.undashed(playerUuid);
-		String profile = profileId.trim().replace("-", "").toLowerCase();
-		String url = BASE + "/contests/" + player + "/" + profile;
-		return CompletableFuture.supplyAsync(() -> getArray(url), EXECUTOR);
+	private EliteBotApiClient() {
 	}
 
 	/** Farming weight for a profile. */
@@ -60,39 +60,40 @@ public final class EliteBotApiClient {
 		return CompletableFuture.supplyAsync(() -> getObject(url), EXECUTOR);
 	}
 
-	private static Optional<JsonArray> getArray(String url) {
-		waitForSlot();
-		try {
-			HttpRequest request = HttpRequest.newBuilder(URI.create(url)).timeout(TIMEOUT).GET().build();
-			HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
-			if (response.statusCode() < 200 || response.statusCode() >= 300 || response.body() == null || response.body().isBlank()) {
-				BetterPV.LOGGER.warn("Elite GET {} status={}", url, response.statusCode());
-				return Optional.empty();
-			}
-			JsonElement el = JsonParser.parseString(response.body());
-			if (el.isJsonArray()) {
-				return Optional.of(el.getAsJsonArray());
-			}
-			return Optional.empty();
-		} catch (IOException | InterruptedException exception) {
-			BetterPV.LOGGER.warn("Elite GET {} failed", url, exception);
-			if (exception instanceof InterruptedException) {
-				Thread.currentThread().interrupt();
-			}
-			return Optional.empty();
-		} catch (RuntimeException exception) {
-			if (!SoftDataFailure.isSoft(exception)) {
-				throw exception;
-			}
-			BetterPV.LOGGER.warn("Elite GET {} parse failed", url, exception);
-			return Optional.empty();
+	/**
+	 * Every leaderboard placement for a player on one profile ({@code GET /leaderboards/{player}/{profile}},
+	 * one row per board the profile appears on, at most a few hundred). Unknown players/profiles come
+	 * back as an empty {@code ranks} object, so an empty Optional always means the request itself failed.
+	 * Successful bodies are cached briefly and concurrent callers share one request.
+	 */
+	public static CompletableFuture<Optional<JsonObject>> leaderboardRanks(UUID playerUuid, String profileId) {
+		if (playerUuid == null || profileId == null || profileId.isBlank()) {
+			return CompletableFuture.completedFuture(Optional.empty());
 		}
+		String player = HypixelApiClient.undashed(playerUuid);
+		String profile = profileId.trim().replace("-", "").toLowerCase();
+		String key = player + "/" + profile;
+		long now = System.currentTimeMillis();
+		CachedBody cached = RANKS_CACHE.get(key);
+		if (cached != null && now - cached.fetchedAtMs() < RANKS_TTL_MS) {
+			return CompletableFuture.completedFuture(Optional.of(cached.body()));
+		}
+		String url = BASE + "/leaderboards/" + player + "/" + profile;
+		return RANKS_IN_FLIGHT.share(key, "", () -> CompletableFuture.supplyAsync(() -> {
+			Optional<JsonObject> body = getObject(url);
+			if (body.isPresent()) {
+				long fetchedAt = System.currentTimeMillis();
+				RANKS_CACHE.values().removeIf(entry -> fetchedAt - entry.fetchedAtMs() >= RANKS_TTL_MS);
+				RANKS_CACHE.put(key, new CachedBody(body.get(), fetchedAt));
+			}
+			return body;
+		}, EXECUTOR)).future();
 	}
 
 	private static Optional<JsonObject> getObject(String url) {
 		waitForSlot();
 		try {
-			HttpRequest request = HttpRequest.newBuilder(URI.create(url)).timeout(TIMEOUT).GET().build();
+			HttpRequest request = eliteGet(url);
 			HttpResponse<String> response = HTTP.send(request, HttpResponse.BodyHandlers.ofString());
 			if (response.statusCode() < 200 || response.statusCode() >= 300 || response.body() == null || response.body().isBlank()) {
 				BetterPV.LOGGER.warn("Elite GET {} status={}", url, response.statusCode());
@@ -116,6 +117,14 @@ public final class EliteBotApiClient {
 			BetterPV.LOGGER.warn("Elite GET {} parse failed", url, exception);
 			return Optional.empty();
 		}
+	}
+
+	private static HttpRequest eliteGet(String url) {
+		return HttpRequest.newBuilder(URI.create(url))
+			.timeout(TIMEOUT)
+			.header("User-Agent", USER_AGENT)
+			.GET()
+			.build();
 	}
 
 	private static synchronized void waitForSlot() {

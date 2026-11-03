@@ -103,41 +103,33 @@ final class HomeTooltips {
 		return tip;
 	}
 
-	static List<PvTooltip.Line> bank(ProfileSnapshot snapshot) {
+	static List<PvTooltip.Line> coins(ProfileSnapshot snapshot) {
+		return coins(snapshot.purseCoins(), snapshot.bankCoins());
+	}
+
+	/** Full, unshortened purse and bank values. */
+	static List<PvTooltip.Line> coins(double purse, double bank) {
 		List<PvTooltip.Line> lines = new ArrayList<>();
-		lines.add(PvTooltip.Line.title("Bank", PvDraw.COLOR_TEXT));
+		lines.add(PvTooltip.Line.title("Coins", PvDraw.COLOR_TEXT));
 		lines.add(PvTooltip.Line.divider());
-		lines.add(PvTooltip.Line.row(
-			"Balance", PvDraw.COLOR_MUTED,
-			FormatUtil.shortCoins(snapshot.bankCoins()), PvDraw.COLOR_GOLD
-		));
-		List<ProfileSnapshot.BankTransaction> txs = snapshot.bankTransactions();
-		if (txs == null || txs.isEmpty()) {
-			lines.add(PvTooltip.Line.meta("No transactions, or Banking API off"));
-			return lines;
-		}
-		lines.add(PvTooltip.Line.blank());
-		lines.add(PvTooltip.Line.of("Recent", PvDraw.COLOR_MUTED));
-		int shown = 0;
-		for (ProfileSnapshot.BankTransaction tx : txs) {
-			if (shown >= 6) {
-				break;
-			}
-			String action = formatBankAction(tx.action());
-			String amount = FormatUtil.shortCoins(tx.amount());
-			String who = tx.initiatorName().isBlank() ? "" : tx.initiatorName();
-			String when = tx.timestampMs() > 0L ? FormatUtil.ago(tx.timestampMs()) : "";
-			String left = action + " " + amount;
-			String right = when;
-			if (!who.isBlank() && !when.isBlank()) {
-				right = who + " · " + when;
-			} else if (!who.isBlank()) {
-				right = who;
-			}
-			lines.add(PvTooltip.Line.row(left, PvDraw.COLOR_TEXT, right, PvDraw.COLOR_MUTED));
-			shown++;
-		}
+		lines.add(PvTooltip.Line.row("Purse", PvDraw.COLOR_MUTED, FormatUtil.commas(Math.round(purse)), PvDraw.COLOR_GOLD));
+		lines.add(PvTooltip.Line.row("Bank", PvDraw.COLOR_MUTED, FormatUtil.commas(Math.round(bank)), PvDraw.COLOR_GOLD));
 		return lines;
+	}
+
+	/** One decimal with a lowercase suffix for the Home Coins line: 86.2m, 1.9b. */
+	static String coinsShort(double value) {
+		if (Math.abs(value) < 1_000D) {
+			return FormatUtil.commas(Math.round(value));
+		}
+		String[] suffixes = {"k", "m", "b", "t"};
+		double scaled = value / 1_000D;
+		int unit = 0;
+		while (unit < suffixes.length - 1 && Math.abs(scaled) >= 999.95D) {
+			scaled /= 1_000D;
+			unit++;
+		}
+		return String.format(java.util.Locale.US, "%.1f", scaled) + suffixes[unit];
 	}
 
 	static List<PvTooltip.Line> status(PlayerStatus playerStatus) {
@@ -192,19 +184,5 @@ final class HomeTooltips {
 		// Ashcon: 2015-04-01T00:00:00.000Z -> 2015-04-01
 		int t = iso.indexOf('T');
 		return t > 0 ? iso.substring(0, t) : iso;
-	}
-
-	private static String formatBankAction(String action) {
-		if (action == null || action.isBlank()) {
-			return "Txn";
-		}
-		return switch (action.trim().toUpperCase(java.util.Locale.ROOT)) {
-			case "DEPOSIT" -> "Deposit";
-			case "WITHDRAW" -> "Withdraw";
-			default -> {
-				String lower = action.trim().toLowerCase(java.util.Locale.ROOT);
-				yield Character.toUpperCase(lower.charAt(0)) + lower.substring(1);
-			}
-		};
 	}
 }

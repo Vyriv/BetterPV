@@ -4,7 +4,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.TextColor;
 
 /**
- * ChatFormatting color helpers that work on both 26.1.2 and 26.2.
+ * ChatFormatting color helpers for 26.2+.
  * 26.2 removed {@code getByName}/{@code isColor}/{@code getColor}/{@code getName}.
  */
 public final class LegacyChatFormatting {

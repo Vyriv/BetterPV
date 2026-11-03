@@ -42,7 +42,8 @@ public enum PvSubTab {
 	HOME_OVERVIEW(Items.PAPER, "betterpv.sub.home_overview"),
 	HOME_MISC(Items.BOOK, "betterpv.sub.home_misc"),
 	HOME_RECORDS(Items.DRAGON_HEAD, "betterpv.sub.home_records"),
-	HOME_ESSENCE(Items.NETHER_STAR, "betterpv.sub.home_essence");
+	HOME_ESSENCE(Items.NETHER_STAR, "betterpv.sub.home_essence"),
+	HOME_RANKINGS(Items.DIAMOND, "betterpv.sub.home_rankings");
 
 	public static final PvSubTab[] NONE = new PvSubTab[0];
 

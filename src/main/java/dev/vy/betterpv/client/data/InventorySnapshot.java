@@ -72,8 +72,20 @@ public final class InventorySnapshot {
 		String selectedPower,
 		List<TuningTemplate> tunings,
 		int bagUpgrades,
-		List<String> unlockedPowers
+		List<String> unlockedPowers,
+		Boolean riftPrismConsumed
 	) {
+		public AccessoryInfo(
+			int magicalPower,
+			int highestMagicalPower,
+			String selectedPower,
+			List<TuningTemplate> tunings,
+			int bagUpgrades,
+			List<String> unlockedPowers
+		) {
+			this(magicalPower, highestMagicalPower, selectedPower, tunings, bagUpgrades, unlockedPowers, null);
+		}
+
 		public AccessoryInfo {
 			magicalPower = Math.max(0, magicalPower);
 			highestMagicalPower = Math.max(0, highestMagicalPower);
@@ -84,7 +96,7 @@ public final class InventorySnapshot {
 		}
 
 		public static AccessoryInfo empty() {
-			return new AccessoryInfo(0, 0, "", List.of(), 0, List.of());
+			return new AccessoryInfo(0, 0, "", List.of(), 0, List.of(), null);
 		}
 	}
 

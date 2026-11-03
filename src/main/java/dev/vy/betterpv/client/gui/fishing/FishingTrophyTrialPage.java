@@ -147,7 +147,7 @@ public final class FishingTrophyTrialPage {
 			g.item(skull, x, slotY);
 			FishingPage.drawTierBorder(g, x, slotY, FishingPage.tierColor(best));
 		} else {
-			g.item(new ItemStack(Items.GRAY_DYE), x, slotY);
+			g.item(new ItemStack(Items.DYE.gray()), x, slotY);
 		}
 
 		int textX = x + SLOT + 4;

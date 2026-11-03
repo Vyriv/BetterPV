@@ -21,6 +21,8 @@ tmp_heads/
 .tmp_api_coverage/
 .tmp_foraging_probe/
 .tmp_*
+.tmp/
 
 # Assets / Resources
 assets/minecraft/lang/
+.vscode/

@@ -8,6 +8,7 @@ import dev.vy.betterpv.client.api.BetterPvSessionAuth;
 import dev.vy.betterpv.client.api.HypixelApiClient;
 import dev.vy.betterpv.client.api.ProfileFetcher;
 import dev.vy.betterpv.client.compat.PvProfileImcPublisher;
+import dev.vy.betterpv.client.data.EliteRankings;
 import dev.vy.betterpv.client.data.MiscStatsSnapshot;
 import dev.vy.betterpv.client.data.ProfileSnapshot;
 import dev.vy.betterpv.client.gui.auctions.AuctionPage;
@@ -33,6 +34,7 @@ import dev.vy.betterpv.client.gui.nav.MuseumSort;
 import dev.vy.betterpv.client.gui.nav.PvSubTab;
 import dev.vy.betterpv.client.gui.nav.PvTab;
 import dev.vy.betterpv.client.gui.pets.PetsPage;
+import dev.vy.betterpv.client.gui.rankings.RankingsPage;
 import dev.vy.betterpv.client.gui.rift.RiftPage;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -82,6 +84,7 @@ public final class ProfileViewerScreen extends Screen {
 	private final MuseumPage museumPage = new MuseumPage();
 	private final BestiaryPage bestiaryPage = new BestiaryPage();
 	private final EventsPage eventsPage = new EventsPage();
+	private final RankingsPage rankingsPage = new RankingsPage();
 	private final IconButtonBar topBar = new IconButtonBar();
 	private final IconButtonBar sideBar = new IconButtonBar();
 	private final IconButtonBar inventoryBar = new IconButtonBar();
@@ -225,7 +228,7 @@ public final class ProfileViewerScreen extends Screen {
 				return;
 			}
 			client.execute(() -> {
-				if (client.screen != this || generation != this.loadGeneration) {
+				if (client.gui.screen() != this || generation != this.loadGeneration) {
 					return;
 				}
 				if (updated == null || !updated.ok()) {
@@ -239,7 +242,7 @@ public final class ProfileViewerScreen extends Screen {
 				return;
 			}
 			client.execute(() -> {
-				if (client.screen != this || generation != this.loadGeneration) {
+				if (client.gui.screen() != this || generation != this.loadGeneration) {
 					return;
 				}
 				ProfileFetcher.LoadedProfile displayed = loaded;
@@ -284,7 +287,7 @@ public final class ProfileViewerScreen extends Screen {
 			return;
 		}
 		client.execute(() -> {
-			if (client.screen != this || !this.dataReady) {
+			if (client.gui.screen() != this || !this.dataReady) {
 				return;
 			}
 			if (this.playerUuid != null && updated.snapshot() != null
@@ -369,6 +372,7 @@ public final class ProfileViewerScreen extends Screen {
 				this.dataLoader.markMuseumLoaded();
 			}
 			this.eventsPage.resetBingoFetch();
+			this.rankingsPage.reset();
 			this.dataLoader.ensurePlayerRank();
 		} else if (loaded.museumMember() != null) {
 			this.dataLoader.markMuseumLoaded();
@@ -596,7 +600,8 @@ public final class ProfileViewerScreen extends Screen {
 				this.museumPage,
 				this.eventsPage,
 				this.inventoryPage,
-				this.bestiaryPage
+				this.bestiaryPage,
+				this.rankingsPage
 			);
 
 			if (dungeonOverview()) {
@@ -811,6 +816,9 @@ public final class ProfileViewerScreen extends Screen {
 					this.homeRecordsPage.render(g, this.font, x, y, w, h);
 				} else if (homeSub == PvSubTab.HOME_ESSENCE) {
 					this.homeEssencePage.render(g, this.font, x, y, w, h, mouseX, mouseY);
+				} else if (homeSub == PvSubTab.HOME_RANKINGS) {
+					this.dataLoader.ensureRankings(false);
+					this.rankingsPage.render(g, this.font, x, y, w, h, mouseX, mouseY);
 				} else {
 					this.homePage.render(
 						g, this.font, x, y, w, h, mouseX, mouseY, this.width, this.height,
@@ -867,9 +875,6 @@ public final class ProfileViewerScreen extends Screen {
 				this.dataLoader.ensureGardenIsland();
 				this.dataLoader.ensureGardenWeight();
 				PvSubTab sub = activeSub(PvSubTab.GARDEN_OVERVIEW);
-				if (sub == PvSubTab.GARDEN_JACOB) {
-					this.dataLoader.ensureGardenContests();
-				}
 				this.gardenPage.render(g, this.font, sub, x, y, w, h, mouseX, mouseY, this.width, this.height);
 			}
 			case MINING -> {
@@ -980,7 +985,7 @@ public final class ProfileViewerScreen extends Screen {
 	private void openSearchedPlayer(String name) {
 		ProfileViewerScreen next = new ProfileViewerScreen(name);
 		next.recordSearch = true;
-		Minecraft.getInstance().setScreen(next);
+		Minecraft.getInstance().gui.setScreen(next);
 	}
 
 	private void submitPlayerSearch() {
@@ -1108,6 +1113,17 @@ public final class ProfileViewerScreen extends Screen {
 			case HOME -> switch (activeSub(PvSubTab.HOME_OVERVIEW)) {
 				case HOME_MISC -> this.homeMiscPage.mouseClicked(mx, my);
 				case HOME_ESSENCE -> this.homeEssencePage.mouseClicked(mx, my);
+				case HOME_RANKINGS -> {
+					if (this.rankingsPage.clickRetry(mx, my)) {
+						this.dataLoader.ensureRankings(true);
+						yield true;
+					}
+					if (this.rankingsPage.clickCredit(mx, my)) {
+						openExternalLink(EliteRankings.CREDIT_URL);
+						yield true;
+					}
+					yield false;
+				}
 				default -> false;
 			};
 			case DUNGEONS -> dungeonOverview() && this.dungeonPage.mouseClicked(mx, my);
@@ -1191,6 +1207,9 @@ public final class ProfileViewerScreen extends Screen {
 				}
 				if (activeSub(PvSubTab.HOME_OVERVIEW) == PvSubTab.HOME_ESSENCE) {
 					yield this.homeEssencePage.mouseScrolled(mouseX, mouseY, scrollY);
+				}
+				if (activeSub(PvSubTab.HOME_OVERVIEW) == PvSubTab.HOME_RANKINGS) {
+					yield this.rankingsPage.mouseScrolled(mouseX, mouseY, scrollY);
 				}
 				yield this.homePage.mouseScrolled(mouseX, mouseY, scrollY);
 			}
@@ -1405,5 +1424,9 @@ public final class ProfileViewerScreen extends Screen {
 
 	EventsPage eventsPage() {
 		return this.eventsPage;
+	}
+
+	RankingsPage rankingsPage() {
+		return this.rankingsPage;
 	}
 }

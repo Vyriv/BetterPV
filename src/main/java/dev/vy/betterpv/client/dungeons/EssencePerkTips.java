@@ -18,6 +18,11 @@ public final class EssencePerkTips {
 	private static final int COLOR_LOCKED = 0xFFFF5555;
 	private static final int COLOR_COLD = 0xFF55FFFF;
 	private static final int COLOR_WISDOM = 0xFF55FFFF;
+	private static final int COLOR_GOLD = 0xFFFFAA00;
+	private static final int COLOR_HEALER = 0xFFFF55FF;
+	private static final int COLOR_WATER = 0xFF5555FF;
+	private static final int COLOR_KUUDRA = 0xFFFF5555;
+	private static final String[] EAGLE_RARITIES = { "Common", "Uncommon", "Rare", "Epic", "Legendary" };
 
 	private EssencePerkTips() {
 	}
@@ -340,8 +345,140 @@ public final class EssencePerkTips {
 				),
 				level
 			);
+			case "heart_of_gold" -> effect(level, txt("Increases "), named("Healer", COLOR_HEALER),
+				txt(" class experience gain by "), val(pct(at(level, 2, 4, 6, 8, 10))), txt("."));
+			case "treasures_of_the_earth" -> effect(level,
+				txt("Increases your chances of spawning a Worm or Scatha when mining Hard Stone by "),
+				val(pct(at(level, 2, 4, 6, 8, 10))), txt("."));
+			case "dwarven_training" -> effect(level, txt("Increases your "), wisdom("Mining"), txt(" by "),
+				val(String.valueOf(at(level, 3, 5, 10))), txt(" while on Mining Islands."));
+			case "unbreaking" -> effect(level, txt("Increases your "), statSpan("vitality"), txt(" by "),
+				val(String.valueOf(at(level, 2, 4, 6, 8, 10))), txt("."));
+			case "eager_miner" -> effect(level, txt("Increases your "), statSpan("mining_speed"), txt(" by "),
+				val(String.valueOf(at(level, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100))),
+				txt(" while on Mining Islands."));
+			case "midas_lure" -> effect(level, txt("Increases your chances of fishing up a "),
+				named("Golden Fish", COLOR_GOLD), txt(" in the Crimson Isle by "),
+				val(pct(at(level, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20))), txt("."));
+			case "radiant_fisher" -> effect(level, txt("Increases your chances of fishing up a "),
+				named("Diamond Trophy Fish", COLOR_COLD), txt(" in the Crimson Isle by "),
+				val(pct(at(level, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20))), txt("."));
+			case "diamond_in_the_rough" -> effect(level, txt("Increases "), named("Tank", COLOR_UNLOCKED),
+				txt(" class experience gain by "), val(pct(at(level, 2, 4, 6, 8, 10))), txt("."));
+			case "rhinestone_infusion" -> effect(level, txt("Increases "), fortune("Gemstone Fortune"), txt(" by "),
+				val(String.valueOf(at(level, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20))), txt(" while on Mining Islands."));
+			case "under_pressure" -> effect(level, txt("Increases your "), statSpan("strength"), txt(" by "),
+				val(String.valueOf(at(level, 5, 10, 15, 20, 25))), txt(" while on Mining Islands."));
+			case "high_roller" -> effect(level, txt("Gain "), val("1"),
+				txt(" extra random drop when obtaining a "), named("Crystal Nucleus Bundle", 0xFFFF55FF), txt("."));
+			case "return_to_sender" -> effect(level, txt("Increases the chances of a "),
+				named("Diamond Goblin", COLOR_COLD), txt(" spawning by "),
+				val(pct(at(level, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100))), txt("."));
+			case "prehistorian" -> effect(level,
+				txt("Increases the chance of a Fossil Dye spawning in the Fossil Excavator by "),
+				val(pct(at(level, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10))), txt("."));
+			case "resourceful" -> effect(level, txt("Grants a "), val(pct(at(level, 1, 2, 3, 4, 5))),
+				txt(" chance to not consume keys when looting a Frozen Corpse."));
+			case "chilled_to_the_bone" -> effect(level, txt("Increases your chances of fishing up Skeleton Fish in the Crimson Isle by "),
+				val(pct(at(level, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20))), txt("."));
+			case "dwarven_expertise" -> effect(level, txt("Increases your "), fortune("Dwarven Metal Fortune"),
+				txt(" by "), val(String.valueOf(at(level, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20))),
+				txt(" while on Mining Islands."));
+			case "sleight_of_hand" -> effect(level, txt("Start the Fossil Excavator with "), val("+1"),
+				txt(" additional Chisel charge."));
+			case "cut_loose" -> effect(level, txt("Killing a "), named("❆ Glacial", COLOR_COLD),
+				txt(" mob inside a Glacite Mineshaft grants "), val(num(0.5 * Math.max(1, level))), txt(" "),
+				named("❄ Cold Resistance", COLOR_COLD), txt(". Stacks up to 10x."));
+			case "trapped" -> effect(level, txt("Your traps catch creatures "), val(pct(at(level, 1, 2, 3, 4, 5))),
+				txt(" faster."));
+			case "axed" -> effect(level, txt("All the stats on your axes are "), val(pct(at(level, 2))), txt(" stronger."));
+			case "extreme_pressure" -> effect(level, txt("Increases your "), named("Pressure Resistance", COLOR_WATER),
+				txt(" by "), val(String.valueOf(at(level, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30))), txt("."));
+			case "lumberjack" -> effect(level, txt("Increases your "), statSpan("foraging_fortune"), txt(" by "),
+				val(String.valueOf(at(level, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20))), txt("."));
+			case "tasty" -> effect(level, txt("Your berry items are "), val(pct(at(level, 2, 4, 6, 8, 10))),
+				txt(" stronger."));
+			case "forest_training" -> effect(level, txt("Increases your "), wisdom("Foraging"), txt(" by "),
+				val(String.valueOf(at(level, 2, 4, 6))), txt(" while on Foraging Islands."));
+			case "critter_catcher" -> effect(level, txt("Start the Critter Safari with "),
+				val(String.valueOf(at(level, 1, 2, 3, 4, 5, 6, 7, 8))), txt(" additional Critter Capsules."));
+			case "critter_master" -> effect(level,
+				txt("Start the Critter Safari with a Masterful Critter Capsule, which always catches the critter it's used on."));
+			case "floortunate" -> effect(level, txt("An additional "), val("+" + at(level, 1, 2, 3, 4, 5)),
+				txt(" Floor Drops will spawn in the Critter Safari."));
+			case "fresh_footprints" -> effect(level, txt("Grants "),
+				val("+" + at(level, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)), txt(" "), named("Tracking", COLOR_UNLOCKED),
+				txt(" while in the Critter Safari."));
+			case "head_start" -> effect(level, txt("Start the Critter Safari with a random Quest Item."));
+			case "hunting_hotspot" -> effect(level,
+				txt("Highlights a random zone each time you enter the Critter Safari. Gain "),
+				val("+" + at(level, 5, 10, 15, 20, 25)), txt(" "), fortune("Hunting Fortune"), txt(" while in it."));
+			case "thawing" -> effect(level, txt("Grants "), val("+" + num(2.5 * Math.max(1, level))), txt(" "),
+				named("❄ Cold Resistance", COLOR_COLD), txt(" while in the Critter Safari."));
+			case "deep_diver" -> effect(level, txt("Grants "),
+				val("+" + at(level, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20)), txt(" "), named("Respiration", COLOR_WATER),
+				txt(" while in the Critter Safari."));
+			case "quickdraw" -> effect(level, txt("Your Critter Capsules catch Critters "),
+				val(pct(at(level, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50))), txt(" faster."));
+			case "amateur_hour" -> effect(level, txt("Grants "),
+				val("+" + at(level, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)), txt(" "), wisdom("Hunting"),
+				txt(" while in the Critter Safari."));
+			case "sparkling_specialist" -> effect(level,
+				txt("Start the Critter Safari with a Sparkling Amulet, which doubles the chance of Critters being Sparkling."));
+			case "eagles_advantage" -> effect(level, txt("Start the Critter Safari with a "),
+				val(EAGLE_RARITIES[Math.min(Math.max(level, 1), EAGLE_RARITIES.length) - 1]), txt(" Eagle Pet."));
+			case "strongarm_kuudra" -> effect(level, txt("Your Fishing Rods pull supplies and Fuel Cells "),
+				val(pct(at(level, 10, 25))), txt(" further during the "), named("Kuudra Boss Fight", COLOR_KUUDRA),
+				txt("."));
+			case "fresh_tools_kuudra" -> effect(level,
+				val(num(2.5 * Math.max(1, level) + 2.5) + "%"), txt(" chance to double the speed of repairing Elle's Ballista for "),
+				val("5s"), txt(" during the "), named("Kuudra Boss Fight", COLOR_KUUDRA), txt("."));
+			case "headstart_kuudra" -> effect(level, txt("Start the "), named("Kuudra Boss Fight", COLOR_KUUDRA),
+				txt(" with "), named(at(level, 10, 20, 30, 40, 50) + " Tokens", 0xFFAA00AA), txt("."));
+			case "master_kuudra" -> effect(level, txt("Deal "), val("0.1%"), txt(" increased damage to "),
+				named("Kuudra's Minions", COLOR_KUUDRA),
+				txt(" per highest wave defeated in that tier or higher. Max 10%."));
+			case "fungus_fortuna" -> effect(level, txt("Gain "),
+				val("+" + at(level, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20)), txt(" "), statSpan("mining_fortune"),
+				txt(" when mining Mycelium."));
+			case "harena_fortuna" -> effect(level, txt("Gain "),
+				val("+" + at(level, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20)), txt(" "), statSpan("mining_fortune"),
+				txt(" when mining Red Sand."));
+			case "crimson_training" -> effect(level, txt("Increases your "), wisdom("Combat"), txt(" by "),
+				val(String.valueOf(at(level, 3, 5, 10))),
+				txt(" while on the Crimson Isle and in the "), named("Kuudra Boss Fight", COLOR_KUUDRA), txt("."));
+			case "wither_piper" -> effect(level, val(pct(at(level, 2, 4, 6, 8, 10))),
+				txt(" increased chance to find Vanquishers on the Crimson Isle."));
 			default -> List.of(PvTooltip.Line.meta("No effect description available."));
 		};
+	}
+
+	private static List<PvTooltip.Line> effect(int level, PvTooltip.Span... spans) {
+		return plainEffect(List.of(spans), level);
+	}
+
+	private static PvTooltip.Span txt(String text) {
+		return PvTooltip.Span.of(text, PvDraw.COLOR_TEXT);
+	}
+
+	private static PvTooltip.Span val(String text) {
+		return PvTooltip.Span.bold(text, COLOR_UNLOCKED);
+	}
+
+	private static PvTooltip.Span named(String text, int color) {
+		return PvTooltip.Span.bold(text, color);
+	}
+
+	private static PvTooltip.Span wisdom(String skill) {
+		return PvTooltip.Span.bold("☯ " + skill + " Wisdom", COLOR_WISDOM);
+	}
+
+	private static PvTooltip.Span fortune(String label) {
+		return PvTooltip.Span.bold("☘ " + label, COLOR_GOLD);
+	}
+
+	private static String num(double value) {
+		return value == Math.rint(value) ? String.valueOf((long) value) : String.valueOf(value);
 	}
 
 	private static List<PvTooltip.Line> catacombsStat(String statId, int amount, int level) {
@@ -393,7 +530,7 @@ public final class EssencePerkTips {
 			case "critical_damage" -> "Crit Damage";
 			case "ferocity" -> "Ferocity";
 			case "attack_speed" -> "Attack Speed";
-			default -> style.symbol();
+			default -> style.fullName();
 		};
 		return PvTooltip.Span.bold(style.symbol() + " " + label, style.color());
 	}

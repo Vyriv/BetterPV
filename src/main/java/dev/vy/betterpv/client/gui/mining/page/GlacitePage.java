@@ -1,73 +1,35 @@
 package dev.vy.betterpv.client.gui.mining.page;
 
-import dev.vy.betterpv.client.data.DungeonSnapshot;
 import dev.vy.betterpv.client.data.FormatUtil;
 import dev.vy.betterpv.client.data.MiningSnapshot;
-import dev.vy.betterpv.client.dungeons.EssencePerkTips;
 import dev.vy.betterpv.client.gui.PvDraw;
 import dev.vy.betterpv.client.gui.PvTooltip;
-import dev.vy.betterpv.client.gui.essence.EssenceIcons;
-import dev.vy.betterpv.client.gui.inventories.SkyBlockItemFactory;
 import dev.vy.betterpv.client.gui.mining.MiningUi;
 import dev.vy.betterpv.client.gui.mining.MiningUi.HoverZone;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 
-/** Glacite tunnels subtab: mineshafts, fossils, corpses, milestones / fossil essence flip. */
+/** Glacite tunnels subtab: mineshafts, fossils, corpses, milestones. */
 public final class GlacitePage {
 	private static final int BAR_CORPSE = 0xFF6B9BD1;
 	private static final int CORPSE_LAPIS = 0xFF5555FF;
 	private static final int CORPSE_UMBER = 0xFFC4A35A;
 	private static final int CORPSE_TUNGSTEN = 0xFFB0B0B8;
 	private static final int CORPSE_VANGUARD = 0xFF55FFFF;
-	private static final int FOSSIL_COLOR = 0xFFE8D5A3;
-	private static final int COLOR_MAXED = 0xFF7CFF9A;
-	private static final int PANEL_HOVER = 0x0AFFFFFF;
-	private static final int FLIP_MS = 480;
 
 	private int scroll;
 	private int maxScroll;
 	private int scrollTop;
 	private int scrollH;
 
-	private boolean milestonesEssenceFace;
-	private long milestonesFlipStartMs;
-	private boolean milestonesFlipTarget;
-	private int milestonesHitX;
-	private int milestonesHitY;
-	private int milestonesHitW;
-	private int milestonesHitH;
-
 	public void reset() {
 		this.scroll = 0;
-		this.milestonesEssenceFace = false;
-		this.milestonesFlipStartMs = 0L;
-		this.milestonesHitW = 0;
-		this.milestonesHitH = 0;
 	}
 
 	public void onEnter() {
 		this.scroll = 0;
-	}
-
-	public boolean mouseClicked(double mx, double my) {
-		if (this.milestonesHitW <= 0 || this.milestonesHitH <= 0) {
-			return false;
-		}
-		if (mx < this.milestonesHitX || mx >= this.milestonesHitX + this.milestonesHitW
-			|| my < this.milestonesHitY || my >= this.milestonesHitY + this.milestonesHitH) {
-			return false;
-		}
-		if (this.milestonesFlipStartMs != 0L) {
-			return true;
-		}
-		this.milestonesFlipTarget = !this.milestonesEssenceFace;
-		this.milestonesFlipStartMs = System.currentTimeMillis();
-		return true;
 	}
 
 	public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
@@ -138,62 +100,9 @@ public final class GlacitePage {
 		String tierLabel = current <= 0 ? "None" : ("Tier " + current + (current >= 7 ? " (max)" : ""));
 		MiningUi.statLine(g, font, "Milestone", tierLabel, lx, ly, lw, PvDraw.COLOR_ACCENT);
 
-		drawMilestonesPanel(g, font, snapshot, zones, x + leftW + MiningUi.GAP, y, rightW, h, mx, my);
-	}
-
-	private void drawMilestonesPanel(
-		GuiGraphicsExtractor g, Font font, MiningSnapshot snapshot, List<HoverZone> zones,
-		int x, int y, int w, int h, int mx, int my
-	) {
-		this.milestonesHitX = x;
-		this.milestonesHitY = y;
-		this.milestonesHitW = w;
-		this.milestonesHitH = h;
-
-		boolean hovered = mx >= x && mx < x + w && my >= y && my < y + h;
-		float flipProgress = 0F;
-		boolean animating = this.milestonesFlipStartMs != 0L;
-		if (animating) {
-			flipProgress = Math.min(1F, (System.currentTimeMillis() - this.milestonesFlipStartMs) / (float) FLIP_MS);
-			if (flipProgress >= 1F) {
-				this.milestonesEssenceFace = this.milestonesFlipTarget;
-				this.milestonesFlipStartMs = 0L;
-				animating = false;
-				flipProgress = 0F;
-			}
-		}
-		float eased = animating ? easeInOutCubic(flipProgress) : 0F;
-		float angle = eased * (float) Math.PI;
-		boolean showEssence = animating
-			? (Math.cos(angle) < 0.0 ? this.milestonesFlipTarget : this.milestonesEssenceFace)
-			: this.milestonesEssenceFace;
-		float scaleX = 1F;
-		float scaleY = 1F;
-		if (animating) {
-			scaleX = Math.max(0.04F, Math.abs((float) Math.cos(angle)));
-			scaleY = 1F - (1F - scaleX) * 0.06F;
-		}
-
-		float cxFlip = x + w / 2F;
-		float cyFlip = y + h / 2F;
-		g.pose().pushMatrix();
-		g.pose().translate(cxFlip, cyFlip);
-		g.pose().scale(scaleX, scaleY);
-		g.pose().translate(-cxFlip, -cyFlip);
-
-		PvDraw.innerPanel(g, x, y, w, h);
-		if (hovered && !animating) {
-			PvDraw.fill(g, x + 1, y + 1, w - 2, h - 2, PANEL_HOVER);
-		}
-
-		if (showEssence) {
-			this.maxScroll = 0;
-			drawFossilEssenceFace(g, font, snapshot.fossilShop(), zones, x, y, w, h);
-		} else {
-			renderCorpseMilestones(g, font, snapshot, zones, x, y, w, h, mx, my);
-		}
-
-		g.pose().popMatrix();
+		int rightX = x + leftW + MiningUi.GAP;
+		PvDraw.innerPanel(g, rightX, y, rightW, h);
+		renderCorpseMilestones(g, font, snapshot, zones, rightX, y, rightW, h, mx, my);
 	}
 
 	private void renderCorpseMilestones(
@@ -233,56 +142,6 @@ public final class GlacitePage {
 				rx, yy, rw, mx, my, zones) + Math.max(MiningUi.BAR_AFTER, rowH - MiningUi.barRowH(font) + MiningUi.BAR_AFTER);
 		}
 		g.disableScissor();
-	}
-
-	private void drawFossilEssenceFace(
-		GuiGraphicsExtractor g, Font font, DungeonSnapshot.EssenceShop shop, List<HoverZone> zones,
-		int x, int y, int w, int h
-	) {
-		int pad = MiningUi.PAD;
-		int cx = x + pad;
-		int cy = y + pad;
-		int innerW = w - pad * 2;
-		int bottom = y + h - pad;
-
-		int headerH = Math.max(16, font.lineHeight + 2);
-		PvDraw.IconTextAlign headerAlign = PvDraw.IconTextAlign.of(cy, headerH, 16, font.lineHeight);
-		g.item(fossilIcon(shop.iconId()), cx, headerAlign.iconY());
-		String bal = FormatUtil.commas(shop.balance());
-		int balW = PvDraw.widthBold(font, bal);
-		int headerLabelX = cx + 16 + 4;
-		int nameMax = Math.max(8, innerW - (headerLabelX - cx) - balW - 4);
-		PvDraw.textBold(g, font, MiningUi.trim(font, shop.name() + " Essence", nameMax),
-			headerLabelX, headerAlign.textY(), FOSSIL_COLOR);
-		PvDraw.textBold(g, font, bal, cx + innerW - balW, headerAlign.textY(), FOSSIL_COLOR);
-
-		int ly = cy + headerH + 6;
-		List<DungeonSnapshot.EssencePerk> perks = shop.perks();
-		int colGap = 10;
-		int colW = Math.max(80, (innerW - colGap) / 2);
-		int perkRows = Math.max(1, (perks.size() + 1) / 2);
-		int availPerkH = Math.max(font.lineHeight + 2, bottom - ly);
-		int rowH = Math.max(16, Math.max(font.lineHeight + 2, Math.min(20, availPerkH / perkRows)));
-		for (int i = 0; i < perks.size(); i++) {
-			DungeonSnapshot.EssencePerk perk = perks.get(i);
-			int col = i % 2;
-			int row = i / 2;
-			int px = cx + col * (colW + colGap);
-			int py = ly + row * rowH;
-			if (py + font.lineHeight > bottom) {
-				break;
-			}
-			PvDraw.IconTextAlign rowAlign = PvDraw.IconTextAlign.of(py, rowH, 16, font.lineHeight);
-			g.item(fossilPerkIcon(perk.id()), px, rowAlign.iconY());
-			String right = perk.level() + "/" + perk.maxLevel();
-			int rightW = font.width(right);
-			int labelX = px + 16 + 3;
-			String left = MiningUi.trim(font, perk.name(), Math.max(8, colW - 16 - 3 - rightW - 4));
-			int valueColor = perk.maxed() ? COLOR_MAXED : PvDraw.COLOR_TEXT;
-			PvDraw.text(g, font, left, labelX, rowAlign.textY(), PvDraw.COLOR_MUTED);
-			PvDraw.textRight(g, font, right, px + colW, rowAlign.textY(), valueColor);
-			zones.add(HoverZone.of(px, py, colW, rowH, EssencePerkTips.tip(perk)));
-		}
 	}
 
 	private static String requirementShort(MiningSnapshot.CorpseMilestone tier, MiningSnapshot.CorpseCounts counts) {
@@ -330,18 +189,5 @@ public final class GlacitePage {
 			have + "/" + need,
 			met ? 0xFF55FF55 : PvDraw.COLOR_TEXT
 		));
-	}
-
-	private static ItemStack fossilIcon(String id) {
-		ItemStack stack = SkyBlockItemFactory.iconStack(id == null ? "ESSENCE_FOSSIL" : id);
-		return stack == null || stack.isEmpty() ? new ItemStack(Items.BONE) : stack;
-	}
-
-	private static ItemStack fossilPerkIcon(String perkId) {
-		return EssenceIcons.perk(perkId);
-	}
-
-	private static float easeInOutCubic(float t) {
-		return t < 0.5F ? 4F * t * t * t : 1F - (float) Math.pow(-2F * t + 2F, 3) / 2F;
 	}
 }

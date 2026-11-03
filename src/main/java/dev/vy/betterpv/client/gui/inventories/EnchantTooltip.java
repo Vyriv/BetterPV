@@ -23,7 +23,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.Resource;
 
 /**
- * T6/T7 enchant colours matching Athen/SkyHanni max-level tables.
+	 * T6/T7 enchant colours matching SkyHanni max-level tables.
  * Last tier is rainbow (T7); second-to-last is gold bold (T6).
  * A 7-tier book uses VI/VII; a 5-tier book uses IV/V.
  */

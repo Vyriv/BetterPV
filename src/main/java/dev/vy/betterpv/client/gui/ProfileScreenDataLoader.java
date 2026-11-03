@@ -7,6 +7,7 @@ import dev.vy.betterpv.BetterPV;
 import dev.vy.betterpv.client.api.EliteBotApiClient;
 import dev.vy.betterpv.client.api.HypixelApiClient;
 import dev.vy.betterpv.client.api.ProfileFetcher;
+import dev.vy.betterpv.client.data.EliteRankings;
 import dev.vy.betterpv.client.data.EventsSnapshot;
 import dev.vy.betterpv.client.data.FormatUtil;
 import dev.vy.betterpv.client.data.GardenSnapshot;
@@ -15,6 +16,7 @@ import dev.vy.betterpv.client.data.MuseumCache;
 import dev.vy.betterpv.client.data.PlayerStatus;
 import dev.vy.betterpv.client.data.UsernameHistory;
 import dev.vy.betterpv.client.gui.events.EventsPage;
+import dev.vy.betterpv.client.gui.rankings.RankingsPage;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -23,7 +25,7 @@ import java.util.concurrent.CompletableFuture;
 import net.minecraft.client.Minecraft;
 
 /**
- * Side fetches for an open profile screen (rank, history, guild, status, garden, museum, bingo).
+ * Side fetches for an open profile screen (rank, history, guild, status, garden, museum, bingo, Elite rankings).
  * Captures {@code loadGeneration} at fetch start; applies only while the screen is still current
  * and the generation matches.
  */
@@ -33,7 +35,6 @@ final class ProfileScreenDataLoader {
 	private final ProfileViewerScreen screen;
 
 	private boolean gardenFetchStarted;
-	private boolean gardenContestsFetchStarted;
 	private boolean gardenWeightFetchStarted;
 	private boolean museumFetchStarted;
 	private boolean usernameHistoryFetchStarted;
@@ -49,7 +50,6 @@ final class ProfileScreenDataLoader {
 
 	void resetForNewLoad() {
 		this.gardenFetchStarted = false;
-		this.gardenContestsFetchStarted = false;
 		this.gardenWeightFetchStarted = false;
 		this.museumFetchStarted = false;
 		this.bingoFetchStarted = false;
@@ -295,61 +295,6 @@ final class ProfileScreenDataLoader {
 		});
 	}
 
-	void ensureGardenContests() {
-		if (this.gardenContestsFetchStarted) {
-			return;
-		}
-		GardenSnapshot current = this.screen.gardenPage().snapshot();
-		UUID uuid = this.screen.playerUuid();
-		String id = this.screen.profileId();
-		if (uuid == null || id == null || id.isBlank()) {
-			this.screen.gardenPage().apply(current.withContestsError("No profile selected"));
-			this.gardenContestsFetchStarted = true;
-			return;
-		}
-		this.gardenContestsFetchStarted = true;
-		this.screen.gardenPage().apply(current.withContestsLoading());
-		int generation = this.screen.loadGeneration();
-		EliteBotApiClient.contests(uuid, id).whenComplete((opt, error) -> {
-			Minecraft client = Minecraft.getInstance();
-			if (client == null) {
-				return;
-			}
-			client.execute(() -> {
-				if (!stillCurrent(client, generation)) {
-					return;
-				}
-				GardenSnapshot base = this.screen.gardenPage().snapshot();
-				if (error != null) {
-					BetterPV.LOGGER.warn("Elite contests failed for {}", id, error);
-					if (!base.contests().isEmpty()) {
-						this.screen.gardenPage().patch(base.withContestsReady());
-					} else {
-						this.screen.gardenPage().patch(base.withContestsError(
-							error.getMessage() == null ? "Contests unavailable" : error.getMessage()
-						));
-					}
-					return;
-				}
-				if (opt == null || opt.isEmpty()) {
-					// Keep Hypixel contest list if Elite miss.
-					if (!base.contests().isEmpty()) {
-						this.screen.gardenPage().patch(base.withContestsReady());
-					} else {
-						this.screen.gardenPage().patch(base.withContestsError("Contests unavailable"));
-					}
-					return;
-				}
-				try {
-					this.screen.gardenPage().patch(base.withEliteContests(opt.get()));
-				} catch (Exception exception) {
-					BetterPV.LOGGER.warn("Elite contests parse failed for {}", id, exception);
-					this.screen.gardenPage().patch(base.withContestsError("Couldn't load contests"));
-				}
-			});
-		});
-	}
-
 	void ensureGardenWeight() {
 		if (this.gardenWeightFetchStarted) {
 			return;
@@ -552,7 +497,52 @@ final class ProfileScreenDataLoader {
 		});
 	}
 
+	/** Only called while the Rankings tab is open; {@code retry} re-requests after an error. */
+	void ensureRankings(boolean retry) {
+		RankingsPage page = this.screen.rankingsPage();
+		UUID uuid = this.screen.playerUuid();
+		String id = this.screen.profileId();
+		String key = EliteRankings.key(uuid, id);
+		if (key.isEmpty()) {
+			if (page.rankings().state() != EliteRankings.State.ERROR) {
+				page.apply(EliteRankings.error("", "No profile selected"));
+			}
+			return;
+		}
+		EliteRankings shown = page.rankings();
+		if (shown.isFor(key)) {
+			if (shown.state() == EliteRankings.State.LOADING || shown.state() == EliteRankings.State.READY) {
+				return;
+			}
+			if (shown.state() == EliteRankings.State.ERROR && !retry) {
+				return;
+			}
+		}
+		page.apply(EliteRankings.loading(key));
+		// Keyed rather than generation-gated: a failed profile switch bumps the generation without
+		// changing the profile, which would otherwise leave this stuck on loading.
+		EliteBotApiClient.leaderboardRanks(uuid, id)
+			.handle((body, error) -> {
+				if (error != null) {
+					BetterPV.LOGGER.warn("Elite rankings failed for {}", id, error);
+				}
+				return EliteRankings.fromResponse(key, body, error);
+			})
+			.thenAccept(result -> {
+				Minecraft client = Minecraft.getInstance();
+				if (client == null) {
+					return;
+				}
+				client.execute(() -> {
+					if (client.gui.screen() != this.screen) {
+						return;
+					}
+					page.apply(EliteRankings.resolve(page.rankings(), result));
+				});
+			});
+	}
+
 	private boolean stillCurrent(Minecraft client, int generation) {
-		return client.screen == this.screen && this.screen.isLoadGeneration(generation);
+		return client.gui.screen() == this.screen && this.screen.isLoadGeneration(generation);
 	}
 }

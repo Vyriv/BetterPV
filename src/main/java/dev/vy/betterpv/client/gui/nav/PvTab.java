@@ -74,6 +74,9 @@ public enum PvTab {
 		if (token.equals("essence") || token.equals("essences")) {
 			return new Route(HOME, PvSubTab.HOME_ESSENCE);
 		}
+		if (token.equals("rankings") || token.equals("ranking") || token.equals("leaderboards") || token.equals("leaderboard")) {
+			return new Route(HOME, PvSubTab.HOME_RANKINGS);
+		}
 		PvTab tab = switch (token) {
 			case "home" -> HOME;
 			case "dungeons", "dungeon" -> DUNGEONS;
@@ -113,13 +116,20 @@ public enum PvTab {
 			"museum",
 			"bestiary",
 			"events",
+			"rankings",
 			"essence"
 		};
 	}
 
 	public PvSubTab[] subTabs() {
 		return switch (this) {
-			case HOME -> new PvSubTab[] { PvSubTab.HOME_OVERVIEW, PvSubTab.HOME_MISC, PvSubTab.HOME_RECORDS, PvSubTab.HOME_ESSENCE };
+			case HOME -> new PvSubTab[] {
+				PvSubTab.HOME_OVERVIEW,
+				PvSubTab.HOME_MISC,
+				PvSubTab.HOME_RECORDS,
+				PvSubTab.HOME_ESSENCE,
+				PvSubTab.HOME_RANKINGS
+			};
 			case DUNGEONS -> new PvSubTab[] { PvSubTab.DUNGEON_OVERVIEW, PvSubTab.DUNGEON_CHESTS };
 			case AUCTIONS -> new PvSubTab[] { PvSubTab.AUCTION_STATS, PvSubTab.AUCTION_SOLD, PvSubTab.AUCTION_BOUGHT };
 			case COLLECTIONS -> new PvSubTab[] { PvSubTab.COLLECTIONS_LIST, PvSubTab.COLLECTIONS_MINIONS };

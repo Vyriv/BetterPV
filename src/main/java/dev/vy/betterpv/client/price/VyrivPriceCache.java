@@ -16,13 +16,13 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-public final class AthenPriceCache {
+public final class VyrivPriceCache {
 	private static final URI PRICES_URI = URI.create("https://api.vyriv.dev/v1/prices");
 	private static final Duration TIMEOUT = Duration.ofSeconds(10);
 	private static final long REFRESH_MINUTES = 10L;
 	private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 	private static final ScheduledExecutorService EXECUTOR = Executors.newSingleThreadScheduledExecutor(r -> {
-		Thread t = new Thread(r, "BetterPV-AthenPrices");
+		Thread t = new Thread(r, "BetterPV-VyrivPrices");
 		t.setDaemon(true);
 		return t;
 	});
@@ -31,17 +31,22 @@ public final class AthenPriceCache {
 	/** Bazaar-only unit prices (preferred for sack / material valuation). */
 	private static volatile Map<String, Double> bazaarPrices = Map.of();
 	private static volatile boolean ready;
+	private static volatile long lastSuccessfulRefreshMillis;
 
-	private AthenPriceCache() {
+	private VyrivPriceCache() {
 	}
 
 	public static void start() {
-		EXECUTOR.execute(AthenPriceCache::refreshSafely);
-		EXECUTOR.scheduleAtFixedRate(AthenPriceCache::refreshSafely, REFRESH_MINUTES, REFRESH_MINUTES, TimeUnit.MINUTES);
+		EXECUTOR.execute(VyrivPriceCache::refreshSafely);
+		EXECUTOR.scheduleAtFixedRate(VyrivPriceCache::refreshSafely, REFRESH_MINUTES, REFRESH_MINUTES, TimeUnit.MINUTES);
 	}
 
 	public static boolean isReady() {
 		return ready && !prices.isEmpty();
+	}
+
+	public static long lastSuccessfulRefreshMillis() {
+		return lastSuccessfulRefreshMillis;
 	}
 
 	public static Double get(String itemId) {
@@ -51,7 +56,7 @@ public final class AthenPriceCache {
 		return prices.get(itemId.toUpperCase(java.util.Locale.ROOT));
 	}
 
-	/** Instant / bazaar sell-side price only — never AH LBIN. */
+	/** Instant / bazaar sell-side price only. Never AH LBIN. */
 	public static Double getBazaar(String itemId) {
 		if (itemId == null || itemId.isBlank()) {
 			return null;
@@ -76,12 +81,13 @@ public final class AthenPriceCache {
 		JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
 		Map<String, Double> next = new ConcurrentHashMap<>();
 		Map<String, Double> nextBazaar = new ConcurrentHashMap<>();
-		// Bazaar first so materials use IB/sell — AH LBIN must not stomp sack prices.
+		// Bazaar first so materials use IB/sell. AH LBIN must not stomp sack prices.
 		loadBazaar(root.getAsJsonObject("bazaar"), next, nextBazaar);
 		loadAuctionHouse(root.getAsJsonObject("auction_house"), next);
 		if (!next.isEmpty()) {
 			prices = Map.copyOf(next);
 			bazaarPrices = Map.copyOf(nextBazaar);
+			lastSuccessfulRefreshMillis = System.currentTimeMillis();
 			ready = true;
 			BetterPV.LOGGER.info("Loaded {} Vyriv price entries ({} bazaar)", next.size(), nextBazaar.size());
 		}

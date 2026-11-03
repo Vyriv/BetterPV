@@ -22,6 +22,7 @@ import dev.vy.betterpv.client.gui.nav.IconButtonBar;
 import dev.vy.betterpv.client.gui.nav.PvSubTab;
 import dev.vy.betterpv.client.gui.nav.PvTab;
 import dev.vy.betterpv.client.gui.pets.PetsPage;
+import dev.vy.betterpv.client.gui.rankings.RankingsPage;
 import dev.vy.betterpv.client.gui.rift.RiftPage;
 import java.util.List;
 import net.minecraft.client.gui.Font;
@@ -70,7 +71,8 @@ final class DeferredTooltipLayer {
 		MuseumPage museumPage,
 		EventsPage eventsPage,
 		InventoryPage inventoryPage,
-		BestiaryPage bestiaryPage
+		BestiaryPage bestiaryPage,
+		RankingsPage rankingsPage
 	) {
 		boolean footerHover = selector.footerHover(mouseX, mouseY);
 		List<PvTooltip.Line> profileTip = selector.tooltip(mouseX, mouseY, footerHover);
@@ -94,6 +96,8 @@ final class DeferredTooltipLayer {
 					homeRecordsPage.renderTooltip(g, font, mouseX, mouseY, width, height);
 				} else if (homeSub == PvSubTab.HOME_ESSENCE) {
 					homeEssencePage.renderTooltip(g, font, mouseX, mouseY, width, height);
+				} else if (homeSub == PvSubTab.HOME_RANKINGS) {
+					rankingsPage.renderTooltip(g, font, mouseX, mouseY, width, height);
 				} else {
 					homePage.renderTooltip(g, font, mouseX, mouseY, width, height);
 				}

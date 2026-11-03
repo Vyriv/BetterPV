@@ -1,13 +1,13 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*"
+  release:
+    types: [published]
 
 jobs:
   publish:
     name: Publish ${{ matrix.minecraft }}
+    if: ${{ startsWith(github.event.release.tag_name, 'v') && !github.event.release.prerelease }}
     runs-on: ubuntu-latest
 
     strategy:
@@ -68,5 +68,4 @@ jobs:
 
           files: ${{ steps.meta.outputs.jar }}
 
-          changelog: |
-            See the BetterPV GitHub release/changelog for this version.
+          changelog: ${{ github.event.release.body }}

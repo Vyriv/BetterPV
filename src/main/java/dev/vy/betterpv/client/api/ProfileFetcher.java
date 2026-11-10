@@ -859,7 +859,7 @@ public final class ProfileFetcher {
 			: NetworthBreakdown.empty("Loading networth");
 
 		List<ProfileSnapshot.SkillEntry> skills = ProfileHomeParser.buildHomeSkills(member);
-		ProfileSnapshot.SkillEntry social = ProfileHomeParser.buildSocial(member);
+		ProfileSnapshot.SkillEntry social = ProfileHomeParser.buildSocial(members, member);
 		ProfileSnapshot.SkillEntry runecrafting = ProfileHomeParser.buildRunecrafting(member);
 		List<ProfileSnapshot.SlayerEntry> slayers = ProfileHomeParser.buildHomeSlayers(member);
 		ProfileSnapshot.ActiveSlayerQuest activeSlayer = ProfileHomeParser.parseActiveSlayerQuest(member);

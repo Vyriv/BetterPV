@@ -127,7 +127,7 @@ final class ProfileHomeParser {
 		WeightBreakdown lily = WeightCalculator.lily(member, weightLevels);
 
 		List<ProfileSnapshot.SkillEntry> skills = buildHomeSkills(member);
-		ProfileSnapshot.SkillEntry social = buildSocial(member);
+		ProfileSnapshot.SkillEntry social = buildSocial(members, member);
 		ProfileSnapshot.SkillEntry runecrafting = buildRunecrafting(member);
 		List<ProfileSnapshot.SlayerEntry> slayers = buildHomeSlayers(member);
 		ProfileSnapshot.ActiveSlayerQuest activeSlayer = parseActiveSlayerQuest(member);
@@ -235,8 +235,8 @@ final class ProfileHomeParser {
 		return skills;
 	}
 
-	static ProfileSnapshot.SkillEntry buildSocial(JsonObject member) {
-		float socialXp = (float) Leveling.readSkillXpDouble(member, "social");
+	static ProfileSnapshot.SkillEntry buildSocial(JsonObject members, JsonObject member) {
+		double socialXp = coopSocialXp(members, member);
 		int socialCap = Leveling.skillCap("social", member);
 		Leveling.Progress socialProgress = Leveling.getLevel(Leveling.skillTable("social"), socialXp, socialCap, false);
 		return new ProfileSnapshot.SkillEntry(
@@ -248,6 +248,20 @@ final class ProfileHomeParser {
 			socialProgress.skillHover("Social"),
 			socialProgress.skillHoverLines("Social")
 		);
+	}
+
+	static double coopSocialXp(JsonObject members, JsonObject member) {
+		if (members == null) {
+			return Leveling.readSkillXpDouble(member, "social");
+		}
+		double total = 0D;
+		for (var entry : members.entrySet()) {
+			JsonObject coopMember = Leveling.obj(entry.getValue());
+			if (coopMember != null) {
+				total += Leveling.readSkillXpDouble(coopMember, "social");
+			}
+		}
+		return total;
 	}
 
 	static ProfileSnapshot.SkillEntry buildRunecrafting(JsonObject member) {
